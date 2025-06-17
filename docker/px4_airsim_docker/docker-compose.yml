@@ -1,0 +1,35 @@
+version: '3.8'
+
+services:
+  px4-airsim:
+    build: 
+      context: .
+      args:
+        - BUILDKIT_INLINE_CACHE=1
+      network: host
+    container_name: px4-airsim-container
+    ports:
+      - "4560:4560"    # AirSim connection
+      - "14550:14550"  # MAVLink GCS
+      - "8888:8888"    # micro-ROS agent
+    environment:
+      - DISPLAY=${DISPLAY:-:0}
+      - PX4_HOME_LAT=47.641468
+      - PX4_HOME_LON=-122.140165
+      - PX4_HOME_ALT=0.0
+    volumes:
+      - px4_logs:/tmp/logs
+      - px4_data:/ros2_ws/src/PX4-Autopilot/build
+    networks:
+      - px4-network
+    restart: unless-stopped
+    stdin_open: true
+    tty: true
+
+volumes:
+  px4_logs:
+  px4_data:
+
+networks:
+  px4-network:
+    driver: bridge 

@@ -1,0 +1,72 @@
+# Use a base image with Ubuntu 22.04, suitable for ROS 2 Humble
+FROM ubuntu:22.04
+
+# Set environment variables for non-interactive installation
+ENV DEBIAN_FRONTEND=noninteractive
+
+# Update and install basic dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    git \
+    wget \
+    curl \
+    lsb-release \
+    python3-pip \
+    python3-venv \
+    sudo \
+    unzip \
+    cmake \
+    ninja-build \
+    software-properties-common \
+    ca-certificates \
+    gnupg \
+    net-tools \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install ROS 2 Humble - minimal installation
+RUN curl -sSL https://raw.githubusercontent.com/ros/rosdistro/master/ros.key -o /usr/share/keyrings/ros-archive-keyring.gpg \
+    && echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/ros-archive-keyring.gpg] http://packages.ros.org/ros2/ubuntu $(. /etc/os-release && echo $UBUNTU_CODENAME) main" | tee /etc/apt/sources.list.d/ros2.list > /dev/null \
+    && apt-get update && apt-get install -y --no-install-recommends \
+    ros-humble-ros-base \
+    python3-colcon-common-extensions \
+    python3-rosdep \
+    && rm -rf /var/lib/apt/lists/*
+
+# Initialize rosdep
+RUN rosdep init && rosdep update
+
+# Source ROS 2 setup script for subsequent commands in Dockerfile
+RUN echo "source /opt/ros/humble/setup.bash" >> /root/.bashrc
+ENV PATH="/opt/ros/humble/bin:${PATH}"
+ENV CMAKE_PREFIX_PATH="/opt/ros/humble:${CMAKE_PREFIX_PATH}"
+ENV ROS_DISTRO=humble
+
+# Create and set up a ROS 2 workspace for building PX4
+RUN mkdir -p /px4_ws/src
+WORKDIR /px4_ws/src
+
+# Clone PX4-Autopilot repository and its submodules - pin to stable release
+RUN git clone --depth 1 --recursive -b v1.14.3 https://github.com/PX4/PX4-Autopilot.git
+
+# Install PX4 dependencies
+WORKDIR /px4_ws/src/PX4-Autopilot
+RUN ./Tools/setup/ubuntu.sh --no-sim-tools --no-ccache
+
+# Build PX4 with SITL support (compile only, don't run)
+RUN make px4_sitl_default
+
+# Set PX4 environment variables
+ENV PX4_HOME_LAT=47.641468
+ENV PX4_HOME_LON=-122.140165
+ENV PX4_HOME_ALT=0.0
+
+# Create a simple startup script
+WORKDIR /
+COPY start_px4_minimal.sh /start_px4_minimal.sh
+RUN chmod +x /start_px4_minimal.sh
+
+# Expose ports required for communication
+EXPOSE 4560/tcp 14550/udp
+
+# Command to run when the container starts
+CMD ["/start_px4_minimal.sh"] 
