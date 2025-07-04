@@ -1,6 +1,6 @@
 # AirSim ROS2 Docker Wrapper - Complete Guide
 
-This repository provides a comprehensive Docker-based solution for integrating AirSim with ROS2 Humble, enabling seamless drone simulation, control, and sensor data processing.
+A comprehensive Docker-based solution for integrating AirSim with ROS2 Humble, enabling seamless drone simulation, control, and sensor data processing.
 
 ## 🚀 Quick Start
 
@@ -9,48 +9,48 @@ This repository provides a comprehensive Docker-based solution for integrating A
 - **AirSim**: Unreal Engine environment with AirSim plugin
 - **Hardware**: 8GB+ RAM, dedicated GPU recommended
 
-### 🔑 Key Features
-- **Automatic API Control**: API control is enabled by default - drones are automatically armed and ready for commands
-- **Multi-Drone Support**: Control multiple drones simultaneously
-- **Full Sensor Integration**: Camera, LiDAR, IMU, GPS, and more
-- **RViz2 Visualization**: Optional 3D visualization support
+### Available Docker Configurations
 
-### 1. Choose Your Version
+| Version | Use Case | Size | Features | File |
+|---------|----------|------|----------|------|
+| **Simple** | Development & Full ROS2 | ~3-4GB | Full ROS2 desktop, development tools | `Dockerfile.simple` |
+| **VNC** | GUI Applications (RViz2) | ~4-5GB | VNC desktop + software rendering | `Dockerfile.simple-with-vnc` |
+| **Minimal** | Production & CI/CD | ~2-3GB | Essential packages only | `Dockerfile.minimal` |
 
-We provide two optimized Docker configurations:
-
-| Version | Use Case | Size | Features |
-|---------|----------|------|----------|
-| **Simple** | Development & Full ROS2 | ~3-4GB | Full ROS2 desktop, development tools |
-| **Minimal** | Production & CI/CD | ~2-3GB | Essential packages only |
-
-### 2. Quick Launch
+### Quick Launch Commands
 
 ```bash
 # For development (recommended)
 ./run_simple.bat
 
+# For GUI applications (RViz2)
+./run_vnc.bat
+
 # For production/minimal setup
-./run_minimal.bat
+./run_headless.bat
 ```
 
-## 📁 Directory Structure
+## 📁 Docker Files and Scripts
 
-```
-docker/airsim_ros2_wrapper/
-├── Dockerfile.simple          # Full ROS2 development environment
-├── Dockerfile.minimal         # Lightweight production environment
-├── docker-compose.yml         # Docker Compose configuration
-├── run_simple.bat            # Windows launcher for Simple version
-├── run_minimal.bat           # Windows launcher for Minimal version
-├── test_build.bat            # Build test script
-├── test_minimal_build.bat    # Minimal build test script
-├── test_ros2_connection.sh   # ROS2 connection test
-├── launch_airsim_ros2_simple.sh  # Launch script (copied to container)
-└── .dockerignore             # Build optimization (excludes Unreal files)
-```
+### Core Docker Files
+- **`Dockerfile.simple`** - Full ROS2 development environment
+- **`Dockerfile.simple-with-vnc`** - GUI-enabled version with VNC desktop
+- **`docker-compose.yml`** - Docker Compose configuration
 
-## 🔧 Detailed Setup Instructions
+### Windows Batch Scripts
+- **`build_vnc.bat`** - Build VNC-enabled Docker image
+- **`run_simple.bat`** - Run simple version container
+- **`run_vnc.bat`** - Run VNC version with GUI support
+- **`run_headless.bat`** - Run without GUI
+- **`test_build.bat`** - Test Simple build
+- **`ros2_exec.bat`** - Execute ROS2 commands in container
+
+### Linux Scripts
+- **`launch_airsim_ros2_simple.sh`** - Main launch script (copied to container)
+- **`launch_airsim_ros2_with_rviz.sh`** - Launch with RViz2 support
+- **`test_ros2_connection.sh`** - Test ROS2 connection
+
+## 🔧 Installation & Setup
 
 ### Step 1: Configure AirSim Settings
 
@@ -61,6 +61,7 @@ Create or modify `C:\Users\<YourUser>\Documents\AirSim\settings.json`:
     "SettingsVersion": 1.2,
     "SimMode": "Multirotor",
     "ClockType": "SteppableClock",
+    "ApiServerEndpoint": "0.0.0.0:41451",
     "Vehicles": {
         "Drone1": {
             "VehicleType": "SimpleFlight",
@@ -83,24 +84,27 @@ Create or modify `C:\Users\<YourUser>\Documents\AirSim\settings.json`:
 
 ### Step 2: Build Docker Image
 
-Choose your preferred method:
+Choose your build method:
 
 #### Option A: Using Batch Scripts (Recommended)
 ```bash
 # Build Simple version (full development)
 ./test_build.bat
 
-# Build Minimal version (lightweight)
-./test_minimal_build.bat
+# Build VNC version (with GUI)
+./build_vnc.bat
 ```
 
 #### Option B: Manual Docker Build
 ```bash
-# Simple version
-docker build -f Dockerfile.simple -t airsim_ros2_simple:latest .
+# Change to project root first
+cd /path/to/Cosys-AirSim
 
-# Minimal version
-docker build -f Dockerfile.minimal -t airsim_ros2_minimal:latest .
+# Simple version
+docker build -f docker/airsim_ros2_wrapper/Dockerfile.simple -t airsim_ros2_simple:latest .
+
+# VNC version
+docker build -f docker/airsim_ros2_wrapper/Dockerfile.simple-with-vnc -t airsim_ros2_vnc:latest .
 ```
 
 #### Option C: Docker Compose
@@ -120,24 +124,72 @@ docker-compose up --build
 # Simple version (recommended for development)
 ./run_simple.bat
 
-# Minimal version (for production)
-./run_minimal.bat
+# VNC version (for GUI applications like RViz2)
+./run_vnc.bat
+
+# Headless version (for production)
+./run_headless.bat
 ```
 
-### Step 5: Verify Connection
+## 🎮 Usage Examples
 
-Inside the container, test the connection:
+### Basic Commands
+
+#### List Available Topics and Services
 ```bash
-./test_ros2_connection.sh
+# Using helper script (recommended)
+./ros2_exec.bat "ros2 topic list"
+./ros2_exec.bat "ros2 service list"
+./ros2_exec.bat "ros2 node list"
+
+# Interactive shell
+./ros2_exec.bat
+# Then inside container: ros2 topic list
 ```
 
-## 🎮 ROS2 Services and Topics Guide
-
-### 📡 Available Topics
-
-#### **Sensor Data Topics**
+#### Monitor Drone Data
 ```bash
-# Drone State & Navigation
+# Monitor position and orientation
+./ros2_exec.bat "ros2 topic echo /airsim_node/Drone1/odom_local_ned"
+
+# Monitor GPS data
+./ros2_exec.bat "ros2 topic echo /airsim_node/Drone1/global_gps"
+
+# Monitor IMU data
+./ros2_exec.bat "ros2 topic echo /airsim_node/Drone1/imu/imu"
+
+# Monitor camera feed info
+./ros2_exec.bat "ros2 topic echo /airsim_node/Drone1/front_center/camera_info"
+```
+
+### Drone Control Commands
+
+#### ✅ CORRECT Service Syntax (Use underscores, not camelCase)
+
+```bash
+# Individual Drone Control
+./ros2_exec.bat "ros2 service call /airsim_node/Drone1/takeoff airsim_interfaces/srv/Takeoff '{wait_on_last_task: true}'"
+./ros2_exec.bat "ros2 service call /airsim_node/Drone1/land airsim_interfaces/srv/Land '{wait_on_last_task: true}'"
+
+# Multi-Drone Control
+./ros2_exec.bat "ros2 service call /airsim_node/all_robots/takeoff airsim_interfaces/srv/Takeoff '{wait_on_last_task: true}'"
+./ros2_exec.bat "ros2 service call /airsim_node/all_robots/land airsim_interfaces/srv/Land '{wait_on_last_task: true}'"
+```
+
+#### Velocity Control
+```bash
+# Move forward (body frame)
+./ros2_exec.bat "ros2 topic pub --once /airsim_node/Drone1/vel_cmd_body_frame airsim_interfaces/msg/VelCmd '{twist: {linear: {x: 2.0, y: 0.0, z: 0.0}}}'"
+
+# Move in world frame
+./ros2_exec.bat "ros2 topic pub --once /airsim_node/Drone1/vel_cmd_world_frame airsim_interfaces/msg/VelCmd '{twist: {linear: {x: 1.0, y: 1.0, z: -0.5}}}'"
+```
+
+### Available Topics and Services
+
+#### Sensor Data Topics
+```bash
+# Navigation
 /airsim_node/Drone1/odom_local_ned          # Odometry (position, velocity, orientation)
 /airsim_node/Drone1/global_gps              # GPS coordinates
 /airsim_node/Drone1/environment             # Environmental data
@@ -146,10 +198,9 @@ Inside the container, test the connection:
 /airsim_node/Drone1/front_center/Scene                    # RGB camera feed
 /airsim_node/Drone1/front_center/DepthPerspective        # Depth camera
 /airsim_node/Drone1/front_center/Segmentation            # Segmentation mask
-/airsim_node/Drone1/front_center/SurfaceNormals          # Surface normals
 /airsim_node/Drone1/front_center/camera_info             # Camera calibration
 
-# Sensor Topics
+# Sensors
 /airsim_node/Drone1/imu/imu                 # IMU data (acceleration, gyroscope)
 /airsim_node/Drone1/magnetometer/mag       # Magnetometer
 /airsim_node/Drone1/barometer/alt          # Barometer/altimeter
@@ -158,208 +209,146 @@ Inside the container, test the connection:
 /airsim_node/Drone1/distance/distance      # Distance sensor
 ```
 
-#### **Control Topics**
+#### Control Services
 ```bash
-# Single Drone Control
-/airsim_node/Drone1/vel_cmd_body_frame      # Velocity commands (body frame)
-/airsim_node/Drone1/vel_cmd_world_frame     # Velocity commands (world frame)
-
-# Multi-Drone Control
-/airsim_node/all_robots/vel_cmd_body_frame  # Control all drones (body frame)
-/airsim_node/all_robots/vel_cmd_world_frame # Control all drones (world frame)
-/airsim_node/group_of_robots/vel_cmd_body_frame  # Control drone group
-```
-
-### 🛠️ Available Services
-
-#### **Flight Control Services**
-```bash
-# Individual Drone Control
+# Flight Control
 /airsim_node/Drone1/takeoff                 # Takeoff service
 /airsim_node/Drone1/land                    # Landing service
-
-# Multi-Drone Control
 /airsim_node/all_robots/takeoff             # Takeoff all drones
 /airsim_node/all_robots/land                # Land all drones
-/airsim_node/group_of_robots/takeoff        # Takeoff drone group
-/airsim_node/group_of_robots/land           # Land drone group
+
+# Position Control
+/airsim_node/local_position_goal            # Set local position target
+/airsim_node/gps_goal                       # Set GPS position target
 
 # System Control
 /airsim_node/reset                          # Reset simulation
 ```
 
-#### **Position Control Services**
-```bash
-/airsim_node/local_position_goal            # Set local position target
-/airsim_node/gps_goal                       # Set GPS position target
-```
+## 🖥️ GUI Applications (RViz2)
 
-#### **Sensor Services**
-```bash
-/airsim_node/Drone1/instance_segmentation_refresh  # Refresh segmentation
-/airsim_node/Drone1/object_transforms_refresh      # Refresh object transforms
-```
+### Using VNC Version
 
-## 💻 Usage Examples
+1. **Build VNC Image**: `./build_vnc.bat`
+2. **Run VNC Container**: `./run_vnc.bat`
+3. **Access GUI**:
+   - **Web Browser**: `http://localhost:6901/vnc.html`
+   - **VNC Viewer**: `localhost:5901`
+   - **Password**: `airsim123`
 
-### Basic Drone Control
-
-#### 1. List Available Topics
-```bash
-ros2 topic list
-```
-
-#### 2. Monitor Drone State
-```bash
-# View drone odometry
-ros2 topic echo /airsim_node/Drone1/odom_local_ned
-
-# View GPS data
-ros2 topic echo /airsim_node/Drone1/global_gps
-
-# View camera feed info
-ros2 topic echo /airsim_node/Drone1/front_center/camera_info
-```
-
-#### 3. Control Drone Movement
-
-**Takeoff:**
-```bash
-ros2 service call /airsim_node/Drone1/takeoff airsim_interfaces/srv/Takeoff "{wait_on_last_task: true}"
-```
-
-**Move Forward (Body Frame):**
-```bash
-ros2 topic pub /airsim_node/Drone1/vel_cmd_body_frame airsim_interfaces/msg/VelCmd "
-twist:
-  linear:
-    x: 2.0
-    y: 0.0
-    z: 0.0
-  angular:
-    x: 0.0
-    y: 0.0
-    z: 0.0
-"
-```
-
-**Move in World Frame:**
-```bash
-ros2 topic pub /airsim_node/Drone1/vel_cmd_world_frame airsim_interfaces/msg/VelCmd "
-twist:
-  linear:
-    x: 1.0
-    y: 1.0
-    z: -0.5
-  angular:
-    x: 0.0
-    y: 0.0
-    z: 0.1
-"
-```
-
-**Land:**
-```bash
-ros2 service call /airsim_node/Drone1/land airsim_interfaces/srv/Land "{waitOnLastTask: true, timeout_sec: 10.0}"
-```
-
-#### 4. Position Control
-```bash
-# Set local position target (x, y, z in meters)
-ros2 service call /airsim_node/local_position_goal airsim_interfaces/srv/SetLocalPosition "
-position:
-  x: 10.0
-  y: 5.0
-  z: -20.0
-yaw: 1.57
-"
-```
-
-#### 5. Multi-Drone Control
-
-**Takeoff All Drones:**
-```bash
-ros2 service call /airsim_node/all_robots/takeoff airsim_interfaces/srv/Takeoff "{waitOnLastTask: true, timeout_sec: 15.0}"
-```
-
-**Control Drone Group:**
-```bash
-ros2 topic pub /airsim_node/group_of_robots/vel_cmd_body_frame airsim_interfaces/msg/VelCmdGroup "
-vehicle_names: ['Drone1', 'Drone2']
-vel_cmd:
-  twist:
-    linear:
-      x: 1.0
-      y: 0.0
-      z: 0.0
-"
-```
-
-### Advanced Sensor Usage
-
-#### 1. LiDAR Point Cloud
-```bash
-# View LiDAR data
-ros2 topic echo /airsim_node/Drone1/lidar/points
-
-# Save point cloud to file
-ros2 bag record /airsim_node/Drone1/lidar/points
-```
-
-#### 2. Camera Data Processing
-```bash
-# View camera images using rqt
-rqt_image_view
-
-# Record camera data
-ros2 bag record /airsim_node/Drone1/front_center/Scene
-```
-
-#### 3. IMU and GPS Integration
-```bash
-# Monitor IMU data
-ros2 topic echo /airsim_node/Drone1/imu/imu
-
-# Monitor GPS coordinates
-ros2 topic echo /airsim_node/Drone1/gps/gps
-```
+### RViz2 will automatically launch with:
+- AirSim ROS2 node
+- 3D visualization of drone
+- Sensor data visualization
+- Topic monitoring
 
 ## 🐛 Troubleshooting
 
 ### Common Issues
 
-#### 1. ROS2 Command Not Found (`ros2: not found`)
-If you get `ros2: not found` when using `docker exec`:
-
-**Solution A - Use the helper script (Recommended):**
+#### Container Not Running
 ```bash
-# For interactive shell
-./ros2_exec.bat
+# Check container status
+docker ps
 
-# For single commands
-./ros2_exec.bat "ros2 topic list"
-./ros2_exec.bat "ros2 node list"
+# View container logs
+docker logs airsim_ros2_container
 ```
 
-**Solution B - Use bash explicitly:**
+#### ROS2 Command Not Found
 ```bash
+# Use helper script (automatically sets environment)
+./ros2_exec.bat "ros2 topic list"
+
+# Or use explicit environment setup
 docker exec -it airsim_ros2_container bash -c "source /opt/ros/humble/setup.bash && source /airsim_ros2_ws/install/setup.bash && ros2 topic list"
 ```
 
-**Solution C - Enter interactive bash:**
+#### Connection Issues
+- Ensure AirSim is running before starting container
+- Check if port 41451 is accessible
+- Try setting custom host IP: `docker run -e AIRSIM_HOST_IP=192.168.1.100 ...`
+
+#### Service Call Errors
+- Use **underscores** not camelCase: `wait_on_last_task` not `waitOnLastTask`
+- Check service structure: `./ros2_exec.bat "ros2 interface show airsim_interfaces/srv/Takeoff"`
+
+### Performance Optimization
+
+#### Build Context Optimization
+The `.dockerignore` file excludes large Unreal Engine files:
+- **Before**: 22.19GB transfer time
+- **After**: ~2GB transfer time
+- **Improvement**: 90% reduction in build time
+
+#### Environment Variables
 ```bash
-docker exec -it airsim_ros2_container bash
-# Then inside container: ros2 topic list
+# Set ROS domain ID
+-e ROS_DOMAIN_ID=42
+
+# Set AirSim host
+-e AIRSIM_HOST_IP=192.168.1.100
+-e AIRSIM_HOST_PORT=41451
+
+# Enable RViz2
+-e LAUNCH_RVIZ=true
 ```
 
-#### 2. Connection Problems
+## 📊 Available Docker Configurations
+
+### 1. Simple Development (Dockerfile.simple)
 ```bash
-# Check if AirSim is running and accessible
-nc -z host.docker.internal 41451
-
-# Test ROS2 connection inside container
-./test_ros2_connection.sh
+./run_simple.bat
 ```
+- Full ROS2 Humble desktop
+- All AirSim packages
+- Development tools
+- ~3-4GB size
 
-#### 2. No Topics Appearing
+### 2. VNC GUI Support (Dockerfile.simple-with-vnc)
+```bash
+./run_vnc.bat
 ```
+- Everything from Simple +
+- VNC desktop environment
+- RViz2 3D visualization
+- Software OpenGL rendering
+- ~4-5GB size
+
+### 3. Minimal Production (run via docker-compose)
+```bash
+docker-compose up
+```
+- Essential packages only
+- Optimized for production
+- ~2-3GB size
+
+## 🔗 Integration with External Systems
+
+### Multi-Machine Setup
+See `AirSim_Multi_Machine_Setup.md` for:
+- Network configuration
+- Distributed ROS2 setup
+- Firewall settings
+
+### PX4 Autopilot Integration
+See `docker/px4_airsim_docker/` for:
+- PX4 SITL setup
+- MAVLink integration
+- Hardware-in-the-loop (HITL)
+
+### Custom Service Development
+See `CUSTOM_SERVICE_DEVELOPMENT_GUIDE.md` for:
+- Creating custom ROS2 services (FlyCircle, ChangeAltitude, etc.)
+- Step-by-step development workflow
+- Complete code examples and testing
+
+---
+
+**Key Features:**
+- ✅ Automatic API control (drones auto-arm on startup)
+- ✅ Multi-drone support
+- ✅ Complete sensor integration
+- ✅ GUI visualization with RViz2
+- ✅ Production-ready deployment
+- ✅ Cross-platform compatibility (Windows/Linux)

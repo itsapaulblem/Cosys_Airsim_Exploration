@@ -25,7 +25,14 @@ find_package(OpenCV REQUIRED)
 find_package(pcl_conversions REQUIRED)
 find_package(PCL REQUIRED)
 
-set(AIRSIM_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/../../../)
+# Set AIRSIM_ROOT to the workspace directory where AirLib, MavLinkCom, etc. are located
+# For Docker environment, use absolute path
+if(EXISTS "/airsim_ros2_ws/cmake")
+    set(AIRSIM_ROOT "/airsim_ros2_ws")
+else()
+    # Fallback to relative path for local development
+    set(AIRSIM_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/../../../)
+endif()
 
 add_subdirectory("${AIRSIM_ROOT}/cmake/rpclib_wrapper" rpclib_wrapper)
 add_subdirectory("${AIRSIM_ROOT}/cmake/AirLib" AirLib)

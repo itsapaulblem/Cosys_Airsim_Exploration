@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AirSim ROS2 Architecture Diagram</title>
+    <script src="https://cdn.jsdelivr.net/npm/mermaid@10.9.0/dist/mermaid.min.js"></script>
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+            background-color: #f0f2f5;
+        }
+        .container {
+            background-color: #ffffff;
+            padding: 20px;
+            border-radius: 12px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+            max-width: 95%; /* Adjust as needed for larger diagrams */
+            overflow-x: auto; /* Enable horizontal scrolling if diagram is wide */
+            box-sizing: border-box;
+        }
+        h1 {
+            color: #333;
+            text-align: center;
+            margin-bottom: 20px;
+        }
+        .mermaid {
+            width: 100%;
+            height: auto;
+            min-width: 800px; /* Ensure a minimum width for readability of complex diagrams */
+            overflow: visible; /* Allow diagram to draw outside its initial box if needed by mermaid */
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>AirSim ROS2 Architecture Diagram</h1>
+        <div class="mermaid">
+graph TD
+    subgraph "Unreal Engine Environment"
+        UE[Unreal Engine<br/>AirSim Plugin]
+        SIM[Physics Simulation<br/>- Vehicle Dynamics<br/>- Sensor Simulation<br/>- Environment Rendering]
+        RPCSERVER[RPC Server<br/>Port 41451]
+        UE --> SIM
+        SIM --> RPCSERVER
+    end
+    
+    subgraph "ROS2 Wrapper Container"
+        subgraph "AirSim ROS2 Node"
+            WRAPPER[AirsimROSWrapper<br/>Main Controller]
+            
+            subgraph "RPC Clients"
+                CLIENT_MAIN[Main RPC Client<br/>MultirotorRpcLibClient]
+                CLIENT_IMG[Image RPC Client]
+                CLIENT_LIDAR[LiDAR RPC Client]
+                CLIENT_GPU[GPU LiDAR Client]
+                CLIENT_ECHO[Echo Client]
+            end
+            
+            subgraph "Timer Callbacks"
+                STATE_TIMER[State Timer<br/>drone_state_timer_cb]
+                IMG_TIMER[Image Timer<br/>img_response_timer_cb]
+                LIDAR_TIMER[LiDAR Timer<br/>lidar_timer_cb]
+            end
+            
+            subgraph "ROS2 Publishers"
+                PUB_ODOM[Odometry Publisher]
+                PUB_GPS[GPS Publisher]
+                PUB_IMU[IMU Publisher]
+                PUB_CAM[Camera Publishers]
+                PUB_LIDAR[LiDAR Publishers]
+                PUB_ENV[Environment Publisher]
+            end
+            
+            subgraph "ROS2 Subscribers"
+                SUB_VEL[Velocity Command<br/>Subscribers]
+                SUB_GIMBAL[Gimbal Command<br/>Subscribers]
+                SUB_CAR[Car Control<br/>Subscribers]
+            end
+            
+            subgraph "ROS2 Services"
+                SRV_TAKEOFF[Takeoff Service]
+                SRV_LAND[Land Service]
+                SRV_RESET[Reset Service]
+            end
+        end
+    end
+    
+    subgraph "User/Application Layer"
+        USER_APP[User Applications<br/>- Mission Planning<br/>- Navigation<br/>- Computer Vision]
+        ROS2_TOOLS[ROS2 Tools<br/>- RViz2<br/>- rqt<br/>- rosbag2]
+    end
+    
+    %% Connections
+    RPCSERVER -.->|TCP/IP<br/>RPC Calls| CLIENT_MAIN
+    RPCSERVER -.->|TCP/IP<br/>RPC Calls| CLIENT_IMG
+    RPCSERVER -.->|TCP/IP<br/>RPC Calls| CLIENT_LIDAR
+    RPCSERVER -.->|TCP/IP<br/>RPC Calls| CLIENT_GPU
+    RPCSERVER -.->|TCP/IP<br/>RPC Calls| CLIENT_ECHO
+    
+    STATE_TIMER -->|Poll State| CLIENT_MAIN
+    IMG_TIMER -->|Request Images| CLIENT_IMG
+    LIDAR_TIMER -->|Request LiDAR| CLIENT_LIDAR
+    
+    CLIENT_MAIN -->|State Data| PUB_ODOM
+    CLIENT_MAIN -->|GPS Data| PUB_GPS
+    CLIENT_MAIN -->|IMU Data| PUB_IMU
+    CLIENT_IMG -->|Image Data| PUB_CAM
+    CLIENT_LIDAR -->|Point Cloud| PUB_LIDAR
+    CLIENT_MAIN -->|Env Data| PUB_ENV
+    
+    SUB_VEL -->|Commands| CLIENT_MAIN
+    SUB_GIMBAL -->|Commands| CLIENT_MAIN
+    SUB_CAR -->|Commands| CLIENT_MAIN
+    
+    SRV_TAKEOFF -->|Service Calls| CLIENT_MAIN
+    SRV_LAND -->|Service Calls| CLIENT_MAIN
+    SRV_RESET -->|Service Calls| CLIENT_MAIN
+    
+    USER_APP -->|ROS2 Topics/Services| WRAPPER
+    ROS2_TOOLS -->|ROS2 Topics/Services| WRAPPER
+    
+    %% Styling
+    classDef ue fill:#e1f5fe,stroke:#42a5f5,stroke-width:2px;
+    classDef ros2 fill:#f3e5f5,stroke:#ab47bc,stroke-width:2px;
+    classDef client fill:#fff3e0,stroke:#ffb74d,stroke-width:2px;
+    classDef timer fill:#e8f5e8,stroke:#66bb6a,stroke-width:2px;
+    classDef pub fill:#fce4ec,stroke:#ef5350,stroke-width:2px;
+    classDef sub fill:#e3f2fd,stroke:#42a5f5,stroke-width:2px;
+    classDef srv fill:#e0f2f1,stroke:#26a69a,stroke-width:2px;
+    classDef user fill:#f9fbe7,stroke:#ffee58,stroke-width:2px;
+    
+    class UE,SIM,RPCSERVER ue
+    class WRAPPER ros2
+    class CLIENT_MAIN,CLIENT_IMG,CLIENT_LIDAR,CLIENT_GPU,CLIENT_ECHO client
+    class STATE_TIMER,IMG_TIMER,LIDAR_TIMER timer
+    class PUB_ODOM,PUB_GPS,PUB_IMU,PUB_CAM,PUB_LIDAR,PUB_ENV pub
+    class SUB_VEL,SUB_GIMBAL,SUB_CAR sub
+    class SRV_TAKEOFF,SRV_LAND,SRV_RESET srv
+    class USER_APP,ROS2_TOOLS user
+        </div>
+
+    <script>
+        // Initialize Mermaid
+        mermaid.initialize({ startOnLoad: true });
+    </script>
+</body>
+</html>

@@ -1,0 +1,91 @@
+services:
+  # AirSim with Unreal Environment
+  airsim-blocks:
+    build:
+      context: .
+      dockerfile: Dockerfile_binary
+      args:
+        - BASE_IMAGE=ghcr.io/epicgames/unreal-engine:runtime
+    container_name: airsim-blocks
+    environment:
+      - DISPLAY=${DISPLAY:-:0}
+      - XAUTHORITY=/home/airsim_user/.Xauthority
+      - SDL_VIDEODRIVER=x11
+    volumes:
+      - /tmp/.X11-unix:/tmp/.X11-unix:rw
+      - ${HOME}/.Xauthority:/home/airsim_user/.Xauthority
+      - ./blocks_env:/home/airsim_user/blocks_env
+      - ./full_stack_settings.json:/home/airsim_user/Documents/AirSim/settings.json
+    networks:
+      airsim-network:
+        ipv4_address: 172.25.0.20
+    depends_on:
+      - px4-single
+    profiles:
+      - full-stack
+    privileged: true  # Required for GPU access
+    devices:
+      - /dev/dri:/dev/dri  # GPU access
+
+  # PX4 SITL for full stack
+  px4-single:
+    build: 
+      context: ./px4_airsim_docker
+      dockerfile: Dockerfile
+    container_name: px4-full-stack
+    environment:
+      - PX4_HOME_LAT=47.641468
+      - PX4_HOME_LON=-122.140165
+      - PX4_HOME_ALT=0.0
+      - PX4_SYS_AUTOSTART=10016
+      - PX4_INSTANCE=1
+      - PX4_SIM_HOSTNAME=172.25.0.20  # AirSim container IP
+      - PX4_SIM_MODEL=none_iris       # Perfect for AirSim
+    ports:
+      - "14550:14550/udp"  # QGroundControl
+      - "14541:14541/udp"  # MAVLink control local
+      - "14581:14581/udp"  # MAVLink control remote
+    networks:
+      airsim-network:
+        ipv4_address: 172.25.0.10
+    volumes:
+      - px4-data:/px4_data
+    restart: unless-stopped
+    profiles:
+      - full-stack
+
+  # Development AirSim (source build)
+  airsim-dev:
+    build:
+      context: .
+      dockerfile: Dockerfile_source
+      args:
+        - BASE_IMAGE=ghcr.io/epicgames/unreal-engine:dev-5.4.3
+    container_name: airsim-dev
+    environment:
+      - DISPLAY=${DISPLAY:-:0}
+      - XAUTHORITY=/home/ue4/.Xauthority
+      - SDL_VIDEODRIVER=x11
+    volumes:
+      - /tmp/.X11-unix:/tmp/.X11-unix:rw
+      - ${HOME}/.Xauthority:/home/ue4/.Xauthority
+      - ./full_stack_settings.json:/home/ue4/Documents/AirSim/settings.json
+    networks:
+      airsim-network:
+        ipv4_address: 172.25.0.21
+    profiles:
+      - dev-stack
+    privileged: true
+
+# Shared network for all components
+networks:
+  airsim-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.25.0.0/16
+
+# Shared volumes
+volumes:
+  px4-data:
+    driver: local 

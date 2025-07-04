@@ -1,0 +1,11 @@
+# Request: Altitude change parameters
+float64 target_altitude    # Target altitude in meters (negative is up)
+float64 climb_rate        # Climb/descent rate in m/s (e.g., 1.0)
+string reference_frame    # "relative" or "absolute"
+string vehicle_name       # Vehicle name (e.g., "Drone1") 
+bool wait_on_last_task   # Wait for previous command to complete
+---
+# Response: Result of the operation
+bool success             # True if command was accepted
+string message          # Status message or error description
+float64 current_altitude # Current altitude before change 

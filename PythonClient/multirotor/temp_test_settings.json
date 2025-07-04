@@ -1,0 +1,49 @@
+{
+  "SeeDocsAt": "https://github.com/Microsoft/AirSim/blob/main/docs/settings.md",
+  "SettingsVersion": 2.0,
+  "SimMode": "Multirotor",
+  "ClockType": "SteppableClock",
+  "OriginGeopoint": {
+    "Latitude": 47.641468,
+    "Longitude": -122.140165,
+    "Altitude": 122.0
+  },
+  "Vehicles": {
+    "PX4_Drone1": {
+      "VehicleType": "PX4Multirotor",
+      "UseSerial": false,
+      "LockStep": true,
+      "UseTcp": true,
+      "TcpPort": 4561,
+      "ControlIp": "host.docker.internal",
+      "ControlPortLocal": 14541,
+      "ControlPortRemote": 14581,
+      "LocalHostIp": "127.0.0.1",
+      "UdpIp": "127.0.0.1",
+      "UdpPort": 14560,
+      "UseUdp": true,
+      "Sensors": {
+        "Gps": {
+          "SensorType": 3,
+          "Enabled": true,
+          "EphTimeConstant": 0.9,
+          "EpvTimeConstant": 0.9,
+          "EphInitial": 5.0,
+          "EpvInitial": 5.0,
+          "EphFinal": 0.1,
+          "EpvFinal": 0.1,
+          "EphMin3d": 1.0,
+          "EphMin2d": 2.0,
+          "UpdateLatency": 0.1,
+          "UpdateFrequency": 50,
+          "StartupDelay": 1
+        }
+      },
+      "Parameters": {
+        "EKF2_GPS_CHECK": 5,
+        "EKF2_REQ_EPH": 5.0,
+        "EKF2_REQ_EPV": 8.0
+      }
+    }
+  }
+}

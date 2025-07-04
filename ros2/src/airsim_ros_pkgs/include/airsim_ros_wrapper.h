@@ -28,6 +28,7 @@ STRICT_MODE_OFF //todo what does this do?
 #include <airsim_interfaces/srv/takeoff_group.hpp>
 #include <airsim_interfaces/srv/refresh_instance_segmentation.hpp>
 #include <airsim_interfaces/srv/refresh_object_transforms.hpp>
+#include <airsim_interfaces/srv/set_altitude.hpp>
 #include <airsim_interfaces/srv/list_scene_object_tags.hpp>
 #include <airsim_interfaces/msg/vel_cmd.hpp>
 #include <airsim_interfaces/msg/vel_cmd_group.hpp>
@@ -251,6 +252,7 @@ private:
 
         rclcpp::Service<airsim_interfaces::srv::Takeoff>::SharedPtr takeoff_srvr_;
         rclcpp::Service<airsim_interfaces::srv::Land>::SharedPtr land_srvr_;
+        rclcpp::Service<airsim_interfaces::srv::SetAltitude>::SharedPtr set_altitude_srvr_;
 
         bool has_vel_cmd_;
         VelCmd vel_cmd_;
@@ -293,6 +295,7 @@ private:
     bool land_srv_cb(const std::shared_ptr<airsim_interfaces::srv::Land::Request> request, const std::shared_ptr<airsim_interfaces::srv::Land::Response> response, const std::string& vehicle_name);
     bool land_group_srv_cb(const std::shared_ptr<airsim_interfaces::srv::LandGroup::Request> request, const std::shared_ptr<airsim_interfaces::srv::LandGroup::Response> response);
     bool land_all_srv_cb(const std::shared_ptr<airsim_interfaces::srv::Land::Request> request, const std::shared_ptr<airsim_interfaces::srv::Land::Response> response);
+    bool set_altitude_srv_cb(const std::shared_ptr<airsim_interfaces::srv::SetAltitude::Request> request, const std::shared_ptr<airsim_interfaces::srv::SetAltitude::Response> response, const std::string& vehicle_name);
     bool reset_srv_cb(const std::shared_ptr<airsim_interfaces::srv::Reset::Request> request, const std::shared_ptr<airsim_interfaces::srv::Reset::Response> response);
     bool instance_segmentation_refresh_cb(const std::shared_ptr<airsim_interfaces::srv::RefreshInstanceSegmentation::Request> request, const std::shared_ptr<airsim_interfaces::srv::RefreshInstanceSegmentation::Response> response);
     bool object_transforms_refresh_cb(const std::shared_ptr<airsim_interfaces::srv::RefreshObjectTransforms::Request> request, const std::shared_ptr<airsim_interfaces::srv::RefreshObjectTransforms::Response> response);

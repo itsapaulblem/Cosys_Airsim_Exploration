@@ -223,6 +223,9 @@ void AirsimROSWrapper::create_ros_pubs_from_settings_json()
             std::function<bool(std::shared_ptr<airsim_interfaces::srv::Land::Request>, std::shared_ptr<airsim_interfaces::srv::Land::Response>)> fcn_land_srvr = std::bind(&AirsimROSWrapper::land_srv_cb, this, _1, _2, vehicle_ros->vehicle_name_);
             drone->land_srvr_ = nh_->create_service<airsim_interfaces::srv::Land>(topic_prefix + "/land", fcn_land_srvr);
 
+            std::function<bool(std::shared_ptr<airsim_interfaces::srv::SetAltitude::Request>, std::shared_ptr<airsim_interfaces::srv::SetAltitude::Response>)> fcn_set_altitude_srvr = std::bind(&AirsimROSWrapper::set_altitude_srv_cb, this, _1, _2, vehicle_ros->vehicle_name_);
+            drone->set_altitude_srvr_ = nh_->create_service<airsim_interfaces::srv::SetAltitude>(topic_prefix + "/set_altitude", fcn_set_altitude_srvr);
+
             // vehicle_ros.reset_srvr = nh_->create_service(curr_vehicle_name + "/reset",&AirsimROSWrapper::reset_srv_cb, this);
         }
         else if(airsim_mode_ == AIRSIM_MODE::CAR) {
@@ -591,6 +594,41 @@ bool AirsimROSWrapper::land_all_srv_cb(std::shared_ptr<airsim_interfaces::srv::L
             static_cast<msr::airlib::MultirotorRpcLibClient*>(airsim_client_.get())->landAsync(60, vehicle_name_ptr_pair.first);
 
     return true; //todo
+}
+
+bool AirsimROSWrapper::set_altitude_srv_cb(std::shared_ptr<airsim_interfaces::srv::SetAltitude::Request> request, std::shared_ptr<airsim_interfaces::srv::SetAltitude::Response> response, const std::string& vehicle_name)
+{
+    std::lock_guard<std::mutex> guard(control_mutex_);
+
+    try {
+        // Default velocity if not specified or invalid
+        float velocity = (request->velocity > 0) ? request->velocity : 5.0f;
+        
+        RCLCPP_INFO(nh_->get_logger(), "Setting altitude for vehicle '%s' to z=%.2f with velocity=%.2f", 
+                    vehicle_name.c_str(), request->z, velocity);
+        
+        bool success;
+        if (request->wait_on_last_task) {
+            success = static_cast<msr::airlib::MultirotorRpcLibClient*>(airsim_client_.get())->moveToZAsync(
+                request->z, velocity, 30.0f, msr::airlib::YawMode(), -1, 1, vehicle_name)->waitOnLastTask();
+        } else {
+            static_cast<msr::airlib::MultirotorRpcLibClient*>(airsim_client_.get())->moveToZAsync(
+                request->z, velocity, 30.0f, msr::airlib::YawMode(), -1, 1, vehicle_name);
+            success = true; // For async calls, we assume success unless there's an immediate error
+        }
+        
+        response->success = success;
+        response->message = success ? "Altitude change command sent successfully" : "Failed to execute altitude change";
+        
+        RCLCPP_INFO(nh_->get_logger(), "Altitude service response: %s", response->message.c_str());
+        
+    } catch (const std::exception& e) {
+        response->success = false;
+        response->message = std::string("Error setting altitude: ") + e.what();
+        RCLCPP_ERROR(nh_->get_logger(), "Exception in set_altitude_srv_cb: %s", e.what());
+    }
+
+    return true;
 }
 
 // todo add reset by vehicle_name API to airlib

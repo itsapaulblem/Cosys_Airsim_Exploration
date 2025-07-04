@@ -1,0 +1,44 @@
+FROM airsim_ros2_simple:latest
+
+# Install VNC and desktop environment
+RUN apt-get update && apt-get install -y \
+    x11vnc \
+    xvfb \
+    fluxbox \
+    novnc \
+    websockify \
+    && rm -rf /var/lib/apt/lists/*
+
+# Create startup script
+RUN echo '#!/bin/bash\n\
+# Start virtual display\n\
+Xvfb :1 -screen 0 1280x720x16 &\n\
+export DISPLAY=:1\n\
+\n\
+# Start window manager\n\
+fluxbox &\n\
+\n\
+# Start VNC server\n\
+x11vnc -display :1 -nopw -listen localhost -xkb -ncache 10 -ncache_cr -forever &\n\
+\n\
+# Start noVNC (web-based VNC client)\n\
+websockify --web=/usr/share/novnc/ 6080 localhost:5900 &\n\
+\n\
+# Start AirSim ROS2 wrapper\n\
+source /opt/ros/humble/setup.bash\n\
+source /airsim_ros2_ws/install/setup.bash\n\
+export ROS_DOMAIN_ID=${ROS_DOMAIN_ID:-0}\n\
+export AIRSIM_HOST_IP=${AIRSIM_HOST_IP:-host.docker.internal}\n\
+export AIRSIM_HOST_PORT=${AIRSIM_HOST_PORT:-41451}\n\
+\n\
+ros2 launch airsim_ros_pkgs airsim_node.launch.py host_ip:=$AIRSIM_HOST_IP host_port:=$AIRSIM_HOST_PORT &\n\
+\n\
+# Wait a bit then start RViz2\n\
+sleep 5\n\
+rviz2 &\n\
+\n\
+# Keep container running\n\
+wait' > /start_vnc.sh && chmod +x /start_vnc.sh
+
+EXPOSE 5900 6080
+CMD ["/start_vnc.sh"]

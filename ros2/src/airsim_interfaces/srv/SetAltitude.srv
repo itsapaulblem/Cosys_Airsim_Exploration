@@ -1,0 +1,10 @@
+#Request : expects altitude setpoint via z (in meters, NED coordinate system)
+#Request : negative z means higher altitude (NED convention)
+float64 z
+float64 velocity
+string vehicle_name
+bool wait_on_last_task
+---
+#Response : success=true if altitude change completed successfully
+bool success
+string message 

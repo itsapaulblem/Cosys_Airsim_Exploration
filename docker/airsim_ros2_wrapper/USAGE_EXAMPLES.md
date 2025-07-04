@@ -1,171 +1,168 @@
-# AirSim ROS2 Docker - Usage Examples
+# AirSim ROS2 Docker - Usage Examples & Recipes
 
-## Prerequisites
-- AirSim running on host machine (Windows/Linux)
-- Docker installed
-- Container built and running
+This document provides practical, tested examples for using the AirSim ROS2 Docker wrapper.
 
-## Important Notes
-- **API Control is enabled by default** - The ROS2 wrapper automatically requests API control and arms drones on startup
-- Make sure AirSim is running before starting the container
-- The container connects to AirSim via `host.docker.internal` by default
+## 🚀 Quick Start Recipes
 
-## Basic Usage
-
-### 1. List all available topics
+### Recipe 1: Development with RViz2
 ```bash
-# Windows
+# 1. Build VNC-enabled image
+./build_vnc.bat
+
+# 2. Start AirSim (Blocks environment)
+# Launch your AirSim.exe
+
+# 3. Run container with GUI
+./run_vnc.bat
+
+# 4. Access web-based GUI
+# Open: http://localhost:6901/vnc.html
+# Password: airsim123
+
+# RViz2 will automatically launch showing drone visualization
+```
+
+### Recipe 2: Headless Development
+```bash
+# 1. Build simple image
+./test_build.bat
+
+# 2. Start AirSim
+# Launch your AirSim.exe
+
+# 3. Run headless container
+./run_simple.bat
+
+# 4. Execute commands
 ./ros2_exec.bat "ros2 topic list"
-
-# Linux
-./ros2_exec.sh "ros2 topic list"
 ```
 
-### 2. Monitor drone state
+### Recipe 3: Production Deployment
 ```bash
-# Monitor position and orientation
-./ros2_exec.bat "ros2 topic echo /airsim_node/Drone1/odom"
-
-# Monitor IMU data
-./ros2_exec.bat "ros2 topic echo /airsim_node/Drone1/imu/Imu"
+# Use docker-compose for production
+docker-compose up --build
 ```
 
-### 3. Camera topics
+## 🎮 Control Examples
+
+### Basic Flight Operations
+
+#### ✅ Correct Service Call Syntax
 ```bash
-# View available camera topics
-./ros2_exec.bat "ros2 topic list | grep camera"
-
-# Monitor front camera
-./ros2_exec.bat "ros2 topic echo /airsim_node/Drone1/front_center_custom/Scene"
-```
-
-## Service Calls
-
-### 4. Takeoff (API control enabled automatically)
-```bash
-./ros2_exec.bat "ros2 service call /airsim_node/Drone1/takeoff airsim_interfaces/srv/Takeoff '{waitOnLastTask: true}'"
-```
-
-### 5. Land
-```bash
-./ros2_exec.bat "ros2 service call /airsim_node/Drone1/land airsim_interfaces/srv/Land '{waitOnLastTask: true}'"
-```
-
-### 6. Move by velocity
-```bash
-./ros2_exec.bat "ros2 service call /airsim_node/Drone1/move_by_velocity airsim_interfaces/srv/MoveByVelocity '{vx: 1.0, vy: 0.0, vz: 0.0, duration: 2.0, waitOnLastTask: true}'"
-```
-
-## Advanced Examples
-
-### 7. Multi-drone operations
-```bash
-# List all drones
-./ros2_exec.bat "ros2 topic list | grep Drone"
-
-# Takeoff multiple drones
-./ros2_exec.bat "ros2 service call /airsim_node/Drone1/takeoff airsim_interfaces/srv/Takeoff '{waitOnLastTask: true}'"
-./ros2_exec.bat "ros2 service call /airsim_node/Drone2/takeoff airsim_interfaces/srv/Takeoff '{waitOnLastTask: true}'"
-```
-
-### 8. Image capture
-```bash
-# Capture image from front camera
-./ros2_exec.bat "ros2 service call /airsim_node/Drone1/capture_image airsim_interfaces/srv/CaptureImage '{camera_name: \"front_center_custom\", image_type: 0}'"
-```
-
-## Troubleshooting
-
-### Connection Issues
-- Ensure AirSim is running before starting the container
-- Check if the host IP is correct (default: `host.docker.internal`)
-- Try setting custom host IP: `docker run -e AIRSIM_HOST_IP=192.168.1.100 ...`
-
-### API Control Issues
-- API control is automatically enabled on startup
-- If services fail, check AirSim logs for connection errors
-- Restart the container if API control is lost
-
-### Multi-drone Setup
-- Ensure your AirSim settings.json includes multiple vehicles
-- Each drone will have its own namespace (Drone1, Drone2, etc.)
-
-## 🚀 Quick Commands Using ros2_exec.bat
-
-The `ros2_exec.bat` script makes it easy to run ROS2 commands in the container without environment issues.
-
-### Interactive Shell (Recommended for Development)
-```bash
-# Start interactive bash session in container
-./ros2_exec.bat
-
-# Now you can run any ROS2 commands:
-ros2 topic list
-ros2 node list
-ros2 service list
-```
-
-### Single Commands
-```bash
-# List all topics
-./ros2_exec.bat "ros2 topic list"
-
-# List all nodes
-./ros2_exec.bat "ros2 node list"
-
-# Echo a topic
-./ros2_exec.bat "ros2 topic echo /airsim_node/Drone1/odom_local_ned"
-
-# Call a service
-./ros2_exec.bat "ros2 service call /airsim_node/Drone1/takeoff airsim_interfaces/srv/Takeoff '{waitOnLastTask: true}'"
-```
-
-## 🎮 Common ROS2 Commands
-
-### Exploration Commands
-```bash
-# See what's available
-./ros2_exec.bat "ros2 topic list"
-./ros2_exec.bat "ros2 service list"
-./ros2_exec.bat "ros2 node list"
-
-# Get topic info
-./ros2_exec.bat "ros2 topic info /airsim_node/Drone1/odom_local_ned"
-./ros2_exec.bat "ros2 topic hz /airsim_node/Drone1/front_center/Scene"
-
-# Get service info
-./ros2_exec.bat "ros2 service type /airsim_node/Drone1/takeoff"
-```
-
-### Drone Control Commands
-```bash
-# Takeoff (CORRECT syntax - note underscore, not camelCase)
+# Takeoff (individual drone)
 ./ros2_exec.bat "ros2 service call /airsim_node/Drone1/takeoff airsim_interfaces/srv/Takeoff '{wait_on_last_task: true}'"
 
+# Takeoff (all drones)
+./ros2_exec.bat "ros2 service call /airsim_node/all_robots/takeoff airsim_interfaces/srv/Takeoff '{wait_on_last_task: true}'"
+
+# Land (individual drone)
+./ros2_exec.bat "ros2 service call /airsim_node/Drone1/land airsim_interfaces/srv/Land '{wait_on_last_task: true}'"
+
+# Land (all drones)
+./ros2_exec.bat "ros2 service call /airsim_node/all_robots/land airsim_interfaces/srv/Land '{wait_on_last_task: false}'"
+
+# Change height (individual drone)
+ros2 service call /airsim_node/Drone2/set_altitude airsim_interfaces/srv/SetAltitude '{z: -30.0, velocity: 5.0, vehicle_name: "Drone2", wait_on_last_task: true}'
+
+
+# Reset simulation
+./ros2_exec.bat "ros2 service call /airsim_node/reset std_srvs/srv/Empty"
+```
+
+### Movement Control
+
+#### Velocity Commands (Body Frame)
+```bash
+# Move forward
+./ros2_exec.bat "ros2 topic pub --once /airsim_node/Drone1/vel_cmd_body_frame airsim_interfaces/msg/VelCmd '{twist: {linear: {x: 2.0, y: 0.0, z: 0.0}}}'"
+
+# Move right
+./ros2_exec.bat "ros2 topic pub --once /airsim_node/Drone1/vel_cmd_body_frame airsim_interfaces/msg/VelCmd '{twist: {linear: {x: 0.0, y: 2.0, z: 0.0}}}'"
+
+# Move up
+./ros2_exec.bat "ros2 topic pub --once /airsim_node/Drone1/vel_cmd_body_frame airsim_interfaces/msg/VelCmd '{twist: {linear: {x: 0.0, y: 0.0, z: -2.0}}}'"
+
+# Rotate (yaw)
+./ros2_exec.bat "ros2 topic pub --once /airsim_node/Drone1/vel_cmd_body_frame airsim_interfaces/msg/VelCmd '{twist: {angular: {z: 1.0}}}'"
+
+# Stop (zero velocity)
+./ros2_exec.bat "ros2 topic pub --once /airsim_node/Drone1/vel_cmd_body_frame airsim_interfaces/msg/VelCmd '{twist: {linear: {x: 0.0, y: 0.0, z: 0.0}}}'"
+```
+
+#### Velocity Commands (World Frame)
+```bash
+# Move north-east-up in world coordinates
+./ros2_exec.bat "ros2 topic pub --once /airsim_node/Drone1/vel_cmd_world_frame airsim_interfaces/msg/VelCmd '{twist: {linear: {x: 1.0, y: 1.0, z: -0.5}}}'"
+```
+
+### Multi-Drone Operations
+
+#### Control Multiple Drones
+```bash
 # Takeoff all drones
 ./ros2_exec.bat "ros2 service call /airsim_node/all_robots/takeoff airsim_interfaces/srv/Takeoff '{wait_on_last_task: true}'"
 
-# Land
-./ros2_exec.bat "ros2 service call /airsim_node/Drone1/land airsim_interfaces/srv/Land '{wait_on_last_task: true}'"
+# Move all drones forward
+./ros2_exec.bat "ros2 topic pub --once /airsim_node/all_robots/vel_cmd_body_frame airsim_interfaces/msg/VelCmd '{twist: {linear: {x: 1.0, y: 0.0, z: 0.0}}}'"
 
-# Land all drones  
+# Land all drones
 ./ros2_exec.bat "ros2 service call /airsim_node/all_robots/land airsim_interfaces/srv/Land '{wait_on_last_task: true}'"
-
-# Move forward (body frame)
-./ros2_exec.bat "ros2 topic pub --once /airsim_node/Drone1/vel_cmd_body_frame airsim_interfaces/msg/VelCmd '{twist: {linear: {x: 2.0, y: 0.0, z: 0.0}}}'"
 ```
 
-### Monitoring Commands
+## 📊 Sensor Data Examples
+
+### Camera Operations
 ```bash
-# Monitor drone position
+# List all camera topics
+./ros2_exec.bat "ros2 topic list | grep Scene"
+
+# Monitor front camera info
+./ros2_exec.bat "ros2 topic echo /airsim_node/Drone1/front_center/camera_info"
+
+# Monitor depth camera
+./ros2_exec.bat "ros2 topic echo /airsim_node/Drone1/front_center/DepthPerspective --once"
+
+# Check camera feed rate
+./ros2_exec.bat "ros2 topic hz /airsim_node/Drone1/front_center/Scene"
+```
+
+### Navigation & Positioning
+```bash
+# Monitor drone position and orientation
 ./ros2_exec.bat "ros2 topic echo /airsim_node/Drone1/odom_local_ned"
 
-# Monitor GPS
+# Monitor GPS coordinates
 ./ros2_exec.bat "ros2 topic echo /airsim_node/Drone1/global_gps"
 
-# Monitor camera feed info
-./ros2_exec.bat "ros2 topic echo /airsim_node/Drone1/front_center/camera_info"
+# Monitor altitude
+./ros2_exec.bat "ros2 topic echo /airsim_node/Drone1/barometer/alt"
 ```
+
+### IMU & Motion Sensors
+```bash
+# Monitor IMU data (acceleration, gyroscope)
+./ros2_exec.bat "ros2 topic echo /airsim_node/Drone1/imu/imu"
+
+# Monitor magnetometer
+./ros2_exec.bat "ros2 topic echo /airsim_node/Drone1/magnetometer/mag"
+
+# Monitor distance sensor
+./ros2_exec.bat "ros2 topic echo /airsim_node/Drone1/distance/distance"
+```
+
+### LiDAR Operations
+```bash
+# Monitor LiDAR point cloud
+./ros2_exec.bat "ros2 topic echo /airsim_node/Drone1/lidar/points --once"
+
+# Check LiDAR data rate
+./ros2_exec.bat "ros2 topic hz /airsim_node/Drone1/lidar/points"
+
+# Record LiDAR data
+./ros2_exec.bat "ros2 bag record /airsim_node/Drone1/lidar/points"
+```
+
+## 🔧 Advanced Usage
 
 ### Data Recording
 ```bash
@@ -173,70 +170,127 @@ ros2 service list
 ./ros2_exec.bat "ros2 bag record -a"
 
 # Record specific topics
-./ros2_exec.bat "ros2 bag record /airsim_node/Drone1/odom_local_ned /airsim_node/Drone1/front_center/Scene"
+./ros2_exec.bat "ros2 bag record /airsim_node/Drone1/odom_local_ned /airsim_node/Drone1/front_center/Scene /airsim_node/Drone1/imu/imu"
+
+# Record for specific duration (30 seconds)
+./ros2_exec.bat "ros2 bag record -a --duration 30"
 ```
 
-## 🔧 Alternative Methods (Without Helper Script)
-
-### Method 1: Direct docker exec with bash
+### System Inspection
 ```bash
-docker exec -it airsim_ros2_container bash -c "source /opt/ros/humble/setup.bash && source /airsim_ros2_ws/install/setup.bash && ros2 topic list"
+# List all nodes
+./ros2_exec.bat "ros2 node list"
+
+# List all topics
+./ros2_exec.bat "ros2 topic list"
+
+# List all services
+./ros2_exec.bat "ros2 service list"
+
+# Get topic information
+./ros2_exec.bat "ros2 topic info /airsim_node/Drone1/odom_local_ned"
+
+# Get service type
+./ros2_exec.bat "ros2 service type /airsim_node/Drone1/takeoff"
+
+# Show message structure
+./ros2_exec.bat "ros2 interface show geometry_msgs/msg/Twist"
+./ros2_exec.bat "ros2 interface show airsim_interfaces/srv/Takeoff"
 ```
 
-### Method 2: Interactive bash session
+### Performance Monitoring
 ```bash
-docker exec -it airsim_ros2_container bash
-# Then inside container:
-ros2 topic list
+# Check topic frequencies
+./ros2_exec.bat "ros2 topic hz /airsim_node/Drone1/odom_local_ned"
+./ros2_exec.bat "ros2 topic hz /airsim_node/Drone1/front_center/Scene"
+
+# Monitor system resources
+./ros2_exec.bat "top"
+./ros2_exec.bat "htop"
+
+# Check ROS2 node performance
+./ros2_exec.bat "ros2 run rqt_graph rqt_graph"  # Note: Only works with VNC version
 ```
 
-## 🐛 Troubleshooting
+## 🐛 Debugging & Troubleshooting
 
-### Container Not Running
+### Common Debugging Commands
 ```bash
-# Check if container is running
-docker ps
+# Check if AirSim is accessible
+./ros2_exec.bat "nc -z host.docker.internal 41451"
 
-# Start container if needed
-./run_simple.bat
+# Test ROS2 connection
+./test_ros2_connection.sh
+
+# View container logs
+docker logs airsim_ros2_container
+
+# Enter interactive shell
+./ros2_exec.bat
+# Then run any command interactively
 ```
 
-### Permission Issues
+### Service Call Debugging
 ```bash
-# Run as administrator if needed on Windows
-# Right-click Command Prompt -> "Run as administrator"
+# Check service availability
+./ros2_exec.bat "ros2 service list | grep takeoff"
+
+# Test service call syntax
+./ros2_exec.bat "ros2 interface show airsim_interfaces/srv/Takeoff"
+
+# Verify node is running
+./ros2_exec.bat "ros2 node info /airsim_node"
 ```
 
-### ROS2 Environment Issues
-The helper script automatically sources the ROS2 environment, but if you have issues:
+## 🎯 Integration Examples
+
+### Python Client Integration
 ```bash
-# Check ROS2 environment inside container
-./ros2_exec.bat "printenv | grep ROS"
+# Run Python scripts from host
+cd /path/to/Cosys-AirSim/PythonClient
+python multirotor/hello_drone.py
+
+# The ROS2 wrapper and Python client can run simultaneously
 ```
 
-## 🎨 RViz2 Visualization
-
-### Option 1: Launch with RViz2 from Start
+### Mission Planning
 ```bash
-# Run container with RViz2 enabled
-./run_simple_with_rviz.bat
+# Use mission planning scripts
+cd /path/to/Cosys-AirSim/PythonClient/multirotor/mission_planning
+python mission_simple.py
 ```
 
-### Option 2: Launch RViz2 Manually
+### Computer Vision
 ```bash
-# Start normal container
-./run_simple.bat
-
-# In another terminal, launch RViz2
-./ros2_exec.bat "ros2 launch airsim_ros_pkgs rviz.launch.py"
+# Access computer vision examples
+cd /path/to/Cosys-AirSim/PythonClient/computer_vision
+python cv_mode.py
 ```
 
-### Option 3: Set Environment Variable
+## 🔗 Multi-Machine Setup Examples
+
+### Distributed ROS2 Setup
 ```bash
-# Start container with RViz2 environment variable
-docker run -it --rm \
-    --name airsim-ros2-wrapper \
-    -e LAUNCH_RVIZ=true \
-    -e DISPLAY=host.docker.internal:0.0 \
-    airsim_ros2_simple:latest
-``` 
+# On machine with AirSim
+docker run -e ROS_DOMAIN_ID=42 -e AIRSIM_HOST_IP=0.0.0.0 ...
+
+# On remote machine
+export ROS_DOMAIN_ID=42
+ros2 topic list  # Should see topics from AirSim machine
+```
+
+### Cross-Platform Testing
+```bash
+# Linux client connecting to Windows AirSim
+docker run -e AIRSIM_HOST_IP=192.168.1.100 -e ROS_DOMAIN_ID=42 ...
+```
+
+---
+
+## 📝 Notes
+
+- **API Control**: Automatically enabled on startup - drones are ready to receive commands
+- **Syntax**: Use `wait_on_last_task` not `waitOnLastTask` in service calls
+- **Namespaces**: Each drone has its own namespace (`Drone1`, `Drone2`, etc.)
+- **Multi-drone**: Use `all_robots` or `group_of_robots` for batch operations
+- **Performance**: Use `.dockerignore` for faster builds (90% size reduction) 

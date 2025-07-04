@@ -35,27 +35,27 @@ import cosysairsim as airsim
 # connect to the AirSim simulator
 client = airsim.MultirotorClient()
 client.confirmConnection()
-client.enableApiControl(True, "Drone1")
-client.enableApiControl(True, "Drone2")
-client.armDisarm(True, "Drone1")
-client.armDisarm(True, "Drone2")
+client.enableApiControl(True, "PX4_Drone1")
+client.enableApiControl(True, "PX4_Drone2")
+client.armDisarm(True, "PX4_Drone1")
+client.armDisarm(True, "PX4_Drone2")
 
 airsim.wait_key('Press any key to takeoff')
-f1 = client.takeoffAsync(vehicle_name="Drone1")
-f2 = client.takeoffAsync(vehicle_name="Drone2")
+f1 = client.takeoffAsync(vehicle_name="PX4_Drone1")
+f2 = client.takeoffAsync(vehicle_name="PX4_Drone2")
 f1.join()
 f2.join()
 
-state1 = client.getMultirotorState(vehicle_name="Drone1")
+state1 = client.getMultirotorState(vehicle_name="PX4_Drone1")
 s = pprint.pformat(state1)
 print("state: %s" % s)
-state2 = client.getMultirotorState(vehicle_name="Drone2")
+state2 = client.getMultirotorState(vehicle_name="PX4_Drone2")
 s = pprint.pformat(state2)
 print("state: %s" % s)
 
 airsim.wait_key('Press any key to move vehicles')
-f1 = client.moveToPositionAsync(-5, 5, -10, 5, vehicle_name="Drone1")
-f2 = client.moveToPositionAsync(5, -5, -10, 5, vehicle_name="Drone2")
+f1 = client.moveToPositionAsync(-5, 5, -10, 5, vehicle_name="PX4_Drone1")
+f2 = client.moveToPositionAsync(5, -5, -10, 5, vehicle_name="PX4_Drone2")
 f1.join()
 f2.join()
 
@@ -63,11 +63,11 @@ airsim.wait_key('Press any key to take images')
 # get camera images from the car
 responses1 = client.simGetImages([
     airsim.ImageRequest("0", airsim.ImageType.DepthVis),  #depth visualization image
-    airsim.ImageRequest("1", airsim.ImageType.Scene, False, False)], vehicle_name="Drone1")  #scene vision image in uncompressed RGB array
+    airsim.ImageRequest("1", airsim.ImageType.Scene, False, False)], vehicle_name="PX4_Drone1")
 print('Drone1: Retrieved images: %d' % len(responses1))
 responses2 = client.simGetImages([
     airsim.ImageRequest("0", airsim.ImageType.DepthVis),  #depth visualization image
-    airsim.ImageRequest("1", airsim.ImageType.Scene, False, False)], vehicle_name="Drone2")  #scene vision image in uncompressed RGB array
+    airsim.ImageRequest("1", airsim.ImageType.Scene, False, False)], vehicle_name="PX4_Drone2")  #scene vision image in uncompressed RGB array
 print('Drone2: Retrieved images: %d' % len(responses2))
 
 tmp_dir = os.path.join(tempfile.gettempdir(), "airsim_drone")
@@ -96,12 +96,12 @@ for idx, response in enumerate(responses1 + responses2):
 
 airsim.wait_key('Press any key to reset to original state')
 
-client.armDisarm(False, "Drone1")
-client.armDisarm(False, "Drone2")
+client.armDisarm(False, "PX4_Drone1")
+client.armDisarm(False, "PX4_Drone2")
 client.reset()
 
 # that's enough fun for now. let's quit cleanly
-client.enableApiControl(False, "Drone1")
-client.enableApiControl(False, "Drone2")
+client.enableApiControl(False, "PX4_Drone1")
+client.enableApiControl(False, "PX4_Drone2")
 
 

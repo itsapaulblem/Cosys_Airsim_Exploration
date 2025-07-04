@@ -1,0 +1,13 @@
+# Request: Parameters for circular flight
+float64 radius              # Circle radius in meters (e.g., 10.0)
+float64 altitude            # Flight altitude in meters (e.g., -20.0, negative is up)
+float64 speed               # Flight speed in m/s (e.g., 2.0)
+float64 duration            # Duration to fly in seconds (0 = infinite)
+string center_frame         # "body" or "world" - center relative to current position or world origin
+string vehicle_name         # Vehicle name (e.g., "Drone1")
+bool wait_on_last_task     # Wait for previous command to complete
+---
+# Response: Result of the operation
+bool success               # True if command was accepted
+string message            # Status message or error description
+float64 estimated_duration # Estimated time to complete the circle 

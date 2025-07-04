@@ -172,7 +172,7 @@ def main():
     #   |           |
     #   |           |
     # Drone1 ---- Drone2
-    drone_names = ["Drone1", "Drone2", "Drone3", "Drone4"]
+    drone_names = ["PX4_Drone1", "PX4_Drone2", "PX4_Drone3", "PX4_Drone4"]
     
     print("\n📐 Initial Box Formation:")
     print("  Drone4 (-5,+5) ---- Drone3 (+5,+5)")
@@ -227,7 +227,7 @@ def main():
     print("\n🔧 Setting up drones...")
     for drone in drone_names:
         client.enableApiControl(True, drone)
-        client.armDisarm(True, drone)
+        # client.armDisarm(True, drone)
         print(f"  ✅ {drone} armed and ready")
     
     # Wait a moment for physics to stabilize after arming
@@ -236,10 +236,10 @@ def main():
     
     # Define expected box formation positions (matching settings.json)
     expected_positions = {
-        "Drone1": (-5, -5, -2),  # Bottom-Left
-        "Drone2": (5, -5, -2),   # Bottom-Right  
-        "Drone3": (5, 5, -2),    # Top-Right
-        "Drone4": (-5, 5, -2)    # Top-Left
+        "PX4_Drone1": (5, 0, -2),   # Right-Center
+        "PX4_Drone2": (-5, 0, -2),  # Left-Center
+        "PX4_Drone3": (5, 5, -2),   # Top-Right
+        "PX4_Drone4": (-5, 5, -2)   # Top-Left
     }
     
     # Get current positions using multiple methods for debugging
@@ -303,11 +303,11 @@ def main():
         # Check if position is close to expected (within 5 meter tolerance)
         distance = ((current_pos[0] - expected[0])**2 + (current_pos[1] - expected[1])**2)**0.5
         
-        if drone == "Drone1":
-            corner = "Bottom-Left"
-        elif drone == "Drone2":
-            corner = "Bottom-Right"
-        elif drone == "Drone3":
+        if drone == "PX4_Drone1":
+            corner = "Right-Center"
+        elif drone == "PX4_Drone2":
+            corner = "Left-Center"
+        elif drone == "PX4_Drone3":
             corner = "Top-Right"
         else:  # Drone4
             corner = "Top-Left"

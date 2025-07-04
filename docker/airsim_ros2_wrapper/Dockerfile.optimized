@@ -1,0 +1,362 @@
+# AirSim ROS2 Wrapper Docker Container - Optimized Multi-Stage Build
+# This Dockerfile uses multi-stage builds to optimize development workflow
+
+#######################
+# Stage 1: Base Dependencies
+#######################
+FROM ros:humble AS base-deps
+
+# Set environment variables
+ENV DEBIAN_FRONTEND=noninteractive
+ENV ROS_DISTRO=humble
+
+# Install VNC and GUI dependencies
+RUN apt-get update && apt-get install -y \
+    # VNC Server and Desktop Environment
+    tightvncserver \
+    xfce4 \
+    xfce4-goodies \
+    x11vnc \
+    xvfb \
+    # Window manager and GUI essentials
+    openbox \
+    menu \
+    fluxbox \
+    # Fonts and display
+    fonts-liberation \
+    fonts-dejavu-core \
+    xfonts-base \
+    xfonts-75dpi \
+    xfonts-100dpi \
+    # Additional GUI utilities
+    x11-apps \
+    x11-utils \
+    x11-xserver-utils \
+    dbus-x11 \
+    # Enhanced Graphics and OpenGL support for RViz2/Ogre
+    mesa-utils \
+    libgl1-mesa-glx \
+    libgl1-mesa-dri \
+    libglu1-mesa \
+    libglu1-mesa-dev \
+    mesa-common-dev \
+    libegl1-mesa \
+    libegl1-mesa-dev \
+    libgles2-mesa-dev \
+    mesa-va-drivers \
+    mesa-vdpau-drivers \
+    mesa-vulkan-drivers \
+    # Enhanced X11 and GLX support
+    xserver-xorg-core \
+    xserver-xorg-input-all \
+    xserver-xorg-video-dummy \
+    xserver-xorg-video-fbdev \
+    libxrandr2 \
+    libxinerama1 \
+    libxcursor1 \
+    libxi6 \
+    libxss1 \
+    libgconf-2-4 \
+    libxtst6 \
+    libxcomposite1 \
+    libasound2 \
+    libatk1.0-0 \
+    libdrm-common \
+    libdrm2 \
+    libxdamage1 \
+    libxfixes3 \
+    libxxf86vm1 \
+    # Web browser
+    firefox \
+    # Process management
+    supervisor \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install ROS2 dependencies (this rarely changes)
+RUN apt-get update && apt-get install -y \
+    build-essential \
+    cmake \
+    git \
+    python3-pip \
+    python3-colcon-common-extensions \
+    python3-vcstool \
+    wget \
+    curl \
+    netcat-openbsd \
+    libpcl-dev \
+    ros-humble-desktop \
+    ros-humble-cv-bridge \
+    ros-humble-image-transport \
+    ros-humble-tf2-geometry-msgs \
+    ros-humble-tf2-sensor-msgs \
+    ros-humble-geographic-msgs \
+    ros-humble-pcl-conversions \
+    ros-humble-pcl-ros \
+    ros-humble-geometry-msgs \
+    ros-humble-sensor-msgs \
+    ros-humble-std-msgs \
+    ros-humble-nav-msgs \
+    ros-humble-tf2 \
+    ros-humble-tf2-ros \
+    ros-humble-rclcpp \
+    ros-humble-rclpy \
+    ros-humble-builtin-interfaces \
+    ros-humble-rosidl-default-generators \
+    ros-humble-rosidl-default-runtime \
+    && rm -rf /var/lib/apt/lists/*
+
+# Try to install mavros-msgs if available
+RUN apt-get update && \
+    (apt-get install -y ros-humble-mavros-msgs || echo "mavros-msgs not available, continuing...") && \
+    rm -rf /var/lib/apt/lists/*
+
+# Install noVNC
+RUN git clone https://github.com/novnc/noVNC.git /opt/novnc && \
+    git clone https://github.com/novnc/websockify /opt/novnc/utils/websockify && \
+    ln -s /opt/novnc/vnc.html /opt/novnc/index.html
+
+# Set up VNC environment
+ENV DISPLAY=:1
+ENV VNC_PORT=5901
+ENV NO_VNC_PORT=6901
+ENV VNC_RESOLUTION=1920x1080
+ENV VNC_COL_DEPTH=24
+
+# Create VNCuser
+RUN useradd -m -s /bin/bash vncuser && \
+    echo 'vncuser:vncuser' | chpasswd
+
+#######################
+# Stage 2: AirSim Dependencies (less frequently changing)
+#######################
+FROM base-deps AS airsim-deps
+
+# Copy external dependencies first (these rarely change)
+COPY external/rpclib/ /airsim_ros2_ws/external/rpclib/
+COPY MavLinkCom/mavlink/ /airsim_ros2_ws/MavLinkCom/mavlink/
+COPY MavLinkCom/common_utils/ /airsim_ros2_ws/MavLinkCom/common_utils/
+COPY AirLib/deps/ /airsim_ros2_ws/AirLib/deps/
+
+# Create workspace structure
+RUN mkdir -p /airsim_ros2_ws/src
+WORKDIR /airsim_ros2_ws
+
+#######################
+# Stage 3: Source Code Build (frequently changing)
+#######################
+FROM airsim-deps AS build
+
+# Copy source code (these change more frequently)
+COPY ros2/ /airsim_ros2_ws/src/
+COPY cmake/ /airsim_ros2_ws/cmake/
+COPY AirLib/include/ /airsim_ros2_ws/AirLib/include/
+COPY AirLib/src/ /airsim_ros2_ws/AirLib/src/
+COPY MavLinkCom/src/ /airsim_ros2_ws/MavLinkCom/src/
+COPY MavLinkCom/include/ /airsim_ros2_ws/MavLinkCom/include/
+
+# Create proper directory structure for cmake
+RUN mkdir -p /airsim_ros2_ws/src/airsim && \
+    ln -sf /airsim_ros2_ws/cmake /airsim_ros2_ws/src/airsim/cmake && \
+    ln -sf /airsim_ros2_ws/AirLib /airsim_ros2_ws/src/airsim/AirLib && \
+    ln -sf /airsim_ros2_ws/MavLinkCom /airsim_ros2_ws/src/airsim/MavLinkCom && \
+    ln -sf /airsim_ros2_ws/external /airsim_ros2_ws/src/airsim/external
+
+# Remove problematic ROS packages
+RUN cd /airsim_ros2_ws/src && \
+    find . -name "*python*" -path "*/src/*" -type d -exec rm -rf {} + || true && \
+    find . -name "*uwb_msgs*" -type d -exec rm -rf {} + || true && \
+    find . -name "*wifi_msgs*" -type d -exec rm -rf {} + || true
+
+# Fix MavLinkTest issue
+RUN sed -i 's/add_subdirectory("MavLinkTest")/#add_subdirectory("MavLinkTest")/' /airsim_ros2_ws/cmake/MavLinkCom/CMakeLists.txt
+
+# Build only essential packages (faster build)
+RUN /bin/bash -c "source /opt/ros/humble/setup.bash && \
+    colcon build --symlink-install --packages-select airsim_interfaces airsim_ros_pkgs"
+
+#######################
+# Stage 4: Runtime Configuration
+#######################
+FROM build AS runtime
+
+# Give vncuser access to workspace
+RUN chown -R vncuser:vncuser /airsim_ros2_ws
+
+# Setup environment for both users
+RUN echo "source /opt/ros/humble/setup.bash" >> ~/.bashrc && \
+    echo "source /airsim_ros2_ws/install/setup.bash" >> ~/.bashrc && \
+    echo "source /opt/ros/humble/setup.bash" >> ~/.profile && \
+    echo "source /airsim_ros2_ws/install/setup.bash" >> ~/.profile
+
+# Setup environment for vncuser with graphics support
+RUN echo "source /opt/ros/humble/setup.bash" >> /home/vncuser/.bashrc && \
+    echo "source /airsim_ros2_ws/install/setup.bash" >> /home/vncuser/.bashrc && \
+    echo "export DISPLAY=:1" >> /home/vncuser/.bashrc && \
+    echo "export XDG_RUNTIME_DIR=/tmp/runtime-vncuser" >> /home/vncuser/.bashrc && \
+    echo "export LIBGL_ALWAYS_SOFTWARE=1" >> /home/vncuser/.bashrc && \
+    echo "export MESA_GL_VERSION_OVERRIDE=3.3" >> /home/vncuser/.bashrc && \
+    echo "export MESA_GLSL_VERSION_OVERRIDE=330" >> /home/vncuser/.bashrc && \
+    echo "export XKL_XMODMAP_DISABLE=1" >> /home/vncuser/.bashrc && \
+    echo "export QT_QPA_PLATFORM=xcb" >> /home/vncuser/.bashrc && \
+    echo "export QT_X11_NO_MITSHM=1" >> /home/vncuser/.bashrc && \
+    echo "export LIBGL_ALWAYS_INDIRECT=1" >> /home/vncuser/.bashrc && \
+    echo "export GALLIUM_DRIVER=llvmpipe" >> /home/vncuser/.bashrc
+
+# Create VNC startup script with enhanced X11 support
+RUN echo '#!/bin/bash' > /start_vnc.sh && \
+    echo 'export USER=vncuser' >> /start_vnc.sh && \
+    echo 'export HOME=/home/vncuser' >> /start_vnc.sh && \
+    echo 'mkdir -p $HOME/.vnc' >> /start_vnc.sh && \
+    echo 'mkdir -p /tmp/runtime-vncuser' >> /start_vnc.sh && \
+    echo 'chmod 0700 /tmp/runtime-vncuser' >> /start_vnc.sh && \
+    echo 'chown vncuser:vncuser /tmp/runtime-vncuser' >> /start_vnc.sh && \
+    echo '# Create VNC password' >> /start_vnc.sh && \
+    echo 'echo "airsim123" | vncpasswd -f > $HOME/.vnc/passwd' >> /start_vnc.sh && \
+    echo 'chmod 600 $HOME/.vnc/passwd' >> /start_vnc.sh && \
+    echo 'chown -R vncuser:vncuser $HOME/.vnc' >> /start_vnc.sh && \
+    echo '# Create enhanced VNC xstartup script with proper X11 extensions' >> /start_vnc.sh && \
+    echo 'cat > $HOME/.vnc/xstartup << EOF' >> /start_vnc.sh && \
+    echo '#!/bin/bash' >> /start_vnc.sh && \
+    echo '# Clean environment for VNC' >> /start_vnc.sh && \
+    echo 'unset SESSION_MANAGER' >> /start_vnc.sh && \
+    echo 'unset DBUS_SESSION_BUS_ADDRESS' >> /start_vnc.sh && \
+    echo '# Set up X11 and graphics environment' >> /start_vnc.sh && \
+    echo 'export XKL_XMODMAP_DISABLE=1' >> /start_vnc.sh && \
+    echo 'export XDG_RUNTIME_DIR=/tmp/runtime-vncuser' >> /start_vnc.sh && \
+    echo 'export LIBGL_ALWAYS_SOFTWARE=1' >> /start_vnc.sh && \
+    echo 'export MESA_GL_VERSION_OVERRIDE=3.3' >> /start_vnc.sh && \
+    echo 'export MESA_GLSL_VERSION_OVERRIDE=330' >> /start_vnc.sh && \
+    echo 'export QT_QPA_PLATFORM=xcb' >> /start_vnc.sh && \
+    echo 'export QT_X11_NO_MITSHM=1' >> /start_vnc.sh && \
+    echo 'export LIBGL_ALWAYS_INDIRECT=1' >> /start_vnc.sh && \
+    echo 'export GALLIUM_DRIVER=llvmpipe' >> /start_vnc.sh && \
+    echo '# Enhanced X11 and OpenGL configuration for VNC' >> /start_vnc.sh && \
+    echo 'export XAUTHORITY=/dev/null' >> /start_vnc.sh && \
+    echo 'export XDG_SESSION_TYPE=x11' >> /start_vnc.sh && \
+    echo '# Force software rendering and disable hardware acceleration' >> /start_vnc.sh && \
+    echo 'export LIBGL_ALWAYS_SOFTWARE=1' >> /start_vnc.sh && \
+    echo 'export LIBGL_ALWAYS_INDIRECT=1' >> /start_vnc.sh && \
+    echo 'export GALLIUM_DRIVER=llvmpipe' >> /start_vnc.sh && \
+    echo 'export MESA_GL_VERSION_OVERRIDE=3.3' >> /start_vnc.sh && \
+    echo 'export MESA_GLSL_VERSION_OVERRIDE=330' >> /start_vnc.sh && \
+    echo 'export __GLX_VENDOR_LIBRARY_NAME=mesa' >> /start_vnc.sh && \
+    echo 'export OGRE_RTT_MODE=Copy' >> /start_vnc.sh && \
+    echo '# Start D-Bus for proper desktop integration' >> /start_vnc.sh && \
+    echo 'if [ -z "$DBUS_SESSION_BUS_ADDRESS" ]; then' >> /start_vnc.sh && \
+    echo '  eval `dbus-launch --sh-syntax`' >> /start_vnc.sh && \
+    echo 'fi' >> /start_vnc.sh && \
+    echo '# Start XFCE4 desktop environment' >> /start_vnc.sh && \
+    echo 'startxfce4 &' >> /start_vnc.sh && \
+    echo 'EOF' >> /start_vnc.sh && \
+    echo 'chmod +x $HOME/.vnc/xstartup' >> /start_vnc.sh && \
+    echo 'chown vncuser:vncuser $HOME/.vnc/xstartup' >> /start_vnc.sh && \
+    echo '# Kill any existing VNC server' >> /start_vnc.sh && \
+    echo 'su - vncuser -c "vncserver -kill :1 2>/dev/null || true"' >> /start_vnc.sh && \
+    echo '# Wait and clean up' >> /start_vnc.sh && \
+    echo 'sleep 2' >> /start_vnc.sh && \
+    echo 'rm -f /tmp/.X1-lock /tmp/.X11-unix/X1 2>/dev/null || true' >> /start_vnc.sh && \
+    echo '# Create proper .Xauthority file with correct permissions' >> /start_vnc.sh && \
+    echo 'su - vncuser -c "touch $HOME/.Xauthority && chmod 600 $HOME/.Xauthority"' >> /start_vnc.sh && \
+    echo '# Start VNC server with enhanced compatibility options' >> /start_vnc.sh && \
+    echo 'su - vncuser -c "vncserver :1 -geometry ${VNC_RESOLUTION} -depth ${VNC_COL_DEPTH} -desktop AirSim-ROS2 -dpi 96 -ac"' >> /start_vnc.sh && \
+    echo 'echo "VNC Server started on :1 (port 5901)"' >> /start_vnc.sh && \
+    echo 'echo "Password: airsim123"' >> /start_vnc.sh && \
+    chmod +x /start_vnc.sh
+
+# Create noVNC startup script
+RUN echo '#!/bin/bash' > /start_novnc.sh && \
+    echo 'cd /opt/novnc' >> /start_novnc.sh && \
+    echo './utils/websockify/run --web=/opt/novnc ${NO_VNC_PORT} localhost:${VNC_PORT} &' >> /start_novnc.sh && \
+    echo 'echo "noVNC started on port ${NO_VNC_PORT}"' >> /start_novnc.sh && \
+    echo 'echo "Access via: http://localhost:6901/vnc.html"' >> /start_novnc.sh && \
+    chmod +x /start_novnc.sh
+
+# Create combined startup script
+RUN echo '#!/bin/bash' > /start_desktop.sh && \
+    echo 'echo "Starting VNC Desktop Environment..."' >> /start_desktop.sh && \
+    echo '/start_vnc.sh' >> /start_desktop.sh && \
+    echo 'sleep 5' >> /start_desktop.sh && \
+    echo '/start_novnc.sh' >> /start_desktop.sh && \
+    echo 'echo ""' >> /start_desktop.sh && \
+    echo 'echo "=== Desktop Environment Started ==="' >> /start_desktop.sh && \
+    echo 'echo "VNC Viewer: localhost:5901 (password: airsim123)"' >> /start_desktop.sh && \
+    echo 'echo "Web Browser: http://localhost:6901/vnc.html"' >> /start_desktop.sh && \
+    echo 'echo "===================================="' >> /start_desktop.sh && \
+    echo 'echo ""' >> /start_desktop.sh && \
+    chmod +x /start_desktop.sh
+
+# Create enhanced launch script with better X11 handling
+RUN echo '#!/bin/bash' > /launch_airsim_ros2_gui.sh && \
+    echo 'echo "Starting AirSim ROS2 Wrapper with GUI support..."' >> /launch_airsim_ros2_gui.sh && \
+    echo 'source /opt/ros/humble/setup.bash' >> /launch_airsim_ros2_gui.sh && \
+    echo 'source /airsim_ros2_ws/install/setup.bash' >> /launch_airsim_ros2_gui.sh && \
+    echo 'export ROS_DOMAIN_ID=${ROS_DOMAIN_ID:-0}' >> /launch_airsim_ros2_gui.sh && \
+    echo 'export AIRSIM_HOST_IP=${AIRSIM_HOST_IP:-host.docker.internal}' >> /launch_airsim_ros2_gui.sh && \
+    echo 'export AIRSIM_HOST_PORT=${AIRSIM_HOST_PORT:-41451}' >> /launch_airsim_ros2_gui.sh && \
+    echo 'export LAUNCH_RVIZ=${LAUNCH_RVIZ:-true}' >> /launch_airsim_ros2_gui.sh && \
+    echo 'export DISPLAY=${DISPLAY:-:1}' >> /launch_airsim_ros2_gui.sh && \
+    echo 'echo "Configuration:"' >> /launch_airsim_ros2_gui.sh && \
+    echo 'echo "  ROS_DOMAIN_ID: $ROS_DOMAIN_ID"' >> /launch_airsim_ros2_gui.sh && \
+    echo 'echo "  AirSim Host: $AIRSIM_HOST_IP:$AIRSIM_HOST_PORT"' >> /launch_airsim_ros2_gui.sh && \
+    echo 'echo "  Launch RViz2: $LAUNCH_RVIZ"' >> /launch_airsim_ros2_gui.sh && \
+    echo 'echo "  Display: $DISPLAY"' >> /launch_airsim_ros2_gui.sh && \
+    echo '/start_desktop.sh' >> /launch_airsim_ros2_gui.sh && \
+    echo 'sleep 10' >> /launch_airsim_ros2_gui.sh && \
+    echo 'echo "Launching AirSim ROS2 node..."' >> /launch_airsim_ros2_gui.sh && \
+    echo 'su - vncuser -c "source /opt/ros/humble/setup.bash && source /airsim_ros2_ws/install/setup.bash && export DISPLAY=:1 && ros2 launch airsim_ros_pkgs airsim_node.launch.py host_ip:=$AIRSIM_HOST_IP host_port:=$AIRSIM_HOST_PORT enable_api_control:=true output:=screen" &' >> /launch_airsim_ros2_gui.sh && \
+    echo 'AIRSIM_PID=$!' >> /launch_airsim_ros2_gui.sh && \
+    echo 'if [ "$LAUNCH_RVIZ" = "true" ]; then' >> /launch_airsim_ros2_gui.sh && \
+    echo '  echo "Waiting 15 seconds for VNC display to stabilize before launching RViz2..."' >> /launch_airsim_ros2_gui.sh && \
+    echo '  sleep 15' >> /launch_airsim_ros2_gui.sh && \
+    echo '  echo "Testing X11 connection..."' >> /launch_airsim_ros2_gui.sh && \
+    echo '  su - vncuser -c "export DISPLAY=:1 && xset q >/dev/null 2>&1 && echo \"X11 connection: OK\" || echo \"X11 connection: Warning - limited extensions available\""' >> /launch_airsim_ros2_gui.sh && \
+    echo '  echo "Launching RViz2 with fallback compatibility launcher..."' >> /launch_airsim_ros2_gui.sh && \
+    echo '  su - vncuser -c "/launch_rviz_fallback.sh" &' >> /launch_airsim_ros2_gui.sh && \
+    echo '  RVIZ_PID=$!' >> /launch_airsim_ros2_gui.sh && \
+    echo 'fi' >> /launch_airsim_ros2_gui.sh && \
+    echo 'echo ""' >> /launch_airsim_ros2_gui.sh && \
+    echo 'echo "=== Services Running ==="' >> /launch_airsim_ros2_gui.sh && \
+    echo 'echo "AirSim ROS2 Node: Running"' >> /launch_airsim_ros2_gui.sh && \
+    echo 'if [ "$LAUNCH_RVIZ" = "true" ]; then echo "RViz2: Running"; fi' >> /launch_airsim_ros2_gui.sh && \
+    echo 'echo "VNC Desktop: Running on :1"' >> /launch_airsim_ros2_gui.sh && \
+    echo 'echo "Web Access: http://localhost:6901/vnc.html"' >> /launch_airsim_ros2_gui.sh && \
+    echo 'echo "========================"' >> /launch_airsim_ros2_gui.sh && \
+    echo 'wait' >> /launch_airsim_ros2_gui.sh && \
+    chmod +x /launch_airsim_ros2_gui.sh
+
+# Create original non-GUI launch script for backward compatibility
+RUN echo '#!/bin/bash' > /launch_airsim_ros2.sh && \
+    echo 'echo "Starting AirSim ROS2 Wrapper..."' >> /launch_airsim_ros2.sh && \
+    echo 'source /opt/ros/humble/setup.bash' >> /launch_airsim_ros2.sh && \
+    echo 'source /airsim_ros2_ws/install/setup.bash' >> /launch_airsim_ros2.sh && \
+    echo 'export ROS_DOMAIN_ID=${ROS_DOMAIN_ID:-0}' >> /launch_airsim_ros2.sh && \
+    echo 'export AIRSIM_HOST_IP=${AIRSIM_HOST_IP:-host.docker.internal}' >> /launch_airsim_ros2.sh && \
+    echo 'export AIRSIM_HOST_PORT=${AIRSIM_HOST_PORT:-41451}' >> /launch_airsim_ros2.sh && \
+    echo 'export LAUNCH_RVIZ=${LAUNCH_RVIZ:-false}' >> /launch_airsim_ros2.sh && \
+    echo 'echo "Configuration:"' >> /launch_airsim_ros2.sh && \
+    echo 'echo "  ROS_DOMAIN_ID: $ROS_DOMAIN_ID"' >> /launch_airsim_ros2.sh && \
+    echo 'echo "  AirSim Host: $AIRSIM_HOST_IP:$AIRSIM_HOST_PORT"' >> /launch_airsim_ros2.sh && \
+    echo 'echo "  Launch RViz2: $LAUNCH_RVIZ"' >> /launch_airsim_ros2.sh && \
+    echo 'echo "  API Control: Enabled"' >> /launch_airsim_ros2.sh && \
+    echo 'echo "Launching AirSim ROS2 node..."' >> /launch_airsim_ros2.sh && \
+    echo 'ros2 launch airsim_ros_pkgs airsim_node.launch.py host_ip:=$AIRSIM_HOST_IP host_port:=$AIRSIM_HOST_PORT enable_api_control:=true output:=screen' >> /launch_airsim_ros2.sh && \
+    chmod +x /launch_airsim_ros2.sh
+
+# Copy fallback RViz2 launcher script and alternative launcher
+COPY docker/airsim_ros2_wrapper/launch_rviz_fallback.sh /launch_rviz_fallback.sh
+COPY docker/airsim_ros2_wrapper/launch_rqt_alternative.sh /launch_rqt_alternative.sh
+RUN chmod +x /launch_rviz_fallback.sh && chmod +x /launch_rqt_alternative.sh
+
+# Set environment variables for ROS2
+ENV ROS_DISTRO=humble
+ENV ROS_VERSION=2
+ENV PYTHONPATH=/opt/ros/humble/lib/python3.10/site-packages:/airsim_ros2_ws/install/airsim_interfaces/lib/python3.10/site-packages:/airsim_ros2_ws/install/airsim_ros_pkgs/lib/python3.10/site-packages
+ENV PATH=/opt/ros/humble/bin:/airsim_ros2_ws/install/airsim_ros_pkgs/bin:/usr/local/bin:/usr/bin:/bin
+ENV LD_LIBRARY_PATH=/opt/ros/humble/lib:/airsim_ros2_ws/install/airsim_interfaces/lib:/airsim_ros2_ws/install/airsim_ros_pkgs/lib:/usr/local/lib:/usr/lib:/lib
+ENV CMAKE_PREFIX_PATH=/opt/ros/humble:/airsim_ros2_ws/install/airsim_interfaces:/airsim_ros2_ws/install/airsim_ros_pkgs
+
+# Expose ports
+EXPOSE 5901 6901 7400/udp 7401/udp 7402/udp
+
+# Default command
+CMD ["/launch_airsim_ros2_gui.sh"] 

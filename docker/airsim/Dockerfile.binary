@@ -1,0 +1,92 @@
+# Cosys-AirSim Binary Container
+# Uses official Unreal Engine 5.5 runtime base image
+
+ARG BASE_IMAGE=ghcr.io/epicgames/unreal-engine:dev-5.5.4
+FROM $BASE_IMAGE
+
+# Set environment variables
+ENV DEBIAN_FRONTEND=noninteractive
+ENV DISPLAY=:0
+ENV AIRSIM_ROOT=/home/airsim_user
+
+# Switch to root for system setup
+USER root
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    # Python and package management
+    python3 python3-pip python3-venv \
+    # Network debugging tools
+    net-tools iputils-ping netcat-openbsd tcpdump \
+    # VNC and desktop (optional)
+    x11vnc xvfb fluxbox \
+    # Additional utilities
+    wget curl unzip sudo \
+    # Cleanup
+    && rm -rf /var/lib/apt/lists/*
+
+# Install cosysairsim Python client
+RUN python3 -m pip install --upgrade pip && \
+    pip3 install cosysairsim
+
+# Create airsim user (compatible with UE runtime base image)
+RUN adduser --force-badname --disabled-password --gecos '' --shell /bin/bash airsim_user && \
+    echo '%sudo ALL=(ALL) NOPASSWD:ALL' >> /etc/sudoers && \
+    adduser airsim_user sudo && \
+    adduser airsim_user audio && \
+    adduser airsim_user video
+
+# Switch to airsim user
+USER airsim_user
+WORKDIR /home/airsim_user
+
+# Create necessary directories
+RUN mkdir -p Documents/AirSim \
+    && mkdir -p .vnc \
+    && mkdir -p Scripts
+
+# Download Cosys-AirSim Blocks environment (binary)
+RUN wget -q https://github.com/Cosys-Lab/Cosys-AirSim/releases/download/v1.3.1-linux/Blocks.zip -O /tmp/Blocks.zip 2>/dev/null || \
+    wget -q https://github.com/Microsoft/AirSim/releases/download/v1.8.1-linux/Blocks.zip -O /tmp/Blocks.zip && \
+    unzip -q /tmp/Blocks.zip -d /home/airsim_user/ && \
+    rm /tmp/Blocks.zip && \
+    chmod +x /home/airsim_user/Blocks/LinuxNoEditor/Blocks.sh
+
+# Copy configuration files
+COPY settings/container_settings.json Documents/AirSim/settings.json
+COPY entrypoint.sh Scripts/
+USER root
+RUN chmod +x /home/airsim_user/Scripts/entrypoint.sh
+USER airsim_user
+
+# Create VNC setup script
+RUN echo '#!/bin/bash\n\
+export DISPLAY=:1\n\
+Xvfb :1 -screen 0 1920x1080x24 &\n\
+fluxbox &\n\
+x11vnc -display :1 -nopw -listen 0.0.0.0 -xkb -forever &\n\
+' > Scripts/setup_vnc.sh && chmod +x Scripts/setup_vnc.sh
+
+# Create AirSim launch script
+RUN echo '#!/bin/bash\n\
+# Wait for any existing instances to close\n\
+pkill -f Blocks || true\n\
+sleep 2\n\
+\n\
+# Set environment variables\n\
+export DISPLAY=${DISPLAY:-:1}\n\
+export SDL_VIDEODRIVER=x11\n\
+\n\
+# Start AirSim Blocks\n\
+echo "Starting Cosys-AirSim Blocks..."\n\
+cd /home/airsim_user/Blocks/LinuxNoEditor\n\
+./Blocks.sh -windowed -ResX=1280 -ResY=720\n\
+' > Scripts/start_airsim.sh && chmod +x Scripts/start_airsim.sh
+
+# Expose ports for AirSim only
+EXPOSE 41451/tcp
+EXPOSE 5900/tcp
+
+# Set entrypoint
+ENTRYPOINT ["/home/airsim_user/Scripts/entrypoint.sh"]
+CMD ["airsim"] 
