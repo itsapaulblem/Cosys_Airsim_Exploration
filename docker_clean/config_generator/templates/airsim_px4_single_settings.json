@@ -1,0 +1,48 @@
+{
+  "SettingsVersion": 2.0,
+  "SimMode": "Multirotor",
+  "ClockType": "SteppableClock",
+  "ApiServerPort": 41451,
+  "LocalHostIp": "127.0.0.1",
+  "Vehicles": {
+    "PX4": {
+      "VehicleType": "PX4Multirotor",
+      "UseSerial": false,
+      "UseTcp": true,
+      "TcpPort": 4561,
+      "ControlPortLocal": 14541,
+      "ControlPortRemote": 14581,
+      "LocalHostIp": "127.0.0.1",
+      "UdpIp": "127.0.0.1",
+      "UdpPort": 14560,
+      "LockStep": true,
+      "Sensors": {
+        "Gps": {
+          "SensorType": 3,
+          "Enabled": true,
+          "StartLatitude": 47.641468,
+          "StartLongitude": -122.140165,
+          "StartAltitude": 122.0
+        },
+        "Magnetometer": {
+          "SensorType": 4,
+          "Enabled": true
+        },
+        "Barometer": {
+          "SensorType": 1,
+          "Enabled": true
+        },
+        "Imu": {
+          "SensorType": 2,
+          "Enabled": true
+        }
+      },
+      "X": 0,
+      "Y": 0,
+      "Z": -1,
+      "Pitch": 0,
+      "Roll": 0,
+      "Yaw": 0
+    }
+  }
+}

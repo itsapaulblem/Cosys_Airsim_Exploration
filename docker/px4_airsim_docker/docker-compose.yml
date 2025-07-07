@@ -9,8 +9,9 @@ services:
       - PX4_HOME_LON=-122.140165
       - PX4_HOME_ALT=0.0
       - PX4_SYS_AUTOSTART=10016
-      - PX4_SIM_HOSTNAME=host.docker.internal
-      - PX4_SIM_MODEL=iris
+      - PX4_SIM_HOSTNAME=127.0.0.1
+      - PX4_SIM_MODEL=none_iris
+      - PX4_SIMULATOR=none
     networks:
       - airsim-network
     volumes:
@@ -29,16 +30,17 @@ services:
       - PX4_HOME_ALT=0.0
       - PX4_SYS_AUTOSTART=10016
       - PX4_INSTANCE=1
-      - PX4_SIM_HOSTNAME=host.docker.internal
-      - PX4_SIM_MODEL=iris
+      - PX4_SIM_HOSTNAME=127.0.0.1
+      - PX4_SIM_MODEL=none_iris
+      - PX4_SIMULATOR=none
     ports:
-      # - "4561:4561/tcp"    # AirSim connection (removed to prevent false connections)
-      - "14550:14550/udp"
+      - "4561:4561/tcp"    # AirSim connection for single drone
+      - "14550:14550/udp"  # QGC for single drone
       - "14541:14541/udp"  # MAVLink control local
       - "14581:14581/udp"  # MAVLink control remote
     networks:
       airsim-network:
-        ipv4_address: 172.25.0.10
+        ipv4_address: 172.30.0.10
     profiles:
       - single
 
@@ -52,16 +54,17 @@ services:
       - PX4_HOME_ALT=0.0
       - PX4_SYS_AUTOSTART=10016
       - PX4_INSTANCE=1
-      - PX4_SIM_HOSTNAME=host.docker.internal
-      - PX4_SIM_MODEL=iris
+      - PX4_SIM_HOSTNAME=127.0.0.1
+      - PX4_SIM_MODEL=none_iris
+      - PX4_SIMULATOR=none
     ports:
-      # - "4561:4561/tcp"    # AirSim connection
+      - "4561:4561/tcp"    # AirSim connection for drone 1
       - "14550:14550/udp"  # QGC for drone 1
       - "14541:14541/udp"  # MAVLink control local
       - "14581:14581/udp"  # MAVLink control remote
     networks:
       airsim-network:
-        ipv4_address: 172.25.0.10
+        ipv4_address: 172.30.0.10
     profiles:
       - multi
       - drone-2
@@ -79,17 +82,19 @@ services:
       - PX4_HOME_ALT=0.0
       - PX4_SYS_AUTOSTART=10016
       - PX4_INSTANCE=2
-      - PX4_SIM_HOSTNAME=host.docker.internal
-      - PX4_SIM_MODEL=iris
+      - PX4_SIM_HOSTNAME=127.0.0.1
+      - PX4_SIM_MODEL=none_iris
+      - PX4_SIMULATOR=none
     ports:
-      # - "4562:4562/tcp"    # AirSim connection
-      - "14550:14550/udp"  # QGC for drone 2 (different host port)
+      - "4562:4562/tcp"    # AirSim connection for drone 2
+      - "14551:14550/udp"  # QGC for drone 2 (unique host port)
       - "14542:14542/udp"  # MAVLink control local
       - "14582:14582/udp"  # MAVLink control remote
     networks:
       airsim-network:
-        ipv4_address: 172.25.0.11
+        ipv4_address: 172.30.0.11
     profiles:
+      - multi
       - drone-2
       - drone-3
       - drone-4
@@ -105,17 +110,19 @@ services:
       - PX4_HOME_ALT=0.0
       - PX4_SYS_AUTOSTART=10016
       - PX4_INSTANCE=3
-      - PX4_SIM_HOSTNAME=host.docker.internal
-      - PX4_SIM_MODEL=iris
+      - PX4_SIM_HOSTNAME=127.0.0.1
+      - PX4_SIM_MODEL=none_iris
+      - PX4_SIMULATOR=none
     ports:
-      # - "4563:4563/tcp"    # AirSim connection
-      - "14550:14550/udp"  # QGC for drone 3
+      - "4563:4563/tcp"    # AirSim connection for drone 3
+      - "14552:14550/udp"  # QGC for drone 3 (unique host port)
       - "14543:14543/udp"  # MAVLink control local
       - "14583:14583/udp"  # MAVLink control remote
     networks:
       airsim-network:
-        ipv4_address: 172.25.0.12
+        ipv4_address: 172.30.0.12
     profiles:
+      - multi
       - drone-3
       - drone-4
       - drone-5
@@ -130,17 +137,19 @@ services:
       - PX4_HOME_ALT=0.0
       - PX4_SYS_AUTOSTART=10016
       - PX4_INSTANCE=4
-      - PX4_SIM_HOSTNAME=host.docker.internal
-      - PX4_SIM_MODEL=iris
+      - PX4_SIM_HOSTNAME=127.0.0.1
+      - PX4_SIM_MODEL=none_iris
+      - PX4_SIMULATOR=none
     ports:
-      # - "4564:4564/tcp"    # AirSim connection
-      - "14550:14550/udp"  # QGC for drone 4
+      - "4564:4564/tcp"    # AirSim connection for drone 4
+      - "14553:14550/udp"  # QGC for drone 4 (unique host port)
       - "14544:14544/udp"  # MAVLink control local
       - "14584:14584/udp"  # MAVLink control remote
     networks:
       airsim-network:
-        ipv4_address: 172.25.0.13
+        ipv4_address: 172.30.0.13
     profiles:
+      - multi
       - drone-4
       - drone-5
 
@@ -154,16 +163,19 @@ services:
       - PX4_HOME_ALT=0.0
       - PX4_SYS_AUTOSTART=10016
       - PX4_INSTANCE=5
-      - PX4_SIM_HOSTNAME=host.docker.internal
-      - PX4_SIM_MODEL=iris
+      - PX4_SIM_HOSTNAME=127.0.0.1
+      - PX4_SIM_MODEL=none_iris
+      - PX4_SIMULATOR=none
     ports:
-      - "14550:14550/udp"  # QGC for drone 5
+      - "4565:4565/tcp"    # AirSim connection for drone 5
+      - "14554:14550/udp"  # QGC for drone 5 (unique host port)
       - "14545:14545/udp"  # MAVLink control local
       - "14585:14585/udp"  # MAVLink control remote
     networks:
       airsim-network:
-        ipv4_address: 172.25.0.14
+        ipv4_address: 172.30.0.14
     profiles:
+      - multi
       - drone-5
 
 # Shared network for all AirSim components
@@ -172,7 +184,7 @@ networks:
     driver: bridge
     ipam:
       config:
-        - subnet: 172.25.0.0/16
+        - subnet: 172.30.0.0/16
 
 # Shared volumes
 volumes:

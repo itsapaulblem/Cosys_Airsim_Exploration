@@ -1,0 +1,20 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(find:*)",
+      "Bash(docker:*)",
+      "Bash(mkdir:*)",
+      "Bash(cp:*)",
+      "Bash(python test:*)",
+      "Bash(python3:*)",
+      "mcp__gemini-cli__ask-gemini",
+      "Bash(lsof:*)",
+      "Bash(grep:*)",
+      "Bash(chmod:*)",
+      "Bash(cat:*)",
+      "Bash(python:*)",
+      "Bash(rg:*)"
+    ],
+    "deny": []
+  }
+}

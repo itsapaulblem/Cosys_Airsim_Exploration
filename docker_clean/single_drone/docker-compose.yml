@@ -1,0 +1,39 @@
+version: '3.8'
+services:
+  px4-drone1:
+    build:
+      context: ../common
+      dockerfile: Dockerfile
+    container_name: px4-drone1
+    hostname: px4-drone1
+    environment:
+    - PX4_HOME_LAT=47.641468
+    - PX4_HOME_LON=-122.140165
+    - PX4_HOME_ALT=10
+    - PX4_SYS_AUTOSTART=10016
+    - PX4_SIM_HOSTNAME=host.docker.internal
+    - PX4_SIM_MODEL=iris
+    - PX4_INSTANCE=1
+    ports:
+    - 14550:14550/udp
+    - 14541:14541/udp
+    - 14581:14581/udp
+    networks:
+      airsim-network:
+        ipv4_address: 172.30.0.10
+    volumes:
+    - px4-shared-data:/px4_data
+    - ../common/scripts:/scripts
+    restart: unless-stopped
+    command:
+    - /Scripts/run_airsim_sitl_final.sh
+    - '1'
+networks:
+  airsim-network:
+    driver: bridge
+    ipam:
+      config:
+      - subnet: 172.30.0.0/16
+volumes:
+  px4-shared-data:
+    driver: local

@@ -1,0 +1,33 @@
+Panels:
+- Class: rviz_common/Displays
+  Name: Displays
+Visualization Manager:
+  Class: ''
+  Displays:
+  - Alpha: 0.5
+    Cell Size: 1
+    Class: rviz_default_plugins/Grid
+    Color: 160; 160; 164
+    Enabled: true
+    Name: Grid
+  - Class: rviz_default_plugins/TF
+    Enabled: true
+    Name: TF
+  - Class: rviz_default_plugins/Image
+    Enabled: true
+    Name: PX4_Drone1 front_rgb Scene
+    Topic:
+      Value: /airsim_node/PX4_Drone1/front_rgb/Scene
+    Transport Hint: raw
+  - Class: rviz_default_plugins/Image
+    Enabled: true
+    Name: PX4_Drone1 front_depth DepthPlanar
+    Topic:
+      Value: /airsim_node/PX4_Drone1/front_depth/DepthPlanar
+    Transport Hint: raw
+  Global Options:
+    Background Color: 48; 48; 48
+    Fixed Frame: world_ned
+  Tools:
+  - Class: rviz_default_plugins/Interact
+  - Class: rviz_default_plugins/MoveCamera

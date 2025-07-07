@@ -24,7 +24,7 @@ qgc_port=$((14549 + instance_num))
 mavlink_udp_port=$((18570 + instance_num))
 airsim_tcp_port=$((4560 + instance_num))
 
-echo "🚁 Starting PX4 SITL instance $instance_num (AirSim-compatible)"
+echo "🚁 Starting PX4 SITL instance $instance_num (AirSim-compatible) - FIXED VERSION"
 echo "Model: $PX4_SIM_MODEL"
 echo "QGroundControl target port: $qgc_port"
 echo "MAVLink UDP port: $mavlink_udp_port"
@@ -43,6 +43,36 @@ working_dir="$instance_path/instance_$instance_num"
 
 echo "Working directory: $working_dir"
 
+# Create a custom rcS file that DOES NOT start simulator_mavlink
+custom_rcs="$working_dir/custom_rcS"
+cat > "$custom_rcs" << 'RCSEOF'
+#!/bin/sh
+
+# Custom rcS for AirSim - NO auto-simulator startup
+# This prevents PX4 from automatically starting simulator_mavlink
+
+uorb start
+param load
+param set MAV_0_CONFIG 101
+param set MAV_0_MODE 0
+param set MAV_0_RATE 240000
+param set MAV_0_FORWARD 1
+param set MAV_1_CONFIG 102
+param set MAV_1_MODE 2
+param set MAV_1_RATE 80000
+param set SYS_COMPANION 921600
+
+# Start essential modules but NOT simulator_mavlink
+mavlink start -r 240000 -m config -o 14570
+mavlink start -r 80000 -m gimbal -o 14580
+mavlink boot_complete
+
+# DO NOT start simulator_mavlink here - AirSim will connect externally
+echo "PX4 started without auto-simulator - waiting for external simulator (AirSim)"
+RCSEOF
+
+chmod +x "$custom_rcs"
+
 # Create instance-specific parameter file
 param_file="$working_dir/parameters_instance_$instance_num.bson"
 if [ ! -f "$param_file" ]; then
@@ -59,7 +89,7 @@ SYS_COMPANION 921600
 EOF
 fi
 
-echo "🚀 Starting PX4 with custom MAVLink configuration..."
+echo "🚀 Starting PX4 with CUSTOM rcS (no auto-simulator)..."
 echo ""
 
 # Set environment variables for this instance
@@ -68,8 +98,8 @@ export MAV_0_REMOTE_PORT=$qgc_port
 
 pushd "$working_dir" > /dev/null
 
-echo "Starting PX4 in background..."
-$BIN_DIR -i $instance_num $BUILD_DIR -s "etc/init.d-posix/rcS" -t $TEST_DATA &
+echo "Starting PX4 in background with custom rcS..."
+$BIN_DIR -i $instance_num $BUILD_DIR -s "$custom_rcs" -t $TEST_DATA &
 PX4_PID=$!
 
 # Wait for PX4 to initialize
@@ -79,18 +109,16 @@ echo ""
 echo "🔗 PX4 Status Check:"
 if kill -0 $PX4_PID 2>/dev/null; then
     echo "✅ PX4 process running (PID: $PX4_PID)"
-    echo "⏳ PX4 is now waiting for external simulator (AirSim)"
-    echo "🔌 When AirSim connects to TCP port $airsim_tcp_port, you'll see 'Simulator connected'"
+    echo "⏳ PX4 is PROPERLY waiting for external simulator (AirSim)"
+    echo "🔌 NO auto-simulator should be running"
     echo ""
     echo "📋 Current Status:"
     echo "   - PX4 Instance: $instance_num"
     echo "   - AirSim TCP Port: $airsim_tcp_port"
     echo "   - QGC UDP Port: $qgc_port"
-    echo "   - Internal Simulator: DISABLED"
+    echo "   - Internal Simulator: TRULY DISABLED"
     echo ""
-    echo "💡 If you see 'Simulator connected' before starting AirSim,"
-    echo "   that means the auto-simulator is still running."
-    echo "   Stop the container and rebuild with the fix."
+    echo "✅ Ready for AirSim connection on port $airsim_tcp_port"
 else
     echo "❌ PX4 failed to start"
 fi
@@ -98,4 +126,4 @@ fi
 # Keep the container running and wait for PX4
 wait $PX4_PID
 
-popd > /dev/null 
+popd > /dev/null
