@@ -1,0 +1,106 @@
+{
+  "description": "GPS home locations for ultra-swarm configuration",
+  "coordinate_system": "WGS84",
+  "altitude_reference": "MSL",
+  "swarms": {
+    "1": {
+      "name": "Blue Team",
+      "description": "Seattle area - Primary swarm location",
+      "home": {
+        "latitude": 47.641468,
+        "longitude": -122.140165,
+        "altitude": 0.0
+      },
+      "formation_spacing": {
+        "x_offset_per_drone": 0.0001,
+        "y_offset_per_drone": 0.0001,
+        "description": "Each drone offset by ~11m in X and Y"
+      },
+      "drones": {
+        "1": {"lat": 47.641468, "lon": -122.140165, "alt": 0.0},
+        "2": {"lat": 47.641468, "lon": -122.140065, "alt": 0.0},
+        "3": {"lat": 47.641468, "lon": -122.139965, "alt": 0.0},
+        "4": {"lat": 47.641368, "lon": -122.140165, "alt": 0.0},
+        "5": {"lat": 47.641368, "lon": -122.140065, "alt": 0.0},
+        "6": {"lat": 47.641368, "lon": -122.139965, "alt": 0.0},
+        "7": {"lat": 47.641268, "lon": -122.140165, "alt": 0.0},
+        "8": {"lat": 47.641268, "lon": -122.140065, "alt": 0.0},
+        "9": {"lat": 47.641268, "lon": -122.139965, "alt": 0.0}
+      }
+    },
+    "2": {
+      "name": "Red Team", 
+      "description": "Bellevue area - Secondary swarm location",
+      "home": {
+        "latitude": 47.642468,
+        "longitude": -122.139165,
+        "altitude": 0.0
+      },
+      "formation_spacing": {
+        "x_offset_per_drone": 0.0001,
+        "y_offset_per_drone": 0.0001,
+        "description": "Each drone offset by ~11m in X and Y"
+      },
+      "drones": {
+        "1": {"lat": 47.642468, "lon": -122.139165, "alt": 0.0},
+        "2": {"lat": 47.642468, "lon": -122.139065, "alt": 0.0},
+        "3": {"lat": 47.642468, "lon": -122.138965, "alt": 0.0},
+        "4": {"lat": 47.642368, "lon": -122.139165, "alt": 0.0},
+        "5": {"lat": 47.642368, "lon": -122.139065, "alt": 0.0},
+        "6": {"lat": 47.642368, "lon": -122.138965, "alt": 0.0},
+        "7": {"lat": 47.642268, "lon": -122.139165, "alt": 0.0},
+        "8": {"lat": 47.642268, "lon": -122.139065, "alt": 0.0},
+        "9": {"lat": 47.642268, "lon": -122.138965, "alt": 0.0}
+      }
+    },
+    "3": {
+      "name": "Green Team",
+      "description": "Redmond area - Tertiary swarm location", 
+      "home": {
+        "latitude": 47.643468,
+        "longitude": -122.138165,
+        "altitude": 0.0
+      },
+      "formation_spacing": {
+        "x_offset_per_drone": 0.0001,
+        "y_offset_per_drone": 0.0001,
+        "description": "Each drone offset by ~11m in X and Y"
+      },
+      "drones": {
+        "1": {"lat": 47.643468, "lon": -122.138165, "alt": 0.0},
+        "2": {"lat": 47.643468, "lon": -122.138065, "alt": 0.0},
+        "3": {"lat": 47.643468, "lon": -122.137965, "alt": 0.0},
+        "4": {"lat": 47.643368, "lon": -122.138165, "alt": 0.0},
+        "5": {"lat": 47.643368, "lon": -122.138065, "alt": 0.0},
+        "6": {"lat": 47.643368, "lon": -122.137965, "alt": 0.0},
+        "7": {"lat": 47.643268, "lon": -122.138165, "alt": 0.0},
+        "8": {"lat": 47.643268, "lon": -122.138065, "alt": 0.0},
+        "9": {"lat": 47.643268, "lon": -122.137965, "alt": 0.0}
+      }
+    }
+  },
+  "port_allocation": {
+    "description": "TCP/UDP port assignments for each swarm",
+    "swarm_1": {
+      "airsim_tcp_range": "4561-4569",
+      "qgc_udp_range": "14550-14558", 
+      "mavlink_udp_range": "18570-18578"
+    },
+    "swarm_2": {
+      "airsim_tcp_range": "4571-4579",
+      "qgc_udp_range": "14560-14568",
+      "mavlink_udp_range": "18580-18588"
+    },
+    "swarm_3": {
+      "airsim_tcp_range": "4581-4589", 
+      "qgc_udp_range": "14570-14578",
+      "mavlink_udp_range": "18590-18598"
+    }
+  },
+  "notes": {
+    "coordinate_offsets": "Each swarm is offset by ~100m from the others",
+    "drone_spacing": "Drones within each swarm are spaced ~11m apart",
+    "altitude": "All drones start at sea level (0m MSL)",
+    "usage": "Use these coordinates in AirSim settings.json and PX4 parameters"
+  }
+}

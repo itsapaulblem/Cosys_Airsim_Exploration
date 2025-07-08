@@ -1,22 +1,59 @@
 version: '3.8'
 
 services:
-  airsim-ros2-wrapper:
+  airsim-ros2-vnc:
     build: 
       context: ../../
-      dockerfile: docker/airsim_ros2_wrapper/Dockerfile.alternative
-    container_name: airsim-ros2-wrapper
-    network_mode: host
+      dockerfile: docker/airsim_ros2_wrapper/VNC/Dockerfile.ros2_vnc
+    container_name: airsim-ros2-vnc
+    hostname: airsim-ros2-vnc
     environment:
-      - AIRSIM_HOST_IP=host.docker.internal
+      - DISPLAY=:1
+      - VNC_PORT=5901
+      - RESOLUTION=1920x1080
+      - USER=airsim
+      - PASSWD=airsim
       - ROS_DOMAIN_ID=0
-      - RMW_IMPLEMENTATION=rmw_fastrtps_cpp
+      - AIRSIM_HOST_IP=host.docker.internal
+      - AIRSIM_HOST_PORT=41451
+    ports:
+      - "5901:5901"    # VNC port
+      - "7400:7400/udp"    # ROS2 discovery
+      - "7401:7401/udp"    # ROS2 multicast
     volumes:
-      - /tmp/.X11-unix:/tmp/.X11-unix:rw
-      - airsim_ros2_logs:/root/.ros/log
+      # Mount the ROS2 workspace source
+      - ../../ros2:/airsim_ros2_ws/src:rw
+      # Persist build artifacts
+      - airsim_ros2_build:/airsim_ros2_ws/build
+      - airsim_ros2_install:/airsim_ros2_ws/install
+      - airsim_ros2_logs:/airsim_ros2_ws/log
+      # VNC session persistence
+      - vnc_home:/home/airsim
+    networks:
+      - airsim-network
+    restart: unless-stopped
     stdin_open: true
     tty: true
-    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "pgrep", "-f", "X.*vnc.*:1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+networks:
+  airsim-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.25.0.0/16
 
 volumes:
-  airsim_ros2_logs: 
+  airsim_ros2_build:
+    driver: local
+  airsim_ros2_install:
+    driver: local
+  airsim_ros2_logs:
+    driver: local
+  vnc_home:
+    driver: local

@@ -1,0 +1,3 @@
+# This file tells colcon to ignore the AirSim package during build
+# The AirSim package is not needed for ROS2 wrapper functionality
+# It requires the full AirSim source tree which is not available in Docker

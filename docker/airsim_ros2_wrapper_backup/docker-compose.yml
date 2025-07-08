@@ -1,0 +1,22 @@
+version: '3.8'
+
+services:
+  airsim-ros2-wrapper:
+    build: 
+      context: ../../
+      dockerfile: docker/airsim_ros2_wrapper/Dockerfile.alternative
+    container_name: airsim-ros2-wrapper
+    network_mode: host
+    environment:
+      - AIRSIM_HOST_IP=host.docker.internal
+      - ROS_DOMAIN_ID=0
+      - RMW_IMPLEMENTATION=rmw_fastrtps_cpp
+    volumes:
+      - /tmp/.X11-unix:/tmp/.X11-unix:rw
+      - airsim_ros2_logs:/root/.ros/log
+    stdin_open: true
+    tty: true
+    restart: unless-stopped
+
+volumes:
+  airsim_ros2_logs: 

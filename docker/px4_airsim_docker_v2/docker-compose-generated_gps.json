@@ -1,0 +1,81 @@
+{
+  "description": "GPS home locations for 1-swarm configuration",
+  "coordinate_system": "WGS84",
+  "altitude_reference": "MSL",
+  "swarms": {
+    "1": {
+      "name": "Blue Team",
+      "description": "Seattle area - Primary swarm location",
+      "home": {
+        "latitude": 47.641468,
+        "longitude": -122.140165,
+        "altitude": 0.0
+      },
+      "formation_spacing": {
+        "x_offset_per_drone": 0.0001,
+        "y_offset_per_drone": 0.0001,
+        "description": "Each drone offset by ~11m in X and Y"
+      },
+      "drones": {
+        "1": {
+          "lat": 47.641468,
+          "lon": -122.140165,
+          "alt": 0.0
+        },
+        "2": {
+          "lat": 47.641468,
+          "lon": -122.14006499999999,
+          "alt": 0.0
+        },
+        "3": {
+          "lat": 47.641468,
+          "lon": -122.13996499999999,
+          "alt": 0.0
+        },
+        "4": {
+          "lat": 47.641368,
+          "lon": -122.140165,
+          "alt": 0.0
+        },
+        "5": {
+          "lat": 47.641368,
+          "lon": -122.14006499999999,
+          "alt": 0.0
+        },
+        "6": {
+          "lat": 47.641368,
+          "lon": -122.13996499999999,
+          "alt": 0.0
+        },
+        "7": {
+          "lat": 47.641268000000004,
+          "lon": -122.140165,
+          "alt": 0.0
+        },
+        "8": {
+          "lat": 47.641268000000004,
+          "lon": -122.14006499999999,
+          "alt": 0.0
+        },
+        "9": {
+          "lat": 47.641268000000004,
+          "lon": -122.13996499999999,
+          "alt": 0.0
+        }
+      }
+    }
+  },
+  "port_allocation": {
+    "swarm_1": {
+      "airsim_tcp_range": "4561-4569",
+      "qgc_udp_range": "14550-14558",
+      "mavlink_udp_range": "18570-18578"
+    }
+  },
+  "notes": {
+    "coordinate_offsets": "Each swarm is offset by ~100m from the others",
+    "drone_spacing": "Drones within each swarm are spaced ~11m apart",
+    "altitude": "All drones start at sea level (0m MSL)",
+    "usage": "Use these coordinates in AirSim settings.json and PX4 parameters"
+  }
+}

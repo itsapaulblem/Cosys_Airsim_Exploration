@@ -1,0 +1,7 @@
+# Get current mission status
+string mission_id              # Empty string for current active mission
+---
+bool success
+string message
+bool mission_active
+GridSearchStatus mission_status

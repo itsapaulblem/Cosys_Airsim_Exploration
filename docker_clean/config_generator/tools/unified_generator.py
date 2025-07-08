@@ -5,7 +5,6 @@ Generates both settings.json and docker-compose.yml from a single configuration
 """
 
 import json
-import yaml
 import sys
 import os
 from pathlib import Path
@@ -13,6 +12,131 @@ from typing import Dict, List, Optional, Tuple
 from dataclasses import dataclass, field, asdict
 from enum import Enum
 import argparse
+
+# Optional yaml import for docker-compose generation
+try:
+    import yaml
+    YAML_AVAILABLE = True
+except ImportError:
+    YAML_AVAILABLE = False
+    print("⚠️  PyYAML not installed. Docker-compose files will be generated as text.")
+    print("   To install: pip install PyYAML")
+
+def write_yaml_file(data: dict, filepath: Path, description: str = "file"):
+    """Write data to YAML file, with fallback if PyYAML not available"""
+    if YAML_AVAILABLE:
+        with open(filepath, 'w') as f:
+            yaml.dump(data, f, default_flow_style=False, sort_keys=False)
+    else:
+        # Fallback: Generate basic YAML manually for docker-compose
+        if "services" in data:  # Docker compose file
+            write_docker_compose_manually(data, filepath)
+        else:  # Other YAML (like RViz config)
+            print(f"⚠️  Skipping {description} generation (requires PyYAML)")
+            return False
+    return True
+
+def write_docker_compose_manually(compose_data: dict, filepath: Path):
+    """Manually write docker-compose.yml without PyYAML dependency"""
+    with open(filepath, 'w') as f:
+        f.write(f"version: '{compose_data.get('version', '3.8')}'\n\n")
+        
+        # Write services
+        if 'services' in compose_data:
+            f.write("services:\n")
+            for service_name, service_config in compose_data['services'].items():
+                f.write(f"  {service_name}:\n")
+                
+                # Build section
+                if 'build' in service_config:
+                    f.write("    build:\n")
+                    build_config = service_config['build']
+                    if isinstance(build_config, str):
+                        f.write(f"      context: {build_config}\n")
+                    else:
+                        f.write(f"      context: {build_config.get('context', '.')}\n")
+                        if 'dockerfile' in build_config:
+                            f.write(f"      dockerfile: {build_config['dockerfile']}\n")
+                
+                # Simple string fields
+                for field in ['container_name', 'hostname', 'image']:
+                    if field in service_config:
+                        f.write(f"    {field}: {service_config[field]}\n")
+                
+                # Environment
+                if 'environment' in service_config:
+                    f.write("    environment:\n")
+                    for env_var in service_config['environment']:
+                        f.write(f"    - {env_var}\n")
+                
+                # Ports
+                if 'ports' in service_config:
+                    f.write("    ports:\n")
+                    for port in service_config['ports']:
+                        f.write(f"    - \"{port}\"\n")
+                
+                # Networks
+                if 'networks' in service_config:
+                    f.write("    networks:\n")
+                    networks = service_config['networks']
+                    if isinstance(networks, list):
+                        for network in networks:
+                            f.write(f"    - {network}\n")
+                    elif isinstance(networks, dict):
+                        for net_name, net_config in networks.items():
+                            f.write(f"      {net_name}:\n")
+                            if 'ipv4_address' in net_config:
+                                f.write(f"        ipv4_address: {net_config['ipv4_address']}\n")
+                
+                # Volumes
+                if 'volumes' in service_config:
+                    f.write("    volumes:\n")
+                    for volume in service_config['volumes']:
+                        f.write(f"    - {volume}\n")
+                
+                # Other simple fields
+                for field in ['restart', 'tty', 'stdin_open']:
+                    if field in service_config:
+                        value = str(service_config[field]).lower()
+                        f.write(f"    {field}: {value}\n")
+                
+                # Command
+                if 'command' in service_config:
+                    f.write("    command:\n")
+                    command = service_config['command']
+                    if isinstance(command, list):
+                        for cmd_line in command:
+                            f.write(f"    - {cmd_line}\n")
+                    else:
+                        f.write(f"    - {command}\n")
+                
+                f.write("\n")
+        
+        # Write networks
+        if 'networks' in compose_data:
+            f.write("networks:\n")
+            for net_name, net_config in compose_data['networks'].items():
+                f.write(f"  {net_name}:\n")
+                if 'driver' in net_config:
+                    f.write(f"    driver: {net_config['driver']}\n")
+                if 'ipam' in net_config:
+                    f.write("    ipam:\n")
+                    ipam = net_config['ipam']
+                    if 'config' in ipam:
+                        f.write("      config:\n")
+                        for config_item in ipam['config']:
+                            f.write("      - subnet: {}\n".format(config_item['subnet']))
+            f.write("\n")
+        
+        # Write volumes
+        if 'volumes' in compose_data:
+            f.write("volumes:\n")
+            for vol_name, vol_config in compose_data['volumes'].items():
+                f.write(f"  {vol_name}:\n")
+                if isinstance(vol_config, dict):
+                    for key, value in vol_config.items():
+                        f.write(f"    {key}: {value}\n")
+                f.write("\n")
 
 # ===== Configuration Classes =====
 
@@ -106,8 +230,9 @@ class SimulationConfig:
 # ===== Generator Functions =====
 
 class ConfigGenerator:
-    def __init__(self, config: SimulationConfig):
+    def __init__(self, config: SimulationConfig, enable_tcp_ports: bool = False):
         self.config = config
+        self.enable_tcp_ports = enable_tcp_ports
         self.base_tcp_port = 4560
         self.base_control_local = 14540
         self.base_control_remote = 14580
@@ -361,13 +486,7 @@ class ConfigGenerator:
                 "PX4_SIM_MODEL=iris",
                 f"PX4_INSTANCE={index}"
             ],
-            "ports": [
-                # TCP port mapping removed - PX4 connects outbound to AirSim on host
-                # HIL connection: container -> host.docker.internal:456X (no mapping needed)
-                f"{vehicle.ports.qgc_port}:14550/udp",  # QGroundControl
-                f"{vehicle.ports.control_port_local}:{vehicle.ports.control_port_local}/udp",  # MAVLink control local
-                f"{vehicle.ports.control_port_remote}:{vehicle.ports.control_port_remote}/udp"  # MAVLink control remote
-            ],
+            "ports": self._generate_port_mappings(vehicle),
             "networks": {
                 "airsim-network": {
                     "ipv4_address": container_ip
@@ -380,6 +499,20 @@ class ConfigGenerator:
             "restart": "unless-stopped",
             "command": ["/Scripts/run_airsim_sitl_final.sh", str(index)]
         }
+    
+    def _generate_port_mappings(self, vehicle: VehicleConfig) -> List[str]:
+        """Generate port mappings for a vehicle based on configuration"""
+        ports = [
+            f"{vehicle.ports.qgc_port}:14550/udp",  # QGroundControl
+            f"{vehicle.ports.control_port_local}:{vehicle.ports.control_port_local}/udp",  # MAVLink control local
+            f"{vehicle.ports.control_port_remote}:{vehicle.ports.control_port_remote}/udp"  # MAVLink control remote
+        ]
+        
+        # Add TCP port mapping if enabled (needed for some Docker networking setups)
+        if self.enable_tcp_ports:
+            ports.append(f"{vehicle.ports.tcp_port}:{vehicle.ports.tcp_port}/tcp")
+        
+        return ports
     
     def generate_launcher_script(self, compose_file: str, platform: str = "windows") -> str:
         """Generate launcher script for the configuration"""
@@ -560,10 +693,10 @@ echo
         }
         
         rviz_file = output_path / "airsim_cameras.rviz"
-        with open(rviz_file, 'w') as f:
-            yaml.dump(rviz_config, f, default_flow_style=False, sort_keys=False)
-            
-        print(f"✅ Generated: {rviz_file}")
+        if write_yaml_file(rviz_config, rviz_file, "RViz config"):
+            print(f"✅ Generated: {rviz_file}")
+        else:
+            print(f"⚠️  Skipped RViz config generation (install PyYAML to enable)")
     
     def _get_image_type_name(self, image_type: int) -> str:
         """Convert image type number to ROS topic name"""
@@ -637,7 +770,7 @@ def get_camera_presets() -> Dict[str, CameraConfig]:
 
 # ===== Configuration Templates =====
 
-def create_single_drone_config(cameras: List[str] = None) -> SimulationConfig:
+def create_single_drone_config(cameras: List[str] = None, enable_tcp_ports: bool = False) -> SimulationConfig:
     """Create configuration for a single drone"""
     config = SimulationConfig()
     
@@ -674,14 +807,28 @@ def create_single_drone_config(cameras: List[str] = None) -> SimulationConfig:
     
     return config
 
-def create_multi_drone_config(num_drones: int, layout: str = "grid", cameras: List[str] = None) -> SimulationConfig:
-    """Create configuration for multiple drones"""
+def create_multi_drone_config(num_drones: int, layout: str = "grid", cameras: List[str] = None, enable_tcp_ports: bool = False, 
+                             swarm_id: int = 1, enable_ultra_swarm: bool = False) -> SimulationConfig:
+    """Create configuration for multiple drones with ultra-swarm support"""
     config = SimulationConfig()
-    generator = ConfigGenerator(config)
+    generator = ConfigGenerator(config, enable_tcp_ports=enable_tcp_ports)
+    
+    # Adjust port allocation for ultra-swarm mode
+    if enable_ultra_swarm:
+        generator.base_tcp_port = 4560 + (swarm_id - 1) * 10
+        generator.base_control_local = 14549 + (swarm_id - 1) * 10  
+        generator.base_control_remote = 18569 + (swarm_id - 1) * 10
+        generator.base_qgc_port = 14549 + (swarm_id - 1) * 10
+        
+        # Adjust GPS location per swarm
+        config.origin_geopoint["Latitude"] += (swarm_id - 1) * 0.001
+        config.origin_geopoint["Longitude"] += (swarm_id - 1) * 0.001
     
     for i in range(1, num_drones + 1):
+        vehicle_name = f"PX4_Swarm{swarm_id}_Drone{i}" if enable_ultra_swarm else f"PX4_Drone{i}"
+        
         vehicle = VehicleConfig(
-            name=f"PX4_Drone{i}",
+            name=vehicle_name,
             vehicle_type=VehicleType.PX4_MULTIROTOR,
             position=generator.calculate_position(i, layout),
             sensors=SensorConfig(
@@ -709,7 +856,104 @@ def create_multi_drone_config(num_drones: int, layout: str = "grid", cameras: Li
     
     return config
 
-def create_mixed_vehicle_config() -> SimulationConfig:
+def create_ultra_swarm_config(num_swarms: int = 3, drones_per_swarm: int = 9, 
+                             cameras: List[str] = None, enable_tcp_ports: bool = False) -> SimulationConfig:
+    """Create ultra-swarm configuration with up to 27 drones (3 swarms x 9 drones)"""
+    config = SimulationConfig()
+    
+    # GPS home locations for each swarm (Seattle area)
+    swarm_gps_origins = {
+        1: {"lat": 47.641468, "lon": -122.140165, "name": "Blue Team"},  # Seattle
+        2: {"lat": 47.642468, "lon": -122.139165, "name": "Red Team"},   # Bellevue  
+        3: {"lat": 47.643468, "lon": -122.138165, "name": "Green Team"}  # Redmond
+    }
+    
+    all_vehicles = []
+    
+    for swarm_id in range(1, num_swarms + 1):
+        # Create a temporary config for this swarm
+        swarm_config = SimulationConfig()
+        swarm_config.origin_geopoint = {
+            "Latitude": swarm_gps_origins[swarm_id]["lat"],
+            "Longitude": swarm_gps_origins[swarm_id]["lon"],
+            "Altitude": 10
+        }
+        
+        # Generate swarm configuration
+        swarm_vehicles = create_multi_drone_config(
+            num_drones=drones_per_swarm,
+            layout="grid",
+            cameras=cameras,
+            enable_tcp_ports=enable_tcp_ports,
+            swarm_id=swarm_id,
+            enable_ultra_swarm=True
+        )
+        
+        # Add all vehicles from this swarm
+        all_vehicles.extend(swarm_vehicles.vehicles)
+    
+    # Combine all vehicles into main config
+    config.vehicles = all_vehicles
+    config.pawn_paths["DefaultQuadrotor"] = {
+        "PawnBP": "Class'/AirSim/Blueprints/BP_SpiritPawn.BP_SpiritPawn_C'"
+    }
+    
+    # Use the first swarm's GPS origin as the global origin
+    config.origin_geopoint = {
+        "Latitude": swarm_gps_origins[1]["lat"],
+        "Longitude": swarm_gps_origins[1]["lon"],
+        "Altitude": 10
+    }
+    
+    return config
+
+def create_simpleflight_config(num_drones: int = 1, layout: str = "grid", cameras: List[str] = None) -> SimulationConfig:
+    """Create SimpleFlight configuration for 1-27 drones (no Docker required)"""
+    if num_drones < 1 or num_drones > 27:
+        raise ValueError("SimpleFlight supports 1-27 drones")
+    
+    config = SimulationConfig()
+    config.sim_mode = "Multirotor"
+    
+    # SimpleFlight uses different port scheme (no external PX4)
+    generator = ConfigGenerator(config, enable_tcp_ports=False)
+    
+    for i in range(1, num_drones + 1):
+        vehicle = VehicleConfig(
+            name=f"Drone{i}",
+            vehicle_type=VehicleType.SIMPLE_FLIGHT,
+            position=generator.calculate_position(i, layout),
+            sensors=SensorConfig(
+                gps=GPSConfig(enabled=True),
+                magnetometer_enabled=True,
+                barometer_enabled=True,
+                imu_enabled=True
+            ),
+            ports=NetworkPorts(
+                tcp_port=4561,  # SimpleFlight drones all use same AirSim server
+                control_port_local=14540 + i,  # For logging/debugging
+                control_port_remote=14580 + i,  # For logging/debugging  
+                qgc_port=14550 + i - 1        # For potential QGC monitoring
+            ),
+            docker_enabled=False  # SimpleFlight runs inside AirSim, no external containers
+        )
+        
+        # Add cameras if specified
+        if cameras:
+            camera_presets = get_camera_presets()
+            for camera_name in cameras:
+                if camera_name in camera_presets:
+                    vehicle.cameras.append(camera_presets[camera_name])
+        
+        config.vehicles.append(vehicle)
+    
+    config.pawn_paths["DefaultQuadrotor"] = {
+        "PawnBP": "Class'/AirSim/Blueprints/BP_SpiritPawn.BP_SpiritPawn_C'"
+    }
+    
+    return config
+
+def create_mixed_vehicle_config(enable_tcp_ports: bool = False) -> SimulationConfig:
     """Create configuration with mixed vehicle types"""
     config = SimulationConfig()
     
@@ -778,6 +1022,18 @@ Examples:
   # Generate multi-drone with cameras
   python unified_generator.py multi --num-drones 3 --cameras front_rgb downward_cam --create-rviz
 
+  # Generate ultra-swarm configuration (27 drones: 3 swarms x 9 drones)
+  python unified_generator.py ultra-swarm
+
+  # Generate partial ultra-swarm (2 swarms x 5 drones each)
+  python unified_generator.py ultra-swarm --num-swarms 2 --drones-per-swarm 5
+
+  # Generate SimpleFlight configuration (1-27 drones, no Docker required)
+  python unified_generator.py simpleflight --num-drones 10
+
+  # Generate SimpleFlight with cameras  
+  python unified_generator.py simpleflight --num-drones 5 --cameras front_rgb downward_cam
+
   # Generate mixed vehicle configuration
   python unified_generator.py mixed
 
@@ -789,12 +1045,15 @@ Examples:
 
   # Generate only docker-compose.yml
   python unified_generator.py single --docker-only
+
+  # Generate with TCP port mappings (for Docker networking issues)
+  python unified_generator.py multi --num-drones 2 --enable-tcp-ports
         """
     )
     
     parser.add_argument(
         "mode",
-        choices=["single", "multi", "mixed", "custom"],
+        choices=["single", "multi", "mixed", "ultra-swarm", "simpleflight", "custom"],
         help="Configuration mode"
     )
     
@@ -803,6 +1062,22 @@ Examples:
         type=int,
         default=3,
         help="Number of drones for multi mode (default: 3)"
+    )
+    
+    parser.add_argument(
+        "--num-swarms",
+        type=int,
+        default=3,
+        choices=[1, 2, 3],
+        help="Number of swarms for ultra-swarm mode (default: 3, max: 3)"
+    )
+    
+    parser.add_argument(
+        "--drones-per-swarm",
+        type=int,
+        default=9,
+        choices=range(1, 10),
+        help="Number of drones per swarm for ultra-swarm mode (default: 9, max: 9)"
     )
     
     parser.add_argument(
@@ -839,6 +1114,12 @@ Examples:
     )
     
     parser.add_argument(
+        "--enable-tcp-ports",
+        action="store_true",
+        help="Enable TCP port mappings in docker-compose (needed for some Docker networking setups)"
+    )
+    
+    parser.add_argument(
         "--gps-location",
         nargs=3,
         metavar=("LAT", "LON", "ALT"),
@@ -863,14 +1144,25 @@ Examples:
     
     # Create configuration based on mode
     if args.mode == "single":
-        config = create_single_drone_config(args.cameras)
+        config = create_single_drone_config(args.cameras, args.enable_tcp_ports)
     elif args.mode == "multi":
         if args.num_drones < 1 or args.num_drones > 10:
             print("Error: Number of drones must be between 1 and 10")
             sys.exit(1)
-        config = create_multi_drone_config(args.num_drones, args.layout, args.cameras)
+        config = create_multi_drone_config(args.num_drones, args.layout, args.cameras, args.enable_tcp_ports)
     elif args.mode == "mixed":
-        config = create_mixed_vehicle_config()
+        config = create_mixed_vehicle_config(args.enable_tcp_ports)
+    elif args.mode == "ultra-swarm":
+        total_drones = args.num_swarms * args.drones_per_swarm
+        if total_drones > 27:
+            print(f"Error: Total drones ({total_drones}) exceeds maximum of 27")
+            sys.exit(1)
+        config = create_ultra_swarm_config(args.num_swarms, args.drones_per_swarm, args.cameras, args.enable_tcp_ports)
+    elif args.mode == "simpleflight":
+        if args.num_drones < 1 or args.num_drones > 27:
+            print("Error: SimpleFlight supports 1-27 drones")
+            sys.exit(1)
+        config = create_simpleflight_config(args.num_drones, args.layout, args.cameras)
     else:
         print("Error: Custom mode not yet implemented")
         sys.exit(1)
@@ -891,6 +1183,10 @@ Examples:
             output_path = script_dir / "single_drone"
         elif args.mode == "multi":
             output_path = script_dir / "multi_drone"
+        elif args.mode == "ultra-swarm":
+            output_path = script_dir / "ultra_swarm"
+        elif args.mode == "simpleflight":
+            output_path = script_dir / "simpleflight"
         else:
             output_path = script_dir / f"{args.mode}_config"
     else:
@@ -900,7 +1196,7 @@ Examples:
     output_path.mkdir(parents=True, exist_ok=True)
     
     # Initialize generator
-    generator = ConfigGenerator(config)
+    generator = ConfigGenerator(config, enable_tcp_ports=args.enable_tcp_ports)
     
     print("🚁 Unified AirSim Configuration Generator")
     print("=" * 50)
@@ -924,15 +1220,15 @@ Examples:
             
         print(f"✅ Copied to: {default_settings}")
     
-    # Generate docker-compose.yml
-    if not args.settings_only:
+    # Generate docker-compose.yml (only for Docker-enabled configs)
+    if not args.settings_only and args.mode != "simpleflight":
         compose = generator.generate_docker_compose()
         compose_file = output_path / "docker-compose.yml"
         
-        with open(compose_file, 'w') as f:
-            yaml.dump(compose, f, default_flow_style=False, sort_keys=False)
-            
-        print(f"✅ Generated: {compose_file}")
+        if write_yaml_file(compose, compose_file, "docker-compose.yml"):
+            print(f"✅ Generated: {compose_file}")
+        else:
+            print(f"❌ Failed to generate docker-compose.yml")
         
         # Generate launcher script
         launcher_ext = ".bat" if args.platform == "windows" else ".sh"
@@ -949,6 +1245,46 @@ Examples:
             launcher_file.chmod(0o755)
             
         print(f"✅ Generated: {launcher_file}")
+    elif args.mode == "simpleflight":
+        # Generate SimpleFlight-specific usage instructions
+        usage_file = output_path / "README.txt"
+        usage_content = f"""SimpleFlight Configuration Generated
+=====================================
+
+This SimpleFlight configuration includes {len(config.vehicles)} drone(s).
+SimpleFlight is AirSim's built-in flight controller - no external Docker containers required.
+
+Usage:
+1. Copy settings.json to your AirSim Documents folder (already done automatically)
+2. Launch AirSim (Unreal Engine environment)
+3. All {len(config.vehicles)} drones will be available for control via AirSim's Python/C++ APIs
+
+Connection Info:
+- All drones connect to AirSim server on localhost:4561
+- Vehicle names: {', '.join([v.name for v in config.vehicles])}
+- Use these names when connecting via airsim.MultirotorClient()
+
+Python Client Example:
+import airsim
+client = airsim.MultirotorClient()
+client.confirmConnection()
+for drone_name in {[v.name for v in config.vehicles]}:
+    client.enableApiControl(True, drone_name)
+    client.armDisarm(True, drone_name)
+    client.takeoffAsync(vehicle_name=drone_name)
+
+Benefits of SimpleFlight:
+✅ No Docker setup required
+✅ Fast startup and lightweight  
+✅ Perfect for development and testing
+✅ Supports up to 27 drones
+✅ Built-in physics simulation
+"""
+        
+        with open(usage_file, 'w') as f:
+            f.write(usage_content)
+            
+        print(f"✅ Generated: {usage_file}")
     
     # Generate RViz configuration if requested
     if args.create_rviz and any(vehicle.cameras for vehicle in config.vehicles):
@@ -960,14 +1296,27 @@ Examples:
     print(f"Mode: {args.mode}")
     print(f"Vehicles: {len(config.vehicles)}")
     
-    for vehicle in config.vehicles:
-        print(f"\n{vehicle.name}:")
-        print(f"  Type: {vehicle.vehicle_type.value}")
-        print(f"  Position: X={vehicle.position.x}, Y={vehicle.position.y}, Z={vehicle.position.z}")
-        if vehicle.cameras:
-            print(f"  Cameras: {', '.join([cam.name for cam in vehicle.cameras])}")
-        if vehicle.docker_enabled:
-            print(f"  Ports: TCP={vehicle.ports.tcp_port}, QGC={vehicle.ports.qgc_port}")
+    if args.mode == "ultra-swarm":
+        print(f"Swarms: {args.num_swarms}")
+        print(f"Drones per swarm: {args.drones_per_swarm}")
+        print(f"Total drones: {args.num_swarms * args.drones_per_swarm}")
+        
+        # Show swarm-level summary
+        for swarm_id in range(1, args.num_swarms + 1):
+            swarm_vehicles = [v for v in config.vehicles if f"Swarm{swarm_id}" in v.name]
+            if swarm_vehicles:
+                print(f"\n🔹 Swarm {swarm_id} ({'Blue' if swarm_id == 1 else 'Red' if swarm_id == 2 else 'Green'} Team):")
+                print(f"   Drones: {len(swarm_vehicles)}")
+                print(f"   AirSim TCP ports: {swarm_vehicles[0].ports.tcp_port}-{swarm_vehicles[-1].ports.tcp_port}")
+    else:
+        for vehicle in config.vehicles:
+            print(f"\n{vehicle.name}:")
+            print(f"  Type: {vehicle.vehicle_type.value}")
+            print(f"  Position: X={vehicle.position.x}, Y={vehicle.position.y}, Z={vehicle.position.z}")
+            if vehicle.cameras:
+                print(f"  Cameras: {', '.join([cam.name for cam in vehicle.cameras])}")
+            if vehicle.docker_enabled:
+                print(f"  Ports: TCP={vehicle.ports.tcp_port}, QGC={vehicle.ports.qgc_port}")
     
     print("\n💡 Next Steps:")
     print(f"1. Navigate to: {output_path}")

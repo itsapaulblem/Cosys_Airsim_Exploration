@@ -1,0 +1,177 @@
+# Multi-Swarm Docker Compose Configuration with Proper Port Allocation
+# Supports multiple independent swarms of drones for AirSim integration
+# 
+# Port allocation scheme:
+#   - Swarm 1: AirSim TCP 4561-4570, QGC UDP 14550-14559, MAVLink UDP 18570-18579
+#   - Swarm 2: AirSim TCP 4571-4580, QGC UDP 14560-14569, MAVLink UDP 18580-18589
+#   - etc.
+
+networks:
+  airsim-swarm-network:
+    name: airsim-swarm-network
+    driver: bridge
+    ipam:
+      driver: default
+      config:
+        - subnet: 172.26.0.0/16
+          gateway: 172.26.0.1
+
+volumes:
+  px4-shared-data:
+    driver: local
+  qgc-config:
+    driver: local
+
+x-px4-common: &px4-common
+  build:
+    context: .
+    dockerfile: Dockerfile.multi-swarm.fixed
+  image: px4-multi-swarm:latest
+  environment: &px4-env
+    PX4_HOME_LAT: 47.641468
+    PX4_HOME_LON: -122.140165
+    PX4_HOME_ALT: 0.0
+    PX4_SYS_AUTOSTART: 10016
+    PX4_SIM_HOSTNAME: host.docker.internal
+    PX4_SIM_MODEL: none_iris
+  networks:
+    - airsim-swarm-network
+  volumes:
+    - px4-shared-data:/px4_data
+    - ./logs:/px4_workspace/PX4-Autopilot/build/px4_sitl_default/logs
+  restart: unless-stopped
+  tty: true
+  stdin_open: true
+  deploy:
+    resources:
+      limits:
+        cpus: '1.0'
+        memory: 1G
+
+services:
+  # Swarm 1 - Individual drones with explicit instance numbers
+  px4-swarm-1-drone-1:
+    <<: *px4-common
+    container_name: px4-swarm-1-drone-1
+    environment:
+      <<: *px4-env
+      SWARM_ID: 1
+      PX4_INSTANCE: 1
+      SWARM_SIZE: 3
+    expose:
+      - "4561/tcp"   # AirSim TCP
+      - "14550/udp"  # QGroundControl
+      - "18570/udp"  # MAVLink UDP
+    command: >
+      bash -c "
+        echo '🔵 Swarm 1 - Drone 1 starting on AirSim port 4561...'
+        /Scripts/run_multi_swarm.sh
+      "
+
+  px4-swarm-1-drone-2:
+    <<: *px4-common
+    container_name: px4-swarm-1-drone-2
+    environment:
+      <<: *px4-env
+      SWARM_ID: 1
+      PX4_INSTANCE: 2
+      SWARM_SIZE: 3
+    expose:
+      - "4562/tcp"   # AirSim TCP
+      - "14551/udp"  # QGroundControl
+      - "18571/udp"  # MAVLink UDP
+    command: >
+      bash -c "
+        echo '🔵 Swarm 1 - Drone 2 starting on AirSim port 4562...'
+        /Scripts/run_multi_swarm.sh
+      "
+
+  px4-swarm-1-drone-3:
+    <<: *px4-common
+    container_name: px4-swarm-1-drone-3
+    environment:
+      <<: *px4-env
+      SWARM_ID: 1
+      PX4_INSTANCE: 3
+      SWARM_SIZE: 3
+    expose:
+      - "4563/tcp"   # AirSim TCP
+      - "14552/udp"  # QGroundControl
+      - "18572/udp"  # MAVLink UDP
+    command: >
+      bash -c "
+        echo '🔵 Swarm 1 - Drone 3 starting on AirSim port 4563...'
+        /Scripts/run_multi_swarm.sh
+      "
+    profiles:
+      - swarm1-3drones
+
+  # Swarm 2 - Individual drones with explicit instance numbers
+  px4-swarm-2-drone-1:
+    <<: *px4-common
+    container_name: px4-swarm-2-drone-1
+    environment:
+      <<: *px4-env
+      SWARM_ID: 2
+      PX4_INSTANCE: 1
+      SWARM_SIZE: 2
+    expose:
+      - "4571/tcp"   # AirSim TCP
+      - "14560/udp"  # QGroundControl
+      - "18580/udp"  # MAVLink UDP
+    command: >
+      bash -c "
+        echo '🔴 Swarm 2 - Drone 1 starting on AirSim port 4571...'
+        /Scripts/run_multi_swarm.sh
+      "
+    profiles:
+      - swarm2
+
+  px4-swarm-2-drone-2:
+    <<: *px4-common
+    container_name: px4-swarm-2-drone-2
+    environment:
+      <<: *px4-env
+      SWARM_ID: 2
+      PX4_INSTANCE: 2
+      SWARM_SIZE: 2
+    expose:
+      - "4572/tcp"   # AirSim TCP
+      - "14561/udp"  # QGroundControl
+      - "18581/udp"  # MAVLink UDP
+    command: >
+      bash -c "
+        echo '🔴 Swarm 2 - Drone 2 starting on AirSim port 4572...'
+        /Scripts/run_multi_swarm.sh
+      "
+    profiles:
+      - swarm2
+
+  # Debug container for troubleshooting
+  px4-debug:
+    <<: *px4-common
+    container_name: px4-debug-swarm
+    command: ["/bin/bash"]
+    environment:
+      <<: *px4-env
+      PX4_INSTANCE: 999
+      SWARM_ID: 99
+    profiles:
+      - debug
+
+  # Ground Control Station for monitoring all swarms
+  qgroundcontrol:
+    image: linuxserver/qgroundcontrol:latest
+    container_name: qgc-multi-swarm
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=UTC
+    ports:
+      - "8080:8080"  # Web interface
+    volumes:
+      - qgc-config:/config
+    networks:
+      - airsim-swarm-network
+    profiles:
+      - gcs

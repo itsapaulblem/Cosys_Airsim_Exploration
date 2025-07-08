@@ -1,0 +1,620 @@
+# Ultra-Swarm Docker Compose Configuration
+# Supports up to 27 drones: 9 drones per swarm across 3 swarms
+# Includes GPS home location fixes and proper port allocation
+# 
+# Port allocation:
+#   Swarm 1: AirSim TCP 4561-4569, QGC UDP 14550-14558, MAVLink UDP 18570-18578
+#   Swarm 2: AirSim TCP 4571-4579, QGC UDP 14560-14568, MAVLink UDP 18580-18588
+#   Swarm 3: AirSim TCP 4581-4589, QGC UDP 14570-14578, MAVLink UDP 18590-18598
+
+networks:
+  ultra-swarm-network:
+    name: ultra-swarm-network
+    driver: bridge
+    ipam:
+      driver: default
+      config:
+        - subnet: 172.27.0.0/16
+          gateway: 172.27.0.1
+
+volumes:
+  ultra-swarm-data:
+    driver: local
+  qgc-config:
+    driver: local
+
+x-px4-common: &px4-common
+  build:
+    context: .
+    dockerfile: Dockerfile.ultra-swarm
+  image: px4-ultra-swarm:latest
+  environment: &px4-env
+    PX4_HOME_LAT: 47.641468
+    PX4_HOME_LON: -122.140165
+    PX4_HOME_ALT: 0.0
+    PX4_SYS_AUTOSTART: 10016
+    PX4_SIM_HOSTNAME: host.docker.internal
+    PX4_SIM_MODEL: none_iris
+    MAX_SWARMS: 3
+    MAX_DRONES_PER_SWARM: 9
+  networks:
+    - ultra-swarm-network
+  volumes:
+    - ultra-swarm-data:/px4_data
+    - ./logs:/px4_workspace/PX4-Autopilot/build/px4_sitl_default/logs
+  restart: unless-stopped
+  tty: true
+  stdin_open: true
+  deploy:
+    resources:
+      limits:
+        cpus: '0.8'
+        memory: 512M
+
+services:
+  # ==========================================
+  # SWARM 1 - BLUE TEAM (9 drones: 4561-4569)
+  # ==========================================
+  
+  px4-swarm-1-drone-1:
+    <<: *px4-common
+    container_name: px4-swarm-1-drone-1
+    environment:
+      <<: *px4-env
+      SWARM_ID: 1
+      PX4_INSTANCE: 1
+      SWARM_SIZE: 9
+    expose:
+      - "4561/tcp"
+      - "14550/udp"
+      - "18570/udp"
+    command: >
+      bash -c "
+        echo '🔵 Swarm 1 - Drone 1 starting on AirSim port 4561...'
+        /Scripts/run_ultra_swarm.sh
+      "
+
+  px4-swarm-1-drone-2:
+    <<: *px4-common
+    container_name: px4-swarm-1-drone-2
+    environment:
+      <<: *px4-env
+      SWARM_ID: 1
+      PX4_INSTANCE: 2
+      SWARM_SIZE: 9
+    expose:
+      - "4562/tcp"
+      - "14551/udp"
+      - "18571/udp"
+    command: >
+      bash -c "
+        echo '🔵 Swarm 1 - Drone 2 starting on AirSim port 4562...'
+        /Scripts/run_ultra_swarm.sh
+      "
+
+  px4-swarm-1-drone-3:
+    <<: *px4-common
+    container_name: px4-swarm-1-drone-3
+    environment:
+      <<: *px4-env
+      SWARM_ID: 1
+      PX4_INSTANCE: 3
+      SWARM_SIZE: 9
+    expose:
+      - "4563/tcp"
+      - "14552/udp"
+      - "18572/udp"
+    command: >
+      bash -c "
+        echo '🔵 Swarm 1 - Drone 3 starting on AirSim port 4563...'
+        /Scripts/run_ultra_swarm.sh
+      "
+
+  px4-swarm-1-drone-4:
+    <<: *px4-common
+    container_name: px4-swarm-1-drone-4
+    environment:
+      <<: *px4-env
+      SWARM_ID: 1
+      PX4_INSTANCE: 4
+      SWARM_SIZE: 9
+    expose:
+      - "4564/tcp"
+      - "14553/udp"
+      - "18573/udp"
+    command: >
+      bash -c "
+        echo '🔵 Swarm 1 - Drone 4 starting on AirSim port 4564...'
+        /Scripts/run_ultra_swarm.sh
+      "
+
+  px4-swarm-1-drone-5:
+    <<: *px4-common
+    container_name: px4-swarm-1-drone-5
+    environment:
+      <<: *px4-env
+      SWARM_ID: 1
+      PX4_INSTANCE: 5
+      SWARM_SIZE: 9
+    expose:
+      - "4565/tcp"
+      - "14554/udp"
+      - "18574/udp"
+    command: >
+      bash -c "
+        echo '🔵 Swarm 1 - Drone 5 starting on AirSim port 4565...'
+        /Scripts/run_ultra_swarm.sh
+      "
+
+  px4-swarm-1-drone-6:
+    <<: *px4-common
+    container_name: px4-swarm-1-drone-6
+    environment:
+      <<: *px4-env
+      SWARM_ID: 1
+      PX4_INSTANCE: 6
+      SWARM_SIZE: 9
+    expose:
+      - "4566/tcp"
+      - "14555/udp"
+      - "18575/udp"
+    command: >
+      bash -c "
+        echo '🔵 Swarm 1 - Drone 6 starting on AirSim port 4566...'
+        /Scripts/run_ultra_swarm.sh
+      "
+
+  px4-swarm-1-drone-7:
+    <<: *px4-common
+    container_name: px4-swarm-1-drone-7
+    environment:
+      <<: *px4-env
+      SWARM_ID: 1
+      PX4_INSTANCE: 7
+      SWARM_SIZE: 9
+    expose:
+      - "4567/tcp"
+      - "14556/udp"
+      - "18576/udp"
+    command: >
+      bash -c "
+        echo '🔵 Swarm 1 - Drone 7 starting on AirSim port 4567...'
+        /Scripts/run_ultra_swarm.sh
+      "
+
+  px4-swarm-1-drone-8:
+    <<: *px4-common
+    container_name: px4-swarm-1-drone-8
+    environment:
+      <<: *px4-env
+      SWARM_ID: 1
+      PX4_INSTANCE: 8
+      SWARM_SIZE: 9
+    expose:
+      - "4568/tcp"
+      - "14557/udp"
+      - "18577/udp"
+    command: >
+      bash -c "
+        echo '🔵 Swarm 1 - Drone 8 starting on AirSim port 4568...'
+        /Scripts/run_ultra_swarm.sh
+      "
+
+  px4-swarm-1-drone-9:
+    <<: *px4-common
+    container_name: px4-swarm-1-drone-9
+    environment:
+      <<: *px4-env
+      SWARM_ID: 1
+      PX4_INSTANCE: 9
+      SWARM_SIZE: 9
+    expose:
+      - "4569/tcp"
+      - "14558/udp"
+      - "18578/udp"
+    command: >
+      bash -c "
+        echo '🔵 Swarm 1 - Drone 9 starting on AirSim port 4569...'
+        /Scripts/run_ultra_swarm.sh
+      "
+
+  # ==========================================
+  # SWARM 2 - RED TEAM (9 drones: 4571-4579)
+  # ==========================================
+  
+  px4-swarm-2-drone-1:
+    <<: *px4-common
+    container_name: px4-swarm-2-drone-1
+    environment:
+      <<: *px4-env
+      SWARM_ID: 2
+      PX4_INSTANCE: 1
+      SWARM_SIZE: 9
+    expose:
+      - "4571/tcp"
+      - "14560/udp"
+      - "18580/udp"
+    command: >
+      bash -c "
+        echo '🔴 Swarm 2 - Drone 1 starting on AirSim port 4571...'
+        /Scripts/run_ultra_swarm.sh
+      "
+    profiles:
+      - swarm2
+
+  px4-swarm-2-drone-2:
+    <<: *px4-common
+    container_name: px4-swarm-2-drone-2
+    environment:
+      <<: *px4-env
+      SWARM_ID: 2
+      PX4_INSTANCE: 2
+      SWARM_SIZE: 9
+    expose:
+      - "4572/tcp"
+      - "14561/udp"
+      - "18581/udp"
+    command: >
+      bash -c "
+        echo '🔴 Swarm 2 - Drone 2 starting on AirSim port 4572...'
+        /Scripts/run_ultra_swarm.sh
+      "
+    profiles:
+      - swarm2
+
+  px4-swarm-2-drone-3:
+    <<: *px4-common
+    container_name: px4-swarm-2-drone-3
+    environment:
+      <<: *px4-env
+      SWARM_ID: 2
+      PX4_INSTANCE: 3
+      SWARM_SIZE: 9
+    expose:
+      - "4573/tcp"
+      - "14562/udp"
+      - "18582/udp"
+    command: >
+      bash -c "
+        echo '🔴 Swarm 2 - Drone 3 starting on AirSim port 4573...'
+        /Scripts/run_ultra_swarm.sh
+      "
+    profiles:
+      - swarm2
+
+  px4-swarm-2-drone-4:
+    <<: *px4-common
+    container_name: px4-swarm-2-drone-4
+    environment:
+      <<: *px4-env
+      SWARM_ID: 2
+      PX4_INSTANCE: 4
+      SWARM_SIZE: 9
+    expose:
+      - "4574/tcp"
+      - "14563/udp"
+      - "18583/udp"
+    command: >
+      bash -c "
+        echo '🔴 Swarm 2 - Drone 4 starting on AirSim port 4574...'
+        /Scripts/run_ultra_swarm.sh
+      "
+    profiles:
+      - swarm2
+
+  px4-swarm-2-drone-5:
+    <<: *px4-common
+    container_name: px4-swarm-2-drone-5
+    environment:
+      <<: *px4-env
+      SWARM_ID: 2
+      PX4_INSTANCE: 5
+      SWARM_SIZE: 9
+    expose:
+      - "4575/tcp"
+      - "14564/udp"
+      - "18584/udp"
+    command: >
+      bash -c "
+        echo '🔴 Swarm 2 - Drone 5 starting on AirSim port 4575...'
+        /Scripts/run_ultra_swarm.sh
+      "
+    profiles:
+      - swarm2
+
+  px4-swarm-2-drone-6:
+    <<: *px4-common
+    container_name: px4-swarm-2-drone-6
+    environment:
+      <<: *px4-env
+      SWARM_ID: 2
+      PX4_INSTANCE: 6
+      SWARM_SIZE: 9
+    expose:
+      - "4576/tcp"
+      - "14565/udp"
+      - "18585/udp"
+    command: >
+      bash -c "
+        echo '🔴 Swarm 2 - Drone 6 starting on AirSim port 4576...'
+        /Scripts/run_ultra_swarm.sh
+      "
+    profiles:
+      - swarm2
+
+  px4-swarm-2-drone-7:
+    <<: *px4-common
+    container_name: px4-swarm-2-drone-7
+    environment:
+      <<: *px4-env
+      SWARM_ID: 2
+      PX4_INSTANCE: 7
+      SWARM_SIZE: 9
+    expose:
+      - "4577/tcp"
+      - "14566/udp"
+      - "18586/udp"
+    command: >
+      bash -c "
+        echo '🔴 Swarm 2 - Drone 7 starting on AirSim port 4577...'
+        /Scripts/run_ultra_swarm.sh
+      "
+    profiles:
+      - swarm2
+
+  px4-swarm-2-drone-8:
+    <<: *px4-common
+    container_name: px4-swarm-2-drone-8
+    environment:
+      <<: *px4-env
+      SWARM_ID: 2
+      PX4_INSTANCE: 8
+      SWARM_SIZE: 9
+    expose:
+      - "4578/tcp"
+      - "14567/udp"
+      - "18587/udp"
+    command: >
+      bash -c "
+        echo '🔴 Swarm 2 - Drone 8 starting on AirSim port 4578...'
+        /Scripts/run_ultra_swarm.sh
+      "
+    profiles:
+      - swarm2
+
+  px4-swarm-2-drone-9:
+    <<: *px4-common
+    container_name: px4-swarm-2-drone-9
+    environment:
+      <<: *px4-env
+      SWARM_ID: 2
+      PX4_INSTANCE: 9
+      SWARM_SIZE: 9
+    expose:
+      - "4579/tcp"
+      - "14568/udp"
+      - "18588/udp"
+    command: >
+      bash -c "
+        echo '🔴 Swarm 2 - Drone 9 starting on AirSim port 4579...'
+        /Scripts/run_ultra_swarm.sh
+      "
+    profiles:
+      - swarm2
+
+  # ==========================================
+  # SWARM 3 - GREEN TEAM (9 drones: 4581-4589)
+  # ==========================================
+  
+  px4-swarm-3-drone-1:
+    <<: *px4-common
+    container_name: px4-swarm-3-drone-1
+    environment:
+      <<: *px4-env
+      SWARM_ID: 3
+      PX4_INSTANCE: 1
+      SWARM_SIZE: 9
+    expose:
+      - "4581/tcp"
+      - "14570/udp"
+      - "18590/udp"
+    command: >
+      bash -c "
+        echo '🟢 Swarm 3 - Drone 1 starting on AirSim port 4581...'
+        /Scripts/run_ultra_swarm.sh
+      "
+    profiles:
+      - swarm3
+
+  px4-swarm-3-drone-2:
+    <<: *px4-common
+    container_name: px4-swarm-3-drone-2
+    environment:
+      <<: *px4-env
+      SWARM_ID: 3
+      PX4_INSTANCE: 2
+      SWARM_SIZE: 9
+    expose:
+      - "4582/tcp"
+      - "14571/udp"
+      - "18591/udp"
+    command: >
+      bash -c "
+        echo '🟢 Swarm 3 - Drone 2 starting on AirSim port 4582...'
+        /Scripts/run_ultra_swarm.sh
+      "
+    profiles:
+      - swarm3
+
+  px4-swarm-3-drone-3:
+    <<: *px4-common
+    container_name: px4-swarm-3-drone-3
+    environment:
+      <<: *px4-env
+      SWARM_ID: 3
+      PX4_INSTANCE: 3
+      SWARM_SIZE: 9
+    expose:
+      - "4583/tcp"
+      - "14572/udp"
+      - "18592/udp"
+    command: >
+      bash -c "
+        echo '🟢 Swarm 3 - Drone 3 starting on AirSim port 4583...'
+        /Scripts/run_ultra_swarm.sh
+      "
+    profiles:
+      - swarm3
+
+  px4-swarm-3-drone-4:
+    <<: *px4-common
+    container_name: px4-swarm-3-drone-4
+    environment:
+      <<: *px4-env
+      SWARM_ID: 3
+      PX4_INSTANCE: 4
+      SWARM_SIZE: 9
+    expose:
+      - "4584/tcp"
+      - "14573/udp"
+      - "18593/udp"
+    command: >
+      bash -c "
+        echo '🟢 Swarm 3 - Drone 4 starting on AirSim port 4584...'
+        /Scripts/run_ultra_swarm.sh
+      "
+    profiles:
+      - swarm3
+
+  px4-swarm-3-drone-5:
+    <<: *px4-common
+    container_name: px4-swarm-3-drone-5
+    environment:
+      <<: *px4-env
+      SWARM_ID: 3
+      PX4_INSTANCE: 5
+      SWARM_SIZE: 9
+    expose:
+      - "4585/tcp"
+      - "14574/udp"
+      - "18594/udp"
+    command: >
+      bash -c "
+        echo '🟢 Swarm 3 - Drone 5 starting on AirSim port 4585...'
+        /Scripts/run_ultra_swarm.sh
+      "
+    profiles:
+      - swarm3
+
+  px4-swarm-3-drone-6:
+    <<: *px4-common
+    container_name: px4-swarm-3-drone-6
+    environment:
+      <<: *px4-env
+      SWARM_ID: 3
+      PX4_INSTANCE: 6
+      SWARM_SIZE: 9
+    expose:
+      - "4586/tcp"
+      - "14575/udp"
+      - "18595/udp"
+    command: >
+      bash -c "
+        echo '🟢 Swarm 3 - Drone 6 starting on AirSim port 4586...'
+        /Scripts/run_ultra_swarm.sh
+      "
+    profiles:
+      - swarm3
+
+  px4-swarm-3-drone-7:
+    <<: *px4-common
+    container_name: px4-swarm-3-drone-7
+    environment:
+      <<: *px4-env
+      SWARM_ID: 3
+      PX4_INSTANCE: 7
+      SWARM_SIZE: 9
+    expose:
+      - "4587/tcp"
+      - "14576/udp"
+      - "18596/udp"
+    command: >
+      bash -c "
+        echo '🟢 Swarm 3 - Drone 7 starting on AirSim port 4587...'
+        /Scripts/run_ultra_swarm.sh
+      "
+    profiles:
+      - swarm3
+
+  px4-swarm-3-drone-8:
+    <<: *px4-common
+    container_name: px4-swarm-3-drone-8
+    environment:
+      <<: *px4-env
+      SWARM_ID: 3
+      PX4_INSTANCE: 8
+      SWARM_SIZE: 9
+    expose:
+      - "4588/tcp"
+      - "14577/udp"
+      - "18597/udp"
+    command: >
+      bash -c "
+        echo '🟢 Swarm 3 - Drone 8 starting on AirSim port 4588...'
+        /Scripts/run_ultra_swarm.sh
+      "
+    profiles:
+      - swarm3
+
+  px4-swarm-3-drone-9:
+    <<: *px4-common
+    container_name: px4-swarm-3-drone-9
+    environment:
+      <<: *px4-env
+      SWARM_ID: 3
+      PX4_INSTANCE: 9
+      SWARM_SIZE: 9
+    expose:
+      - "4589/tcp"
+      - "14578/udp"
+      - "18598/udp"
+    command: >
+      bash -c "
+        echo '🟢 Swarm 3 - Drone 9 starting on AirSim port 4589...'
+        /Scripts/run_ultra_swarm.sh
+      "
+    profiles:
+      - swarm3
+
+  # ==========================================
+  # SUPPORT SERVICES
+  # ==========================================
+
+  # Ground Control Station for monitoring all swarms
+  qgroundcontrol:
+    image: linuxserver/qgroundcontrol:latest
+    container_name: qgc-ultra-swarm
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=UTC
+    ports:
+      - "8080:8080"  # Web interface
+    volumes:
+      - qgc-config:/config
+    networks:
+      - ultra-swarm-network
+    profiles:
+      - gcs
+
+  # Debug container for troubleshooting ultra-swarms
+  px4-debug:
+    <<: *px4-common
+    container_name: px4-debug-ultra-swarm
+    command: ["/bin/bash"]
+    environment:
+      <<: *px4-env
+      PX4_INSTANCE: 999
+      SWARM_ID: 99
+    profiles:
+      - debug
