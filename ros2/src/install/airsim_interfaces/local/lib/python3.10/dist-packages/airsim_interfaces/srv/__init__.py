@@ -1,0 +1,13 @@
+from airsim_interfaces.srv._fly_orbit import FlyOrbit  # noqa: F401
+from airsim_interfaces.srv._land import Land  # noqa: F401
+from airsim_interfaces.srv._land_group import LandGroup  # noqa: F401
+from airsim_interfaces.srv._list_scene_object_tags import ListSceneObjectTags  # noqa: F401
+from airsim_interfaces.srv._refresh_instance_segmentation import RefreshInstanceSegmentation  # noqa: F401
+from airsim_interfaces.srv._refresh_object_transforms import RefreshObjectTransforms  # noqa: F401
+from airsim_interfaces.srv._reset import Reset  # noqa: F401
+from airsim_interfaces.srv._set_altitude import SetAltitude  # noqa: F401
+from airsim_interfaces.srv._set_altitude_group import SetAltitudeGroup  # noqa: F401
+from airsim_interfaces.srv._set_gps_position import SetGPSPosition  # noqa: F401
+from airsim_interfaces.srv._set_local_position import SetLocalPosition  # noqa: F401
+from airsim_interfaces.srv._takeoff import Takeoff  # noqa: F401
+from airsim_interfaces.srv._takeoff_group import TakeoffGroup  # noqa: F401

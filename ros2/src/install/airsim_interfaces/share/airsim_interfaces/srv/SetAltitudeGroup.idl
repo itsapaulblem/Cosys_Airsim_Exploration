@@ -1,0 +1,27 @@
+// generated from rosidl_adapter/resource/srv.idl.em
+// with input from airsim_interfaces/srv/SetAltitudeGroup.srv
+// generated code does not contain a copyright notice
+
+
+module airsim_interfaces {
+  module srv {
+    @verbatim (language="comment", text=
+      "Request")
+    struct SetAltitudeGroup_Request {
+      sequence<string> vehicle_names;
+
+      double altitude;
+
+      double velocity;
+
+      boolean wait_on_last_task;
+    };
+    @verbatim (language="comment", text=
+      "Response")
+    struct SetAltitudeGroup_Response {
+      boolean success;
+
+      string message;
+    };
+  };
+};

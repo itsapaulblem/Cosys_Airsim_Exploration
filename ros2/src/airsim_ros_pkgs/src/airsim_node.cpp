@@ -13,7 +13,7 @@ int main(int argc, char** argv)
     std::shared_ptr<rclcpp::Node> nh_echo = nh->create_sub_node("echo");
     std::string host_ip;
     uint16_t host_port = 41451;
-    bool enable_api_control = false;
+    bool enable_api_control = true;
     bool enable_object_transforms_list = true;
     nh->get_parameter("host_ip", host_ip);
     nh->get_parameter("host_port", host_port);

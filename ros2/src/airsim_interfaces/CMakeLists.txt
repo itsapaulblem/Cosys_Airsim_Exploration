@@ -9,10 +9,13 @@ if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
 endif()
 
 find_package(ament_cmake REQUIRED)
+find_package(rclcpp REQUIRED)
 find_package(rosidl_default_generators REQUIRED)
+find_package(std_srvs REQUIRED)
 find_package(std_msgs REQUIRED)
 find_package(geometry_msgs REQUIRED)
 find_package(geographic_msgs REQUIRED)
+find_package(nav_msgs REQUIRED)
 
 rosidl_generate_interfaces(${PROJECT_NAME}
   "msg/GimbalAngleEulerCmd.msg"
@@ -29,6 +32,9 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "msg/StringArray.msg"
   "msg/Altimeter.msg"
   "msg/Environment.msg"
+  "srv/FlyOrbit.srv"
+  "srv/SetAltitude.srv"
+  "srv/SetAltitudeGroup.srv"
   "srv/SetGPSPosition.srv"
   "srv/Takeoff.srv"
   "srv/TakeoffGroup.srv"
