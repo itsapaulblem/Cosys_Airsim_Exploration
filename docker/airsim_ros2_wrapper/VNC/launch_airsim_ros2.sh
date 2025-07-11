@@ -9,12 +9,15 @@ if [ ! -f "/airsim_ros2_ws/install/setup.bash" ]; then
     echo "This is normal for first-time setup or when using volume mounting."
     cd /airsim_ros2_ws
     
+    # Set AIRSIM_ROOT for the build process
+    export AIRSIM_ROOT=/airsim_ros2_ws
+    
     # Build the workspace
     echo "Building airsim_interfaces..."
     colcon build --packages-select airsim_interfaces --cmake-args -DCMAKE_BUILD_TYPE=Release
     
     echo "Building airsim_ros_pkgs..."
-    colcon build --packages-select airsim_ros_pkgs --cmake-args -DCMAKE_BUILD_TYPE=Release
+    colcon build --packages-select airsim_ros_pkgs --cmake-args -DCMAKE_BUILD_TYPE=Release -DAIRSIM_ROOT=/airsim_ros2_ws
     
     echo "✓ Workspace built successfully!"
 fi

@@ -1,0 +1,123 @@
+# Ultra-Swarm Docker Compose Configuration with Delayed Startup
+# Uses simple approach with run_airsim_sitl.sh script copied to /Scripts
+
+version: '3.8'
+
+x-px4-common: &px4-common
+  build:
+    context: .
+    dockerfile: Dockerfile
+  environment: &px4-env
+    PX4_SIM_HOSTNAME: 172.28.240.1
+    PX4_SIM_MODEL: iris
+    DELAYED_START: true
+  network_mode: host
+  volumes:
+    - px4-shared-data:/px4_data
+    # Mount PX4Scripts directory so containers can access run_airsim_sitl.sh
+    - ../../PX4Scripts:/host_px4scripts:ro
+  restart: unless-stopped
+  tty: true
+  stdin_open: true
+  # Keep container running without starting PX4 immediately
+  command: >
+    bash -c "
+      # Create Scripts directory if it doesn't exist
+      mkdir -p /px4_workspace/PX4-Autopilot/Scripts
+      
+      # Copy the script on startup for easy access
+      if [ -f '/host_px4scripts/run_airsim_sitl.sh' ]; then
+        echo '📋 Copying run_airsim_sitl.sh from host...'
+        cp /host_px4scripts/run_airsim_sitl.sh /px4_workspace/PX4-Autopilot/Scripts/
+        chmod +x /px4_workspace/PX4-Autopilot/Scripts/run_airsim_sitl.sh
+      else
+        echo '⚠️  run_airsim_sitl.sh not found in mounted volume'
+        echo 'Expected: /host_px4scripts/run_airsim_sitl.sh'
+      fi
+      
+      echo '🔄 Container started in delayed mode'
+      echo '   Instance: $$PX4_INSTANCE ready'
+      echo '   To start PX4 SITL, run inside container:'
+      echo '   cd /px4_workspace/PX4-Autopilot && ./Scripts/run_airsim_sitl.sh $$PX4_INSTANCE'
+      echo ''
+      echo 'Container waiting... (press Ctrl+C to stop)'
+      # Keep container running
+      tail -f /dev/null
+    "
+
+services:
+  px4-swarm-1-drone-1:
+    <<: *px4-common
+    container_name: px4-swarm-1-drone-1
+    hostname: px4-swarm-1-drone-1
+    environment:
+      <<: *px4-env
+      PX4_INSTANCE: 1
+
+  px4-swarm-1-drone-2:
+    <<: *px4-common
+    container_name: px4-swarm-1-drone-2
+    hostname: px4-swarm-1-drone-2
+    environment:
+      <<: *px4-env
+      PX4_INSTANCE: 2
+
+  px4-swarm-1-drone-3:
+    <<: *px4-common
+    container_name: px4-swarm-1-drone-3
+    hostname: px4-swarm-1-drone-3
+    environment:
+      <<: *px4-env
+      PX4_INSTANCE: 3
+
+  px4-swarm-1-drone-4:
+    <<: *px4-common
+    container_name: px4-swarm-1-drone-4
+    hostname: px4-swarm-1-drone-4
+    environment:
+      <<: *px4-env
+      PX4_INSTANCE: 4
+
+  px4-swarm-1-drone-5:
+    <<: *px4-common
+    container_name: px4-swarm-1-drone-5
+    hostname: px4-swarm-1-drone-5
+    environment:
+      <<: *px4-env
+      PX4_INSTANCE: 5
+
+  px4-swarm-1-drone-6:
+    <<: *px4-common
+    container_name: px4-swarm-1-drone-6
+    hostname: px4-swarm-1-drone-6
+    environment:
+      <<: *px4-env
+      PX4_INSTANCE: 6
+
+  px4-swarm-1-drone-7:
+    <<: *px4-common
+    container_name: px4-swarm-1-drone-7
+    hostname: px4-swarm-1-drone-7
+    environment:
+      <<: *px4-env
+      PX4_INSTANCE: 7
+
+  px4-swarm-1-drone-8:
+    <<: *px4-common
+    container_name: px4-swarm-1-drone-8
+    hostname: px4-swarm-1-drone-8
+    environment:
+      <<: *px4-env
+      PX4_INSTANCE: 8
+
+  px4-swarm-1-drone-9:
+    <<: *px4-common
+    container_name: px4-swarm-1-drone-9
+    hostname: px4-swarm-1-drone-9
+    environment:
+      <<: *px4-env
+      PX4_INSTANCE: 9
+
+volumes:
+  px4-shared-data:
+    driver: local

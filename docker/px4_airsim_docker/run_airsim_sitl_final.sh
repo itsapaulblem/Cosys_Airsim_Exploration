@@ -29,7 +29,41 @@ echo "Model: $PX4_SIM_MODEL"
 echo "QGroundControl target port: $qgc_port"
 echo "MAVLink UDP port: $mavlink_udp_port"
 echo "AirSim TCP port: $airsim_tcp_port"
+echo "PX4_SIM_HOSTNAME: ${PX4_SIM_HOSTNAME:-localhost}"
 echo "PARENT_DIR: $PARENT_DIR"
+
+# Network validation
+echo ""
+echo "🔍 Network Validation"
+echo "=============================="
+
+# Test if we're in Docker
+if [ -f /.dockerenv ]; then
+    echo "📦 Running in Docker container"
+    
+    # Test AirSim connectivity
+    AIRSIM_HOST=${PX4_SIM_HOSTNAME:-localhost}
+    echo "Testing AirSim connectivity to $AIRSIM_HOST..."
+    
+    if timeout 3 nc -zv $AIRSIM_HOST 41451 2>/dev/null; then
+        echo "✅ AirSim API reachable at $AIRSIM_HOST:41451"
+    else
+        echo "⚠️ AirSim API not reachable at $AIRSIM_HOST:41451"
+        echo "💡 Ensure AirSim is running and accessible"
+        echo "💡 Check Docker network mode (should be 'host' for direct access)"
+    fi
+    
+    # Test if TCP port is available for PX4
+    if timeout 1 nc -zv $AIRSIM_HOST $airsim_tcp_port 2>/dev/null; then
+        echo "⚠️ TCP port $airsim_tcp_port already in use"
+    else
+        echo "✅ TCP port $airsim_tcp_port available"
+    fi
+else
+    echo "🖥️ Running on host system"
+fi
+
+echo ""
 
 # Check if PX4 binary exists
 if [ ! -f "$BIN_DIR" ]; then

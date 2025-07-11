@@ -113,6 +113,12 @@ sudo -u "$USER" chmod 600 "$USER_HOME/.Xauthority"
 mkdir -p /var/log/supervisor
 chown "$USER:$USER" /var/log/supervisor
 
+# Fix workspace permissions (critical for colcon build)
+print_info "Setting up workspace permissions for user: $USER"
+mkdir -p /airsim_ros2_ws/log /airsim_ros2_ws/build /airsim_ros2_ws/install
+chown -R "$USER:$USER" /airsim_ros2_ws/log /airsim_ros2_ws/build /airsim_ros2_ws/install /airsim_ros2_ws/src
+chmod -R 755 /airsim_ros2_ws/log /airsim_ros2_ws/build /airsim_ros2_ws/install
+
 # Kill any existing VNC processes
 print_info "Cleaning up existing VNC processes"
 sudo -u "$USER" vncserver -kill :$DISPLAY_NUM 2>/dev/null || true
