@@ -1735,6 +1735,32 @@ namespace airlib
             else if (msg.msgid == mavlinkcom::MavLinkHomePosition::kMessageId) {
                 mavlinkcom::MavLinkHomePosition home;
                 home.decode(msg);
+                
+                // Update the vehicle's home position state
+                current_state_.home.global_pos.lat = home.latitude / 1E7f;  // Convert from 1E7 format to degrees
+                current_state_.home.global_pos.lon = home.longitude / 1E7f; // Convert from 1E7 format to degrees
+                current_state_.home.global_pos.alt = home.altitude / 1000.0f; // Convert from mm to meters
+                
+                current_state_.home.local_pose.pos.x = home.x;
+                current_state_.home.local_pose.pos.y = home.y;
+                current_state_.home.local_pose.pos.z = home.z;
+                
+                // Set quaternion orientation
+                current_state_.home.local_pose.q[0] = home.q[0];
+                current_state_.home.local_pose.q[1] = home.q[1];
+                current_state_.home.local_pose.q[2] = home.q[2];
+                current_state_.home.local_pose.q[3] = home.q[3];
+                
+                // Set approach vector
+                current_state_.home.approach.x = home.approach_x;
+                current_state_.home.approach.y = home.approach_y;
+                current_state_.home.approach.z = home.approach_z;
+                
+                // Mark home as set - this is the crucial fix
+                current_state_.home.is_set = true;
+                
+                addStatusMessage("Home position updated from PX4");
+                
                 // this is a good time to send the params
                 send_params_ = true;
             }

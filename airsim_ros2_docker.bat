@@ -9,7 +9,7 @@ set "CONTAINER_NAME=airsim-vnc-ros2"
 set "IMAGE_NAME=airsim-vnc-ros2"
 set "IMAGE_TAG=ros2_vnc"
 set "DOCKERFILE_PATH=docker\airsim_ros2_wrapper\VNC\Dockerfile.ros2_vnc"
-set "BUILD_CONTEXT=..\..\..\"
+set "BUILD_CONTEXT=."
 set "VNC_PORT=5901"
 set "ROS_DOMAIN_ID=0"
 set "AIRSIM_HOST_IP=host.docker.internal"
@@ -267,7 +267,7 @@ call :print_status "Volume Mount ROS2: %VOLUME_MOUNT_ROS2%"
 REM Set up volume mounting
 set "VOLUME_ARGS="
 if /i "%VOLUME_MOUNT_ROS2%"=="true" (
-    set "VOLUME_ARGS=-v "%CD%\..\..\ros2\src":/airsim_ros2_ws/src"
+    set "VOLUME_ARGS=-v "%CD%\ros2\src":/airsim_ros2_ws/src"
     call :print_status "Mounting local ros2/src to container workspace"
 )
 
