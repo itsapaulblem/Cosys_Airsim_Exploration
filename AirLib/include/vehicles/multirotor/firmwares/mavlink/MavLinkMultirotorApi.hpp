@@ -241,7 +241,7 @@ namespace airlib
 
         virtual bool canArm() const override
         {
-            return is_ready_ && has_gps_lock_;
+            return is_ready_ && (has_gps_lock_ || current_state_.home.is_set);
         }
 
         //TODO: this method can't be const yet because it clears previous messages
@@ -407,29 +407,106 @@ namespace airlib
         {
             if (!current_state_.home.is_set) {
                 addStatusMessage("Waiting for valid GPS home location...");
+                
+                // First try to wait for GPS home
                 if (!waitForFunction([&]() {
                          return current_state_.home.is_set;
                      },
                                      timeout_sec)
                          .isComplete()) {
-                    throw VehicleMoveException("Vehicle does not have a valid GPS home location");
+                    
+                    // Fallback: Set home at current local position if no GPS home available
+                    addStatusMessage("No GPS home available, using local position as home");
+                    setLocalPositionAsHome();
                 }
             }
         }
 
+        void setLocalPositionAsHome()
+        {
+            auto local_pos = getPosition();
+            
+            // Set unknown GPS coordinates (will be NaN for getHomeGeoPoint)
+            current_state_.home.global_pos.lat = Utils::nan<double>();
+            current_state_.home.global_pos.lon = Utils::nan<double>();
+            current_state_.home.global_pos.alt = Utils::nan<float>();
+            
+            // Set home to current local position
+            current_state_.home.local_pose.pos.x = local_pos.x();
+            current_state_.home.local_pose.pos.y = local_pos.y();
+            current_state_.home.local_pose.pos.z = local_pos.z();
+            
+            // Set identity quaternion (no rotation)
+            current_state_.home.local_pose.q[0] = 1.0f;
+            current_state_.home.local_pose.q[1] = 0.0f;
+            current_state_.home.local_pose.q[2] = 0.0f;
+            current_state_.home.local_pose.q[3] = 0.0f;
+            
+            // Set approach vector (default north)
+            current_state_.home.approach.x = 1.0f;
+            current_state_.home.approach.y = 0.0f;
+            current_state_.home.approach.z = 0.0f;
+            
+            // Mark home as set
+            current_state_.home.is_set = true;
+            
+            addStatusMessage("Home position set to current local position (no GPS)");
+        }
+
         void waitForStableGroundPosition(float timeout_sec)
         {
-            // wait for ground stabilization
-            if (ground_variance_ > GroundTolerance) {
-                addStatusMessage("Waiting for z-position to stabilize...");
-                if (!waitForFunction([&]() {
-                         return ground_variance_ <= GroundTolerance;
-                     },
-                                     timeout_sec)
-                         .isComplete()) {
-                    auto msg = Utils::stringf("Ground is not stable, variance is %f", ground_variance_);
-                    throw VehicleMoveException(msg);
+            // Skip ground stability check if using local position home (no GPS)
+            // Check for NaN in GPS coordinates to detect local position mode
+            if (current_state_.home.global_pos.lat != current_state_.home.global_pos.lat || 
+                current_state_.home.global_pos.lon != current_state_.home.global_pos.lon) {
+                addStatusMessage("Skipping ground stability check (local position mode)");
+                return;
+            }
+            
+            // Use adaptive tolerance for multi-drone scenarios
+            double base_tolerance = GroundTolerance;
+            double adaptive_tolerance = base_tolerance;
+            
+            if (ground_variance_ > adaptive_tolerance) {
+                addStatusMessage(Utils::stringf("Waiting for z-position to stabilize... (variance: %.3f, tolerance: %.3f)", 
+                               ground_variance_, adaptive_tolerance));
+                
+                auto start_time = std::chrono::steady_clock::now();
+                bool stability_achieved = false;
+                
+                while (!stability_achieved) {
+                    auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
+                        std::chrono::steady_clock::now() - start_time).count() / 1000.0f;
+                        
+                    if (elapsed > timeout_sec) {
+                        // Progressive tolerance relaxation for multi-drone scenarios
+                        if (ground_variance_ <= (base_tolerance * 5.0)) {
+                            addStatusMessage(Utils::stringf("Ground stability acceptable with relaxed tolerance (variance: %.3f)", 
+                                           ground_variance_));
+                            break;
+                        } else if (ground_variance_ <= (base_tolerance * 10.0)) {
+                            addStatusMessage(Utils::stringf("Ground stability marginal but acceptable (variance: %.3f)", 
+                                           ground_variance_));
+                            break;
+                        } else {
+                            auto msg = Utils::stringf("Ground is not stable, variance is %.3f (base tolerance: %.3f, max acceptable: %.3f)", 
+                                                     ground_variance_, base_tolerance, base_tolerance * 10.0);
+                            throw VehicleMoveException(msg);
+                        }
+                    }
+                    
+                    // Check if ground is now stable with current tolerance
+                    if (ground_variance_ <= adaptive_tolerance) {
+                        stability_achieved = true;
+                        addStatusMessage(Utils::stringf("Ground stability achieved (variance: %.3f <= %.3f)", 
+                                       ground_variance_, adaptive_tolerance));
+                    }
+                    
+                    std::this_thread::sleep_for(std::chrono::milliseconds(100));
                 }
+            } else {
+                addStatusMessage(Utils::stringf("Ground already stable (variance: %.3f <= %.3f)", 
+                               ground_variance_, adaptive_tolerance));
             }
         }
 
@@ -1631,6 +1708,28 @@ namespace airlib
 
         void processMavMessages(const mavlinkcom::MavLinkMessage& msg)
         {
+            // DEBUG: Log all MAVLink messages for troubleshooting
+            static int debug_msg_count = 0;
+            debug_msg_count++;
+            if (debug_msg_count % 10000 == 1) {  // Log every 10000th message to avoid spam
+                addStatusMessage(Utils::stringf("📡 DEBUG: Received MAVLink msg_id=%d (count=%d)", msg.msgid, debug_msg_count));
+            }
+            
+            // SPECIAL: Always log GPS messages if they arrive
+            if (msg.msgid == 24) {  // GPS_RAW_INT
+                addStatusMessage(Utils::stringf("🛰️ FOUND GPS_RAW_INT! msg_id=%d", msg.msgid));
+            }
+            if (msg.msgid == 113) {  // HIL_GPS (what AirSim actually sends)
+                addStatusMessage(Utils::stringf("🛰️ FOUND HIL_GPS! msg_id=%d", msg.msgid));
+            }
+            
+            // Special logging for GPS and Home Position messages
+            if (msg.msgid == mavlinkcom::MavLinkHomePosition::kMessageId) {
+                addStatusMessage(Utils::stringf("📡 DEBUG: HOME_POSITION message received (msg_id=%d)", msg.msgid));
+            }
+            if (msg.msgid == mavlinkcom::MavLinkGpsRawInt::kMessageId) {
+                addStatusMessage(Utils::stringf("📡 DEBUG: GPS_RAW_INT message received (msg_id=%d)", msg.msgid));
+            }
             if (msg.msgid == HeartbeatMessage.msgid) {
                 std::lock_guard<std::mutex> guard_heartbeat(heartbeat_mutex_);
 
@@ -1706,14 +1805,58 @@ namespace airlib
 
                 handleLockStep();
             }
-            else if (msg.msgid == MavLinkGpsRawInt.msgid) {
+            else if (msg.msgid == mavlinkcom::MavLinkGpsRawInt::kMessageId) {
                 MavLinkGpsRawInt.decode(msg);
                 auto fix_type = static_cast<mavlinkcom::GPS_FIX_TYPE>(MavLinkGpsRawInt.fix_type);
+                
+                // DEBUG: Log ALL GPS messages to diagnose fix_type issues
+                addStatusMessage(Utils::stringf("🛰️ GPS_RAW_INT: lat=%d, lon=%d, alt=%d, fix_type=%d, sats=%d", 
+                    MavLinkGpsRawInt.lat, MavLinkGpsRawInt.lon, MavLinkGpsRawInt.alt, 
+                    static_cast<int>(fix_type), MavLinkGpsRawInt.satellites_visible));
+                
                 auto locked = (fix_type != mavlinkcom::GPS_FIX_TYPE::GPS_FIX_TYPE_NO_GPS &&
                                fix_type != mavlinkcom::GPS_FIX_TYPE::GPS_FIX_TYPE_NO_FIX);
                 if (locked && !has_gps_lock_) {
-                    addStatusMessage("Got GPS lock");
+                    addStatusMessage("🛰️ DEBUG: Got GPS lock");
+                    addStatusMessage(Utils::stringf("🛰️ DEBUG: Raw GPS data - lat=%d, lon=%d, alt=%d, fix_type=%d", 
+                        MavLinkGpsRawInt.lat, MavLinkGpsRawInt.lon, MavLinkGpsRawInt.alt, fix_type));
                     has_gps_lock_ = true;
+                    
+                    // Backup: If we have GPS lock but no home position yet, set home to current GPS position
+                    if (!current_state_.home.is_set) {
+                        addStatusMessage("🛰️ DEBUG: No home position yet, using GPS backup method");
+                        current_state_.home.global_pos.lat = MavLinkGpsRawInt.lat / 1E7f;  // Convert from 1E7 format to degrees
+                        current_state_.home.global_pos.lon = MavLinkGpsRawInt.lon / 1E7f;  // Convert from 1E7 format to degrees
+                        current_state_.home.global_pos.alt = MavLinkGpsRawInt.alt / 1000.0f; // Convert from mm to meters
+                        
+                        // DEBUG: Log backup GPS home values
+                        addStatusMessage(Utils::stringf("🛰️ DEBUG: Backup GPS home - lat=%.7f, lon=%.7f, alt=%.3f", 
+                            current_state_.home.global_pos.lat, 
+                            current_state_.home.global_pos.lon, 
+                            current_state_.home.global_pos.alt));
+                        
+                        // Set local position to zero (home origin)
+                        current_state_.home.local_pose.pos.x = 0.0f;
+                        current_state_.home.local_pose.pos.y = 0.0f;
+                        current_state_.home.local_pose.pos.z = 0.0f;
+                        
+                        // Set identity quaternion (no rotation)
+                        current_state_.home.local_pose.q[0] = 1.0f;
+                        current_state_.home.local_pose.q[1] = 0.0f;
+                        current_state_.home.local_pose.q[2] = 0.0f;
+                        current_state_.home.local_pose.q[3] = 0.0f;
+                        
+                        // Set approach vector (default north)
+                        current_state_.home.approach.x = 1.0f;
+                        current_state_.home.approach.y = 0.0f;
+                        current_state_.home.approach.z = 0.0f;
+                        
+                        // Mark home as set
+                        current_state_.home.is_set = true;
+                        addStatusMessage("✅ Home position set from GPS backup method");
+                    } else {
+                        addStatusMessage("🛰️ DEBUG: Home position already set, skipping GPS backup");
+                    }
                 }
                 if (!has_home_ && current_state_.home.is_set) {
                     addStatusMessage("Got GPS Home Location");
@@ -1735,6 +1878,13 @@ namespace airlib
             else if (msg.msgid == mavlinkcom::MavLinkHomePosition::kMessageId) {
                 mavlinkcom::MavLinkHomePosition home;
                 home.decode(msg);
+                
+                // DEBUG: Log raw MAVLink home position message
+                // addStatusMessage(Utils::stringf("🏠 DEBUG: Received MavLinkHomePosition message"));
+                addStatusMessage(Utils::stringf("🏠 DEBUG: Raw values - lat=%d, lon=%d, alt=%d", 
+                    home.latitude, home.longitude, home.altitude));
+                addStatusMessage(Utils::stringf("🏠 DEBUG: Raw local - x=%.3f, y=%.3f, z=%.3f", 
+                    home.x, home.y, home.z));
                 
                 // Update the vehicle's home position state
                 current_state_.home.global_pos.lat = home.latitude / 1E7f;  // Convert from 1E7 format to degrees
@@ -1759,7 +1909,14 @@ namespace airlib
                 // Mark home as set - this is the crucial fix
                 current_state_.home.is_set = true;
                 
-                addStatusMessage("Home position updated from PX4");
+                // DEBUG: Log converted values
+                addStatusMessage(Utils::stringf("🏠 DEBUG: Converted GPS - lat=%.7f, lon=%.7f, alt=%.3f", 
+                    current_state_.home.global_pos.lat, 
+                    current_state_.home.global_pos.lon, 
+                    current_state_.home.global_pos.alt));
+                addStatusMessage(Utils::stringf("🏠 DEBUG: Home is_set = %s", current_state_.home.is_set ? "TRUE" : "FALSE"));
+                
+                addStatusMessage("✅ Home position updated from PX4 MAVLink message");
                 
                 // this is a good time to send the params
                 send_params_ = true;

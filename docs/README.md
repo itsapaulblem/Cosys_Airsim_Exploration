@@ -1,6 +1,6 @@
-# Cosys-AirSim
+# Cosys-AirSim Documentation
 
-Cosys-AirSim is a simulator for drones, cars and more, with extensive API support, built on [Unreal Engine](https://www.unrealengine.com/). It is open-source, cross platform, and supports hardware-in-loop with popular flight controllers such as PX4 for physically and visually realistic simulations. It is developed as an Unreal plugin that can simply be dropped into any Unreal environment. 
+Cosys-AirSim is a simulator for drones, cars and more, with extensive API support, built on [Unreal Engine](https://www.unrealengine.com/). It is open-source, cross platform, and supports hardware-in-loop with popular flight controllers such as PX4 for physically and visually realistic simulations. It is developed as an Unreal plugin that can simply be dropped into any Unreal environment.
 
 This fork is based on last public AirSim release from Microsoft's GitHub.
 Cosys-Lab made extensive modifications to the AirSim platform to support multiple projects and research goals. 
@@ -12,6 +12,52 @@ Please contact a Cosys-Lab researcher to get more in depth information on which 
 
 This documentation is for the latest stable Unreal Version v5.5 on the [main branch](https://github.com/Cosys-Lab/Cosys-AirSim/tree/main), maintained for support, and is available for builds in the [releases](https://github.com/Cosys-Lab/Cosys-AirSim/releases).
 Unreal [5.2.1](https://github.com/Cosys-Lab/Cosys-AirSim/tree/5.2.1) is also available for long term support builds but the documentation is best read from [source](https://github.com/Cosys-Lab/Cosys-AirSim/tree/5.2.1/docs).
+
+## 📚 Documentation Organization
+
+This documentation is organized into specialized sections for different development workflows:
+
+### 🚀 [Installation & Setup](installation/)
+Complete installation guides for all platforms and deployment methods:
+- **[Precompiled Binaries](installation/run_packaged.md)** - Quick start (5 min)
+- **[Precompiled Plugin](installation/install_precompiled.md)** - Custom environments (15 min)
+- **[Windows Source Build](installation/install_windows.md)** - Full development (60+ min)
+- **[Linux Source Build](installation/install_linux.md)** - Full development (60+ min)
+- **[Docker Environment](installation/docker_ubuntu.md)** - Containerized development
+
+### 🔌 [Core Features & APIs](core/)
+Essential AirSim functionality and APIs:
+- **[API Documentation](core/apis.md)** - Core API concepts and C++ reference
+- **[Vehicle Types](core/custom_drone.md)** - Drones, cars, and specialized vehicles
+- **[Sensor Systems](core/sensors.md)** - LiDAR, cameras, echo sensors, and more
+- **[Configuration](core/settings.md)** - Complete settings.json reference
+- **[Computer Vision](core/image_apis.md)** - Image capture and processing
+
+### 🚁 [PX4 & MAVLink Development](px4/)
+Flight controller integration and MAVLink communication:
+- **[PX4 Setup](px4/px4_setup.md)** - Complete PX4 configuration
+- **[SITL Simulation](px4/px4_sitl.md)** - Software-in-the-Loop setup
+- **[Multi-Vehicle](px4/px4_multi_vehicle.md)** - Multi-drone coordination
+- **[MAVLink Architecture](px4/mavlink_architecture.md)** - Communication protocols
+- **[Troubleshooting](px4/px4_logging.md)** - Debugging and diagnostics
+
+### 🤖 [ROS2 Development](ros2/)
+ROS2 integration and robotics framework support:
+- **[C++ ROS2 Wrapper](ros2/ros_cplusplus.md)** - Production-ready ROS2 integration
+- **[Python Integration](ros2/ros_python.md)** - Python-based ROS2 nodes
+- **Complete ROS2 Documentation**: [Additional guides in /ros2/](../ros2/)
+
+### 🎮 [Unreal Engine Development](unreal/)
+Environment creation and plugin development:
+- **[Custom Environments](unreal/unreal_custenv.md)** - Creating simulation environments
+- **[Plugin Development](unreal/working_with_plugin_contents.md)** - Extending AirSim
+- **[Visual Features](unreal/lights.md)** - Lighting, materials, and rendering
+- **[Asset Management](unreal/meshes.md)** - 3D models and optimization
+
+### 🎯 [Specialized Topics](image_segmentation/)
+Advanced features and specialized use cases:
+- **[Instance Segmentation](image_segmentation/)** - Object-level segmentation
+- **[Annotation Systems](image_segmentation/annotation.md)** - Ground truth generation
 
 ## Associated publications
 
@@ -81,21 +127,43 @@ You can also find the presentation of the live tutorial of Cosys-AirSim at ANNSI
 
 Some more details on our changes can be found in the [changelog](https://github.com/Cosys-Lab/Cosys-AirSim/blob/main/CHANGELOG.md).
 
-## How to Get It
-#### Download and run from packaged binary - Windows/Linux
-* [Download and run it](https://cosys-lab.github.io/Cosys-AirSim/run_packaged)
-#### Download and install from precompiled plugin - Windows/Linux
-* [Download and install it](https://cosys-lab.github.io/Cosys-AirSim/install_precompiled)
-#### Install and use from source - Windows
-* [Install/Build it](https://cosys-lab.github.io/Cosys-AirSim/install_windows)
-#### Install and use from source - Linux
-* [Install/Build it](https://cosys-lab.github.io/Cosys-AirSim/install_linux)
+## 🚀 Quick Start
 
-## How to Use It
+Choose the installation method that best fits your needs:
 
-### Documentation
+### For Quick Evaluation (5 minutes)
+**[→ Download Precompiled Binaries](installation/run_packaged.md)**
+- Ready-to-run simulation environments
+- No compilation required
+- Perfect for testing and evaluation
 
-View our [detailed documentation](https://cosys-lab.github.io/Cosys-AirSim/) on all aspects of Cosys-AirSim.
+### For Custom Environments (15 minutes)  
+**[→ Install Precompiled Plugin](installation/install_precompiled.md)**
+- Drop into existing Unreal projects
+- Create custom simulation environments
+- Faster than building from source
+
+### For Full Development (60+ minutes)
+**[→ Build from Source](installation/)**
+- **Windows**: [Complete build guide](installation/install_windows.md)
+- **Linux**: [Complete build guide](installation/install_linux.md)
+- **Docker**: [Containerized development](installation/docker_ubuntu.md)
+
+## 🎯 Common Workflows
+
+### Researchers & Academics
+1. **[Quick Start](installation/run_packaged.md)** → **[Core APIs](core/apis.md)** → **[Vehicle Configuration](core/settings.md)**
+2. For custom scenarios: **[Unreal Development](unreal/unreal_custenv.md)**
+
+### Robotics Developers  
+1. **[Installation](installation/)** → **[ROS2 Integration](ros2/ros_cplusplus.md)** → **[Multi-Vehicle Setup](core/multi_vehicle.md)**
+2. For autonomous systems: **[PX4 Integration](px4/px4_setup.md)**
+
+### Game Developers & 3D Artists
+1. **[Unreal Plugin](installation/install_precompiled.md)** → **[Environment Creation](unreal/unreal_custenv.md)** → **[Visual Features](unreal/lights.md)**
+
+### System Integrators
+1. **[Docker Setup](installation/docker_ubuntu.md)** → **[API Integration](core/apis.md)** → **[Production Deployment](installation/)**
 
 ## Original AirSim Paper
 

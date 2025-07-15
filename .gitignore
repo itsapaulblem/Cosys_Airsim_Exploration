@@ -381,9 +381,9 @@ ros/src/CMakeLists.txt
 ros2/install/
 ros2/log/
 ros2/src/log
+ros2/build/
 
 # docs
-docs/README.md
 build_docs/
 
 # api docs
@@ -402,3 +402,94 @@ PythonClient/docs/_build
 /Unreal/Environments/BlocksComp/
 docker/LinuxBlocks/*
 /cosys-airsim-data-scripts/
+
+# Large media files that should use Git LFS
+*.mp4
+*.avi
+*.mov
+*.mkv
+*.webm
+*.pdf
+*.zip
+*.7z
+*.rar
+*.tar.gz
+*.tgz
+
+# Python virtual environments and packages
+**/env/
+**/venv/
+**/*_env/
+**/*_env_*/
+**/site-packages/
+**/.venv/
+**/conda-meta/
+**/Lib/
+**/Scripts/
+**/bin/activate*
+**/pyvenv.cfg
+
+# Large binary files
+*.lib
+*.a
+*.so
+*.dll
+*.dylib
+*.pdb
+*.iobj
+*.ipdb
+
+# Unreal Engine large assets and temp files
+*.uasset
+*.umap
+*_BuiltData.uasset
+*.VC.db
+*.ipch
+Binaries/
+Intermediate/
+Build/
+.vs/
+DerivedDataCache/
+
+# Temporary files and logs
+*.tmp
+*.temp
+*.log
+*.out
+*.err
+
+# OS specific files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# IDE and editor files
+*.swp
+*.swo
+*~
+.idea/
+*.sublime-workspace
+*.sublime-project
+
+# Package manager files
+package-lock.json
+yarn.lock
+composer.lock
+
+# Environment files
+.env
+.env.local
+.env.*.local
+
+# Database files
+*.db
+*.sqlite
+*.sqlite3
+
+# Backup files
+*.bak
+*.backup
+*~
+
+# Core dumps
+core.*

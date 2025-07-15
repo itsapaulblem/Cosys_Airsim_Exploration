@@ -1,0 +1,56 @@
+# PX4 Parameters for Ultra-Swarm GPS Configuration
+# These parameters fix the "Vehicle does not have a valid GPS home location" error
+# and enable proper multi-drone operation in containerized environments
+
+# GPS Home Location (Seattle area - default coordinates)
+param set LPE_LAT 47.641468
+param set LPE_LON -122.140165
+
+# GPS and EKF2 Configuration
+param set SYS_HAS_GPS 1              # Enable GPS hardware
+param set EKF2_GPS_CHECK 21          # GPS validation checks (reduce from default 245)
+param set EKF2_GPS_CTRL 7            # GPS control modes (default)
+param set EKF2_HGT_MODE 0            # Use barometric altitude as primary height source
+param set EKF2_GPS_DELAY 110         # GPS delay compensation (ms)
+
+# Arming Configuration  
+param set COM_ARM_WO_GPS 1           # Allow arming without GPS fix
+param set COM_ARM_EKF_GPS 1          # Require EKF GPS checks for arming
+param set COM_ARM_EKF_HGT 1          # Require EKF height checks for arming
+
+# Navigation and Failsafe Parameters
+param set NAV_RCL_ACT 0              # RC loss action: 0=disabled
+param set NAV_DLL_ACT 0              # Data link loss action: 0=disabled  
+param set COM_OBL_ACT 1              # Offboard loss action: 1=land mode
+param set COM_OF_LOSS_T 5.0          # Offboard loss timeout (seconds)
+
+# Position Control Parameters
+param set MPC_XY_P 0.95              # Position control P gain
+param set MPC_Z_P 1.0                # Altitude control P gain
+param set MPC_XY_VEL_P_ACC 1.8       # Velocity control P gain
+param set MPC_Z_VEL_P_ACC 4.0        # Vertical velocity control P gain
+
+# SITL-specific Parameters
+param set SIM_GPS_USED 1             # Enable simulated GPS
+param set SIM_GPS_BLOCK 0            # Don't block GPS (0=enabled)
+param set SDLOG_MODE 1               # Enable logging from boot
+
+# Multi-drone safety parameters
+param set COM_DISARM_LAND 0.5        # Auto-disarm time after landing (seconds)
+param set MIS_TAKEOFF_ALT 2.5        # Default takeoff altitude (meters)
+
+# Battery failsafe (disabled for simulation)
+param set COM_LOW_BAT_ACT 0          # Low battery action: 0=disabled
+
+# Sensor calibration bypass for SITL
+param set CAL_MAG0_ID 0              # Bypass magnetometer calibration
+param set CAL_GYRO0_ID 0             # Bypass gyroscope calibration  
+param set CAL_ACC0_ID 0              # Bypass accelerometer calibration
+
+# Flight mode configuration
+param set COM_FLTMODE1 1             # Flight mode slot 1: Manual
+param set COM_FLTMODE4 3             # Flight mode slot 4: Auto
+param set COM_FLTMODE6 2             # Flight mode slot 6: Altitude
+
+# Vehicle type configuration
+param set MAV_TYPE 2                 # Vehicle type: 2=Quadrotor

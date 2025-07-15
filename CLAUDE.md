@@ -101,13 +101,105 @@ python migrate_to_unified.py
 ```
 
 ### Docker Commands
+
+#### ROS2 Docker Development (ALWAYS run from AirSim root directory)
+```bash
+# Navigate to AirSim root first
+cd /mnt/l/cosys-airsim    # WSL/Linux
+cd L:\Cosys-AirSim        # Windows
+
+# Build and run ROS2 Docker container
+./airsim_ros2_docker.bat build              # Build the image
+./airsim_ros2_docker.bat run                # Run with VNC
+./airsim_ros2_docker.bat run --launch-rviz  # Run with RViz auto-launch
+./airsim_ros2_docker.bat shell              # Access container shell
+./airsim_ros2_docker.bat status             # Check container status
+./airsim_ros2_docker.bat logs --follow      # View live logs
+./airsim_ros2_docker.bat stop               # Stop container
+./airsim_ros2_docker.bat clean              # Remove container/image
+
+# Inside container (you'll be in /airsim_ros2_ws)
+./launch_airsim_ros2.sh     # Quick launch AirSim ROS2
+build_interfaces            # Rebuild interface packages
+build_pkgs                  # Rebuild main packages
+build                       # Rebuild entire workspace
+source_ws                   # Source the workspace
+
+# Fix permissions if needed
+sudo chown -R $USER:$USER build install log
+```
+
+#### Ultra-Swarm Docker Commands
+
+**For WSL2 + Windows AirSim (Recommended):**
+```bash
+# Prerequisites: AirSim running on Windows, PX4 in WSL2
+# 1. On Windows: Configure firewall (PowerShell as Admin)
+.\docker\px4_airsim_docker_v2\windows-firewall-setup.ps1
+
+# 2. Copy ultra-swarm settings to Windows AirSim directory
+# Copy docker_clean/ultra_swarm/settings.json to C:\Users\[YourName]\Documents\AirSim\settings.json
+
+# 3. Start AirSim on Windows (e.g., Blocks.exe)
+
+# 4. In WSL2: Navigate to ultra-swarm directory
+cd docker/px4_airsim_docker_v2
+
+# 5. Use WSL2-aware launcher (automatically detects Windows IP)
+./tools/start-ultra-swarm-wsl.sh single          # Test with 1 drone
+./tools/start-ultra-swarm-wsl.sh test-3          # Test with 3 drones  
+./tools/start-ultra-swarm-wsl.sh swarm1-full     # Full 9 drones
+./tools/start-ultra-swarm-wsl.sh status          # Check status
+./tools/start-ultra-swarm-wsl.sh stop            # Stop all
+
+# 6. Monitor connections
+./tools/start-ultra-swarm-wsl.sh logs px4-swarm-1-drone-1
+```
+
+**For Linux-only setup:**
+```bash
+# Prerequisites: Start AirSim with ultra-swarm settings on Linux
+cp docker_clean/ultra_swarm/settings.json ~/Documents/AirSim/settings.json
+cd Unreal/Environments/Blocks && ./Blocks.sh  # Start AirSim in separate terminal
+
+# Navigate to ultra-swarm directory
+cd docker/px4_airsim_docker_v2
+
+# Start single drone (testing)
+docker-compose -f docker-compose.ultra-swarm.yml up px4-swarm-1-drone-1
+
+# Start 3 drones (basic swarm testing)
+docker-compose -f docker-compose.ultra-swarm.yml up px4-swarm-1-drone-1 px4-swarm-1-drone-2 px4-swarm-1-drone-3
+
+# Start full swarm (9 drones)
+docker-compose -f docker-compose.ultra-swarm.yml up px4-swarm-1-drone-{1..9}
+
+# Monitor connections
+docker-compose -f docker-compose.ultra-swarm.yml logs -f px4-swarm-1-drone-1
+
+# Stop swarm
+docker-compose -f docker-compose.ultra-swarm.yml down
+```
+
+**Environment Detection and Auto-Configuration:**
+```bash
+# Check your environment and get recommendations
+cd docker_clean/config_generator/tools
+python3 wsl2_detector.py --status
+
+# Auto-update configuration files for your environment
+python3 wsl2_detector.py --auto-update docker/px4_airsim_docker_v2
+
+# Manually update specific files
+python3 wsl2_detector.py --update-settings ~/Documents/AirSim/settings.json
+python3 wsl2_detector.py --update-compose docker/px4_airsim_docker_v2/docker-compose.ultra-swarm.yml
+```
+
+#### General Docker Commands
 ```bash
 # Run AirSim in Docker
 ./airsim_docker.bat         # Windows
 ./docker/run_airsim_image_binary.sh  # Linux
-
-# ROS2 integration
-./airsim_ros2_docker.bat    # Windows with VNC
 
 # Using generated configurations
 cd docker_clean/config_generator/tools
@@ -116,12 +208,15 @@ python unified_generator.py multi --num-drones 3
 
 # Check container status
 docker-compose ps
+docker ps                   # List running containers
 
 # Access running containers
 docker exec -it <container_name> bash
+docker exec -it airsim-vnc-ros2 /bin/bash  # ROS2 container
 
 # View container logs
 docker logs <container_name>
+docker logs -f airsim-vnc-ros2  # Follow ROS2 logs
 
 # Common container operations
 docker exec -it airsim_container ls -la  # Check file permissions
@@ -134,6 +229,21 @@ docker exec -it px4_container /bin/bash   # Access PX4 container
 - Use container names for service communication in Docker network
 - Check container logs first when debugging issues
 - Volume mounts enable live code reloading during development
+
+### Network Troubleshooting
+If experiencing MAVLink connectivity issues between PX4 and AirSim:
+
+```bash
+# Quick environment check and network diagnostics
+cd docker_clean/config_generator/tools
+python3 wsl2_detector.py --status
+python3 network_tester.py
+
+# Auto-fix common network configuration issues
+python3 wsl2_detector.py --auto-update docker/px4_airsim_docker_v2
+```
+
+For detailed troubleshooting, see: [MAVLink Networking Troubleshooting Guide](docs/mavlink_networking_troubleshooting.md)
 
 ## High-Level Architecture
 
