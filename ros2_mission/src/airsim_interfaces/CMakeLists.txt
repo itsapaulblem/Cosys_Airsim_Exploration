@@ -12,7 +12,7 @@ find_package(ament_cmake REQUIRED)
 find_package(rosidl_default_generators REQUIRED)
 find_package(std_msgs REQUIRED)
 find_package(geometry_msgs REQUIRED)
-find_package(geographic_msgs REQUIRED)
+# find_package(geographic_msgs REQUIRED)
 
 rosidl_generate_interfaces(${PROJECT_NAME}
   "msg/GimbalAngleEulerCmd.msg"
@@ -38,7 +38,9 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "srv/RefreshInstanceSegmentation.srv"
   "srv/RefreshObjectTransforms.srv"
   "srv/SetLocalPosition.srv"
-  "srv/ListSceneObjectTags.srv" DEPENDENCIES std_msgs geometry_msgs geographic_msgs LIBRARY_NAME ${PROJECT_NAME}
+  "srv/SetAltitude.srv"
+  "srv/CoordinatedHeightAndLand.srv"
+  "srv/ListSceneObjectTags.srv" DEPENDENCIES std_msgs geometry_msgs LIBRARY_NAME ${PROJECT_NAME}
 )
 
 ament_export_dependencies(rosidl_default_runtime)

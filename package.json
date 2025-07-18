@@ -1,0 +1,5 @@
+{
+  "dependencies": {
+    "mcp-server-wsl-filesystem": "^1.3.0"
+  }
+}

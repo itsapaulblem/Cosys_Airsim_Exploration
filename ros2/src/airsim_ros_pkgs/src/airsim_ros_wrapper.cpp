@@ -1,10 +1,6 @@
 #include <airsim_ros_wrapper.h>
 #include "common/AirSimSettings.hpp"
 #include <tf2_sensor_msgs/tf2_sensor_msgs.h>
-#include <chrono>
-#include <future>
-#include <thread>
-#include <algorithm>
 
 using namespace std::placeholders;
 
@@ -227,12 +223,6 @@ void AirsimROSWrapper::create_ros_pubs_from_settings_json()
             std::function<bool(std::shared_ptr<airsim_interfaces::srv::Land::Request>, std::shared_ptr<airsim_interfaces::srv::Land::Response>)> fcn_land_srvr = std::bind(&AirsimROSWrapper::land_srv_cb, this, _1, _2, vehicle_ros->vehicle_name_);
             drone->land_srvr_ = nh_->create_service<airsim_interfaces::srv::Land>(topic_prefix + "/land", fcn_land_srvr);
 
-            std::function<bool(std::shared_ptr<airsim_interfaces::srv::SetAltitude::Request>, std::shared_ptr<airsim_interfaces::srv::SetAltitude::Response>)> fcn_set_altitude_srvr = std::bind(&AirsimROSWrapper::set_altitude_srv_cb, this, _1, _2, vehicle_ros->vehicle_name_);
-            drone->set_altitude_srvr_ = nh_->create_service<airsim_interfaces::srv::SetAltitude>(topic_prefix + "/set_altitude", fcn_set_altitude_srvr);
-
-            std::function<bool(std::shared_ptr<airsim_interfaces::srv::SetLocalPosition::Request>, std::shared_ptr<airsim_interfaces::srv::SetLocalPosition::Response>)> fcn_set_local_position_srvr = std::bind(&AirsimROSWrapper::set_local_position_srv_cb, this, _1, _2, vehicle_ros->vehicle_name_);
-            drone->set_local_position_srvr_ = nh_->create_service<airsim_interfaces::srv::SetLocalPosition>(topic_prefix + "/set_local_position", fcn_set_local_position_srvr);
-
             // vehicle_ros.reset_srvr = nh_->create_service(curr_vehicle_name + "/reset",&AirsimROSWrapper::reset_srv_cb, this);
         }
         else if(airsim_mode_ == AIRSIM_MODE::CAR) {
@@ -415,9 +405,6 @@ void AirsimROSWrapper::create_ros_pubs_from_settings_json()
 
     // todo add per vehicle reset in AirLib API
     reset_srvr_ = nh_->create_service<airsim_interfaces::srv::Reset>("~/reset", std::bind(&AirsimROSWrapper::reset_srv_cb, this, _1, _2));
-
-    // Coordinated height and land service (multi-vehicle coordination)
-    coordinated_height_and_land_srvr_ = nh_->create_service<airsim_interfaces::srv::CoordinatedHeightAndLand>("~/coordinated_height_and_land", std::bind(&AirsimROSWrapper::coordinated_height_and_land_srv_cb, this, _1, _2));
 
     list_scene_object_tags_srvr_ = nh_->create_service<airsim_interfaces::srv::ListSceneObjectTags>("~/list_scene_object_tags", std::bind(&AirsimROSWrapper::list_scene_object_tags_srv_cb, this, _1, _2));
 
@@ -606,81 +593,6 @@ bool AirsimROSWrapper::land_all_srv_cb(std::shared_ptr<airsim_interfaces::srv::L
     return true; //todo
 }
 
-bool AirsimROSWrapper::set_altitude_srv_cb(std::shared_ptr<airsim_interfaces::srv::SetAltitude::Request> request, std::shared_ptr<airsim_interfaces::srv::SetAltitude::Response> response, const std::string& vehicle_name)
-{
-    std::lock_guard<std::mutex> guard(control_mutex_);
-
-    try {
-        // Default velocity if not specified or invalid
-        float velocity = (request->velocity > 0) ? request->velocity : 5.0f;
-        
-        RCLCPP_INFO(nh_->get_logger(), "Setting altitude for vehicle '%s' to z=%.2f with velocity=%.2f", 
-                    vehicle_name.c_str(), request->z, velocity);
-        
-        bool success;
-        if (request->wait_on_last_task) {
-            success = static_cast<msr::airlib::MultirotorRpcLibClient*>(airsim_client_.get())->moveToZAsync(
-                request->z, velocity, 30.0f, msr::airlib::YawMode(), -1, 1, vehicle_name)->waitOnLastTask();
-        } else {
-            static_cast<msr::airlib::MultirotorRpcLibClient*>(airsim_client_.get())->moveToZAsync(
-                request->z, velocity, 30.0f, msr::airlib::YawMode(), -1, 1, vehicle_name);
-            success = true; // For async calls, we assume success unless there's an immediate error
-        }
-        
-        response->success = success;
-        response->message = success ? "Altitude change command sent successfully" : "Failed to execute altitude change";
-        
-        RCLCPP_INFO(nh_->get_logger(), "Altitude service response: %s", response->message.c_str());
-        
-    } catch (const std::exception& e) {
-        response->success = false;
-        response->message = std::string("Error setting altitude: ") + e.what();
-        RCLCPP_ERROR(nh_->get_logger(), "Exception in set_altitude_srv_cb: %s", e.what());
-    }
-
-    return true;
-}
-
-bool AirsimROSWrapper::set_local_position_srv_cb(std::shared_ptr<airsim_interfaces::srv::SetLocalPosition::Request> request, std::shared_ptr<airsim_interfaces::srv::SetLocalPosition::Response> response, const std::string& vehicle_name)
-{
-    std::lock_guard<std::mutex> guard(control_mutex_);
-
-    try {
-        RCLCPP_INFO(nh_->get_logger(), "Setting local position for vehicle '%s' to (%.2f, %.2f, %.2f) with yaw=%.2f", 
-                    vehicle_name.c_str(), request->x, request->y, request->z, request->yaw);
-        
-        // Create position vector and yaw mode
-        msr::airlib::Vector3r position(request->x, request->y, request->z);
-        msr::airlib::YawMode yaw_mode;
-        yaw_mode.is_rate = false;
-        yaw_mode.yaw_or_rate = request->yaw;
-        
-        bool success;
-        if (request->wait_on_last_task) {
-            success = static_cast<msr::airlib::MultirotorRpcLibClient*>(airsim_client_.get())->moveToPositionAsync(
-                position.x(), position.y(), position.z(), 5.0f, 30.0f, msr::airlib::DrivetrainType::MaxDegreeOfFreedom, 
-                yaw_mode, -1, 1, vehicle_name)->waitOnLastTask();
-        } else {
-            static_cast<msr::airlib::MultirotorRpcLibClient*>(airsim_client_.get())->moveToPositionAsync(
-                position.x(), position.y(), position.z(), 5.0f, 30.0f, msr::airlib::DrivetrainType::MaxDegreeOfFreedom,
-                yaw_mode, -1, 1, vehicle_name);
-            success = true; // For async calls, we assume success unless there's an immediate error
-        }
-        
-        response->success = success;
-        response->message = success ? "Local position command sent successfully" : "Failed to execute local position command";
-        
-        RCLCPP_INFO(nh_->get_logger(), "Local position service response: %s", response->message.c_str());
-        
-    } catch (const std::exception& e) {
-        response->success = false;
-        response->message = std::string("Error setting local position: ") + e.what();
-        RCLCPP_ERROR(nh_->get_logger(), "Exception in set_local_position_srv_cb: %s", e.what());
-    }
-
-    return true;
-}
-
 // todo add reset by vehicle_name API to airlib
 // todo not async remove wait_on_last_task
 bool AirsimROSWrapper::reset_srv_cb(std::shared_ptr<airsim_interfaces::srv::Reset::Request> request, std::shared_ptr<airsim_interfaces::srv::Reset::Response> response)
@@ -704,155 +616,6 @@ bool AirsimROSWrapper::list_scene_object_tags_srv_cb(const std::shared_ptr<airsi
         response->objects.push_back(pair.first);
         response->tags.push_back(pair.second);
     }
-    return true;
-}
-
-bool AirsimROSWrapper::coordinated_height_and_land_srv_cb(std::shared_ptr<airsim_interfaces::srv::CoordinatedHeightAndLand::Request> request, std::shared_ptr<airsim_interfaces::srv::CoordinatedHeightAndLand::Response> response)
-{
-    std::lock_guard<std::mutex> guard(control_mutex_);
-    
-    auto start_time = std::chrono::steady_clock::now();
-    
-    try {
-        // Determine which vehicles to command
-        std::vector<std::string> target_vehicles;
-        if (request->vehicle_names.empty()) {
-            // Use all available vehicles
-            for (const auto& vehicle_pair : vehicle_name_ptr_map_) {
-                target_vehicles.push_back(vehicle_pair.first);
-            }
-        } else {
-            // Use specified vehicles
-            target_vehicles = request->vehicle_names;
-        }
-        
-        if (target_vehicles.empty()) {
-            response->success = false;
-            response->message = "No vehicles available for coordinated operation";
-            response->total_time = 0.0;
-            response->vehicles_completed = 0;
-            response->vehicles_attempted = 0;
-            return true;
-        }
-        
-        RCLCPP_INFO(nh_->get_logger(), "Starting coordinated height and land operation for %lu vehicles to height %.2f", 
-                    target_vehicles.size(), request->target_height);
-        
-        response->vehicles_attempted = static_cast<int32_t>(target_vehicles.size());
-        std::vector<std::string> failed_vehicles;
-        
-        // Default values
-        float ascent_speed = (request->ascent_speed > 0) ? request->ascent_speed : 2.0f;
-        float hover_time = (request->hover_time >= 0) ? request->hover_time : 2.0f;
-        
-        // Phase 1: Send all vehicles to target height simultaneously
-        RCLCPP_INFO(nh_->get_logger(), "Phase 1: Moving all vehicles to target height %.2f", request->target_height);
-        
-        std::vector<std::future<bool>> height_futures;
-        for (const auto& vehicle_name : target_vehicles) {
-            try {
-                auto future = static_cast<msr::airlib::MultirotorRpcLibClient*>(airsim_client_.get())->moveToZAsync(
-                    request->target_height, ascent_speed, 30.0f, msr::airlib::YawMode(), -1, 1, vehicle_name);
-                height_futures.push_back(std::move(future));
-            } catch (const std::exception& e) {
-                RCLCPP_ERROR(nh_->get_logger(), "Failed to send height command to vehicle %s: %s", vehicle_name.c_str(), e.what());
-                failed_vehicles.push_back(vehicle_name);
-            }
-        }
-        
-        // Wait for all height commands to complete if requested
-        if (request->wait_on_last_task) {
-            for (size_t i = 0; i < height_futures.size(); ++i) {
-                try {
-                    bool success = height_futures[i].waitOnLastTask();
-                    if (!success) {
-                        RCLCPP_WARN(nh_->get_logger(), "Vehicle %s failed to reach target height", target_vehicles[i].c_str());
-                        failed_vehicles.push_back(target_vehicles[i]);
-                    }
-                } catch (const std::exception& e) {
-                    RCLCPP_ERROR(nh_->get_logger(), "Exception waiting for vehicle %s height: %s", target_vehicles[i].c_str(), e.what());
-                    failed_vehicles.push_back(target_vehicles[i]);
-                }
-            }
-        }
-        
-        // Phase 2: Hover at target height
-        if (hover_time > 0) {
-            RCLCPP_INFO(nh_->get_logger(), "Phase 2: Hovering for %.1f seconds", hover_time);
-            std::this_thread::sleep_for(std::chrono::milliseconds(static_cast<int>(hover_time * 1000)));
-        }
-        
-        // Phase 3: Land all vehicles simultaneously
-        RCLCPP_INFO(nh_->get_logger(), "Phase 3: Landing all vehicles");
-        
-        std::vector<std::future<bool>> land_futures;
-        for (const auto& vehicle_name : target_vehicles) {
-            // Skip vehicles that failed height command
-            if (std::find(failed_vehicles.begin(), failed_vehicles.end(), vehicle_name) != failed_vehicles.end()) {
-                continue;
-            }
-            
-            try {
-                auto future = static_cast<msr::airlib::MultirotorRpcLibClient*>(airsim_client_.get())->landAsync(60, vehicle_name);
-                land_futures.push_back(std::move(future));
-            } catch (const std::exception& e) {
-                RCLCPP_ERROR(nh_->get_logger(), "Failed to send land command to vehicle %s: %s", vehicle_name.c_str(), e.what());
-                failed_vehicles.push_back(vehicle_name);
-            }
-        }
-        
-        // Wait for all landing commands to complete if requested
-        if (request->wait_on_last_task) {
-            size_t land_index = 0;
-            for (const auto& vehicle_name : target_vehicles) {
-                // Skip vehicles that failed height command
-                if (std::find(failed_vehicles.begin(), failed_vehicles.end(), vehicle_name) != failed_vehicles.end()) {
-                    continue;
-                }
-                
-                try {
-                    bool success = land_futures[land_index].waitOnLastTask();
-                    if (!success) {
-                        RCLCPP_WARN(nh_->get_logger(), "Vehicle %s failed to land", vehicle_name.c_str());
-                        failed_vehicles.push_back(vehicle_name);
-                    }
-                    land_index++;
-                } catch (const std::exception& e) {
-                    RCLCPP_ERROR(nh_->get_logger(), "Exception waiting for vehicle %s landing: %s", vehicle_name.c_str(), e.what());
-                    failed_vehicles.push_back(vehicle_name);
-                    land_index++;
-                }
-            }
-        }
-        
-        // Calculate results
-        auto end_time = std::chrono::steady_clock::now();
-        auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
-        
-        response->total_time = duration.count() / 1000.0;
-        response->vehicles_completed = response->vehicles_attempted - static_cast<int32_t>(failed_vehicles.size());
-        response->failed_vehicles = failed_vehicles;
-        response->success = failed_vehicles.empty();
-        
-        if (response->success) {
-            response->message = "All vehicles successfully completed coordinated height and land operation";
-            RCLCPP_INFO(nh_->get_logger(), "Coordinated operation completed successfully in %.2f seconds", response->total_time);
-        } else {
-            response->message = "Coordinated operation completed with failures on " + std::to_string(failed_vehicles.size()) + " vehicles";
-            RCLCPP_WARN(nh_->get_logger(), "Coordinated operation completed with %lu failures in %.2f seconds", failed_vehicles.size(), response->total_time);
-        }
-        
-    } catch (const std::exception& e) {
-        auto end_time = std::chrono::steady_clock::now();
-        auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
-        
-        response->success = false;
-        response->message = std::string("Coordinated operation failed: ") + e.what();
-        response->total_time = duration.count() / 1000.0;
-        response->vehicles_completed = 0;
-        RCLCPP_ERROR(nh_->get_logger(), "Exception in coordinated_height_and_land_srv_cb: %s", e.what());
-    }
-
     return true;
 }
 

@@ -44,7 +44,9 @@
       "Bash(timeout:*)",
       "Bash(git rm:*)",
       "Bash(git add:*)",
-      "Bash(./commit_docs.sh:*)"
+      "Bash(./commit_docs.sh:*)",
+      "Bash(git stash:*)",
+      "mcp__mcp-compass__recommend-mcp-servers"
     ],
     "deny": []
   }
