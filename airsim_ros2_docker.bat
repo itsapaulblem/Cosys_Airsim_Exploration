@@ -67,6 +67,10 @@ if /i "%~1"=="status" (
     set "COMMAND=status"
     shift & goto :parse_args
 )
+if /i "%~1"=="maintenance" (
+    set "COMMAND=maintenance"
+    shift & goto :parse_args
+)
 if /i "%~1"=="help" (
     set "COMMAND=help"
     shift & goto :parse_args
@@ -151,6 +155,7 @@ if /i "%COMMAND%"=="logs" call :show_logs
 if /i "%COMMAND%"=="shell" call :open_shell
 if /i "%COMMAND%"=="clean" call :clean_up
 if /i "%COMMAND%"=="status" call :show_status
+if /i "%COMMAND%"=="maintenance" call :run_maintenance
 
 exit /b 0
 
@@ -166,6 +171,7 @@ echo     logs        Show container logs
 echo     shell       Open a shell in the running container
 echo     clean       Remove container and image
 echo     status      Show container status
+echo     maintenance Run container maintenance (fix permissions, etc.)
 echo     help        Show this help message
 echo.
 echo Options:
@@ -333,7 +339,7 @@ call :print_header "Opening Shell in Container"
 docker ps --format "table {{.Names}}" | findstr /r /c:"^%CONTAINER_NAME%$" >nul 2>&1
 if not errorlevel 1 (
     call :print_status "Opening cmd shell in container: %CONTAINER_NAME%"
-    docker exec -it "%CONTAINER_NAME%" /bin/bash
+    docker exec -it -u Aortz "%CONTAINER_NAME%" /bin/bash
 ) else (
     call :print_warning "Container '%CONTAINER_NAME%' is not running."
     call :print_status "Use '%~nx0 run' to start the container first."
@@ -393,5 +399,18 @@ if not errorlevel 1 (
     call :print_status "Image '%IMAGE_NAME%:%IMAGE_TAG%' exists"
 ) else (
     call :print_warning "Image '%IMAGE_NAME%:%IMAGE_TAG%' does not exist"
+)
+exit /b 0
+
+:run_maintenance
+call :print_header "Running Container Maintenance"
+
+docker ps --format "table {{.Names}}" | findstr /r /c:"^%CONTAINER_NAME%$" >nul 2>&1
+if not errorlevel 1 (
+    call :print_status "Running maintenance script in container: %CONTAINER_NAME%"
+    docker exec -it -u Aortz "%CONTAINER_NAME%" /usr/local/bin/maintenance
+) else (
+    call :print_warning "Container '%CONTAINER_NAME%' is not running."
+    call :print_status "Use '%~nx0 run' to start the container first."
 )
 exit /b 0

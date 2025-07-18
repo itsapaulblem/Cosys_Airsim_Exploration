@@ -14,41 +14,57 @@ A complete analysis of AirSim's RPC system covering:
 - **C++ Server Implementation**: API provider architecture and multi-vehicle support
 - **ROS2 Bridge Architecture**: Bridge design and message type integration
 - **Complete Message Flow Analysis**: End-to-end trace of command execution
+- **MAVLink Integration**: Flight controller integration and dual-channel architecture
 - **Integration Patterns**: Cross-language communication strategies
 - **Performance Analysis**: Optimization opportunities and recommendations
 
 ## Key Concepts
 
-### RPC Architecture Layers
+### Dual-Channel Architecture
+AirSim employs a sophisticated dual-channel communication system:
+
 ```
 Client Applications (Python/ROS2/MATLAB)
            ↓
-    msgpack-rpc over TCP
+    msgpack-rpc over TCP (Port 41451)
            ↓
    C++ RPC Server (AirLib)
            ↓
+   MavLinkMultirotorApi Bridge
+           ↓
+    MAVLink over UDP (Port 14550)
+           ↓
+   Flight Controller (PX4/ArduPilot)
+           ↓
    Unreal Engine Plugin
 ```
+
+### Communication Channels
+- **RPC Channel**: High-level mission control (seconds to minutes)
+- **MAVLink Channel**: Real-time flight control (milliseconds, 250Hz)
 
 ### Core Components
 - **RpcLibServerBase**: Base server infrastructure
 - **RpcLibClientBase**: Base client communication
 - **RpcLibAdaptorsBase**: Serialization/deserialization
 - **ApiProvider**: Vehicle discovery and API dispatch
+- **MavLinkMultirotorApi**: Protocol translation bridge
 - **Vehicle-Specific APIs**: Specialized implementations per vehicle type
 
 ### Design Patterns
 - **Facade Pattern**: Simplified interfaces to complex systems
 - **Adapter Pattern**: Type conversion and serialization
+- **Strategy Pattern**: Pluggable vehicle API implementations (SimpleFlight vs MAVLink)
 - **PIMPL Idiom**: Implementation hiding and dependency management
 
 ## Quick Reference
 
 ### Default Configuration
-- **Port**: 41451
-- **Protocol**: TCP
+- **RPC Port**: 41451 (TCP)
+- **MAVLink Port**: 14550 (UDP)
 - **Serialization**: msgpack binary format
 - **Threading**: Async thread pool for concurrent requests
+- **Flight Controller**: PX4/ArduPilot integration via MAVLink
 
 ### Vehicle Types Supported
 - **Multirotor**: Drones with flight control capabilities
@@ -98,5 +114,7 @@ Client Applications (Python/ROS2/MATLAB)
 ## Related Documentation
 - [Core APIs](../core/apis.md)
 - [ROS2 Integration](../ros2/README.md)
+- [PX4 Integration](../px4/README.md)
+- [MAVLink Architecture](../mavlinkcom_design/airsim_px4_network_architecture.md)
 - [Multi-Vehicle Setup](../core/multi_vehicle.md)
 - [Python Client Guide](../core/apis.md)

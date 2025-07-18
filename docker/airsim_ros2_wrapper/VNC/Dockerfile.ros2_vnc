@@ -127,13 +127,18 @@ RUN echo -e "source /opt/ros/humble/setup.bash\nsource /airsim_ros2_ws/install/s
     && chown Aortz:Aortz /home/Aortz/.bashrc
 
 # Create convenient aliases for development
-RUN echo -e "alias ll='ls -alF'\nalias la='ls -A'\nalias l='ls -CF'\n# Fix permissions before building\nalias fix_perms='sudo chown -R \$USER:\$USER /airsim_ros2_ws/log /airsim_ros2_ws/build /airsim_ros2_ws/install /airsim_ros2_ws/src 2>/dev/null || true'\nalias build='fix_perms && colcon build --symlink-install'\nalias build_interfaces='fix_perms && colcon build --packages-select airsim_interfaces'\nalias build_pkgs='fix_perms && colcon build --packages-select airsim_ros_pkgs'\nalias source_ws='source install/setup.bash'\nalias clean_build='rm -rf build install log && colcon build --symlink-install'" >> /home/Aortz/.bashrc
+RUN echo -e "alias ll='ls -alF'\nalias la='ls -A'\nalias l='ls -CF'\n# Fix permissions before building\nalias fix_perms='sudo chown -R \$USER:\$USER /airsim_ros2_ws/log /airsim_ros2_ws/build /airsim_ros2_ws/install /airsim_ros2_ws/src 2>/dev/null || true'\nalias build='fix_perms && colcon build --symlink-install'\nalias build_interfaces='fix_perms && colcon build --packages-select airsim_interfaces'\nalias build_pkgs='fix_perms && colcon build --packages-select airsim_ros_pkgs'\nalias source_ws='source install/setup.bash'\nalias clean_build='rm -rf build install log && colcon build --symlink-install'\n# Auto fix permissions when starting shell\nif [ -f /airsim_ros2_ws/fix_permissions.sh ]; then\n    /airsim_ros2_ws/fix_permissions.sh > /dev/null 2>&1\nfi" >> /home/Aortz/.bashrc
 
 # Enhanced launch script with connectivity check
 COPY docker/airsim_ros2_wrapper/VNC/launch_airsim_ros2.sh /launch_airsim_ros2.sh
 RUN chmod +x /launch_airsim_ros2.sh \
     && cp /launch_airsim_ros2.sh /airsim_ros2_ws/launch_airsim_ros2.sh \
     && chmod +x /airsim_ros2_ws/launch_airsim_ros2.sh
+
+# Copy colcon wrapper script and maintenance script
+COPY docker/airsim_ros2_wrapper/VNC/colcon_wrapper.sh /usr/local/bin/colcon_wrapper
+COPY docker/airsim_ros2_wrapper/VNC/maintenance.sh /usr/local/bin/maintenance
+RUN chmod +x /usr/local/bin/colcon_wrapper /usr/local/bin/maintenance
 
 # Create development helper scripts
 RUN echo '#!/bin/bash\necho "Building AirSim ROS2 workspace..."\ncd /airsim_ros2_ws\n# Fix permissions first\nsudo chown -R $USER:$USER /airsim_ros2_ws/log /airsim_ros2_ws/build /airsim_ros2_ws/install /airsim_ros2_ws/src 2>/dev/null || true\nsource /opt/ros/humble/setup.bash\ncolcon build --symlink-install --packages-select airsim_interfaces airsim_ros_pkgs\necho "Build complete! Source the workspace with: source install/setup.bash"' > /build_workspace.sh \

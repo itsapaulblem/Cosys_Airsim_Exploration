@@ -119,6 +119,16 @@ mkdir -p /airsim_ros2_ws/log /airsim_ros2_ws/build /airsim_ros2_ws/install
 chown -R "$USER:$USER" /airsim_ros2_ws/log /airsim_ros2_ws/build /airsim_ros2_ws/install /airsim_ros2_ws/src
 chmod -R 755 /airsim_ros2_ws/log /airsim_ros2_ws/build /airsim_ros2_ws/install
 
+# Create permission fix script that users can run
+cat > /airsim_ros2_ws/fix_permissions.sh << 'EOF'
+#!/bin/bash
+echo "Fixing workspace permissions for user: $USER"
+sudo chown -R $USER:$USER /airsim_ros2_ws/log /airsim_ros2_ws/build /airsim_ros2_ws/install /airsim_ros2_ws/src 2>/dev/null || true
+chmod -R 755 /airsim_ros2_ws/log /airsim_ros2_ws/build /airsim_ros2_ws/install 2>/dev/null || true
+echo "Permissions fixed!"
+EOF
+chmod +x /airsim_ros2_ws/fix_permissions.sh
+
 # Kill any existing VNC processes
 print_info "Cleaning up existing VNC processes"
 sudo -u "$USER" vncserver -kill :$DISPLAY_NUM 2>/dev/null || true
