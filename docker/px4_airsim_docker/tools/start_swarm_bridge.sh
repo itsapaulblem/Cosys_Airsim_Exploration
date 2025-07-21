@@ -67,14 +67,14 @@ test_connectivity() {
 
 # Check Bridge Network environment
 detect_bridge_network() {
-    print_status "Bridge Network Mode - Docker containers will use host.docker.internal"
+    print_status "Bridge Network Mode - Docker containers will use Windows Host IP"
     
-    # Test connectivity to AirSim via host.docker.internal
-    print_status "Testing connectivity to host.docker.internal..."
-    if test_connectivity "host.docker.internal" 41451; then
-        print_status "✅ AirSim API accessible via host.docker.internal:41451"
+    # Test connectivity to AirSim via Windows Host IP
+    print_status "Testing connectivity to Windows Host IP..."
+    if test_connectivity "Windows Host IP" 41451; then
+        print_status "✅ AirSim API accessible via Windows Host IP:41451"
     else
-        print_warning "⚠️  AirSim API not accessible via host.docker.internal:41451"
+        print_warning "⚠️  AirSim API not accessible via Windows Host IP:41451"
         print_warning "   Make sure AirSim is running and configured for bridge network access"
     fi
     
@@ -138,7 +138,7 @@ start_containers() {
     echo ""
     print_header "Next Steps:"
     echo "• Containers are running in bridge network mode but PX4 SITL is not started yet"
-    echo "• Containers use host.docker.internal to reach AirSim on the host"
+    echo "• Containers use Windows Host IP to reach AirSim on the host"
     echo "• Use '$0 run-px4 <container_name>' to start PX4 in specific container"
     echo "• Use '$0 run-all-px4' to start PX4 in all running containers"
     echo "• Use '$0 status' to check container status"
@@ -172,12 +172,12 @@ run_px4_in_container() {
             echo "🚀 Starting PX4 SITL with instance $PX4_INSTANCE (bridge network)..."
             
             # Set environment variables for this instance
-            export PX4_SIM_HOSTNAME=${PX4_SIM_HOSTNAME:-host.docker.internal}
+            export PX4_SIM_HOSTNAME=${PX4_SIM_HOSTNAME:-Windows Host IP}
             export PX4_SIM_MODEL=${PX4_SIM_MODEL:-iris}
             
             # Show which hostname is being used for debugging
             echo "🔗 Using PX4_SIM_HOSTNAME: $PX4_SIM_HOSTNAME"
-            echo "🌐 Network mode: Bridge (host.docker.internal)"
+            echo "🌐 Network mode: Bridge (Windows Host IP)"
             
             # Start PX4 SITL using the script
             ./Scripts/run_airsim_sitl.sh $PX4_INSTANCE
@@ -251,7 +251,7 @@ show_status() {
     print_header "Summary:"
     echo "• Running containers: $running_count/${#DEFAULT_CONTAINERS[@]}"
     echo "• PX4 instances: $px4_running_count/${#DEFAULT_CONTAINERS[@]}"
-    echo "• Network mode: Bridge (host.docker.internal)"
+    echo "• Network mode: Bridge (Windows Host IP)"
 }
 
 # Function to show logs for a container
@@ -291,13 +291,13 @@ restart_containers() {
 test_network_connectivity() {
     print_header "Bridge Network Connectivity Test"
     
-    # Test host.docker.internal connectivity
-    print_status "Testing host.docker.internal connectivity..."
+    # Test Windows Host IP connectivity
+    print_status "Testing Windows Host IP connectivity..."
     
-    if test_connectivity "host.docker.internal" 41451; then
-        print_status "✅ AirSim API (41451): ACCESSIBLE via host.docker.internal"
+    if test_connectivity "Windows Host IP" 41451; then
+        print_status "✅ AirSim API (41451): ACCESSIBLE via Windows Host IP"
     else
-        print_error "❌ AirSim API (41451): NOT ACCESSIBLE via host.docker.internal"
+        print_error "❌ AirSim API (41451): NOT ACCESSIBLE via Windows Host IP"
     fi
     
     # Test PX4 SITL ports (4561-4563)
@@ -339,7 +339,7 @@ show_config() {
     # Compose file settings
     if [[ -f "$COMPOSE_FILE" ]]; then
         print_status "Compose file: $COMPOSE_FILE"
-        print_status "PX4_SIM_HOSTNAME: host.docker.internal (Docker host alias for bridge mode)"
+        print_status "PX4_SIM_HOSTNAME: Windows Host IP (Docker host alias for bridge mode)"
         print_status "Network: Custom bridge network (172.20.0.0/16)"
     else
         print_error "Compose file not found: $COMPOSE_FILE"
@@ -389,7 +389,7 @@ show_help() {
     echo "  help                 Show this help"
     echo ""
     echo "Bridge Network Features:"
-    echo "  • Uses host.docker.internal to reach AirSim"
+    echo "  • Uses Windows Host IP to reach AirSim"
     echo "  • Port mapping: localhost:4561-4569 -> containers"
     echo "  • Compatible with Docker Desktop Enhanced Container Isolation"
     echo "  • Custom bridge network (172.20.0.0/16) for better isolation"
@@ -400,7 +400,7 @@ show_help() {
     echo "  $0 logs px4-bridge-drone-1 follow    # Follow logs for drone 1"
     echo "  $0 status                             # Check all container status"
     echo "  $0 show-config                        # Show bridge configuration"
-    echo "  $0 test-connection                    # Test host.docker.internal connectivity"
+    echo "  $0 test-connection                    # Test Windows Host IP connectivity"
     echo ""
     echo "Notes:"
     echo "  • AirSim should be configured with ApiServerEndpoint: '0.0.0.0:41451'"

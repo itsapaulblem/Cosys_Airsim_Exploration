@@ -25,15 +25,25 @@ find_package(OpenCV REQUIRED)
 find_package(pcl_conversions REQUIRED)
 find_package(PCL REQUIRED)
 
-set(AIRSIM_ROOT /airsim_ros2_ws)
+# Set AIRSIM_ROOT to the workspace directory where AirLib, MavLinkCom, etc. are located
+# For Docker environment, use absolute path
+if(EXISTS "/airsim_ros2_ws/cmake")
+    set(AIRSIM_ROOT "/airsim_ros2_ws")
+else()
+    # Fallback to relative path for local development
+    set(AIRSIM_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/../../../)
+endif()
+
+# Only add the required subdirectories for ROS2, not the examples/tests
+# Set CMAKE variable to prevent building examples in subdirectories
+set(BUILD_AIRSIM_EXAMPLES OFF CACHE BOOL "Disable AirSim examples" FORCE)
 
 add_subdirectory("${AIRSIM_ROOT}/cmake/rpclib_wrapper" rpclib_wrapper)
 add_subdirectory("${AIRSIM_ROOT}/cmake/AirLib" AirLib)
 add_subdirectory("${AIRSIM_ROOT}/cmake/MavLinkCom" MavLinkCom)
 
 set(CMAKE_CXX_STANDARD 17)
-set(CMAKE_CXX_FLAGS "-O3 -Wall -Wextra -Wnoexcept -Wstrict-null-sentinel -fPIC")
-set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -no-pie")
+set(CMAKE_CXX_FLAGS "-O3 -Wall -Wextra -Wnoexcept -Wstrict-null-sentinel -fPIC -fPIE")
 set(CXX_EXP_LIB "-nostdinc++ -I/usr/include/c++/8 -I/usr/include/x86_64-linux-gnu/c++/8 -nodefaultlibs 
 -l/usr/lib/x86_64-linux-gnu/libc++.so -l/usr/lib/x86_64-linux-gnu/libc++abi.so
 -lm -lc -lgcc_s -lgcc
@@ -65,6 +75,64 @@ ament_target_dependencies(pd_position_controller_simple
   tf2
   tf2_ros
   tf2_geometry_msgs
+)
+
+# Vehicle Node Base Classes
+add_library(vehicle_node_base src/vehicles/VehicleNodeBase.cpp)
+target_link_libraries(vehicle_node_base ${OpenCV_LIBS} AirLib airsim_settings_parser)
+target_include_directories(vehicle_node_base PRIVATE 
+  ${AIRSIM_ROOT}/AirLib/deps/eigen3
+  ${AIRSIM_ROOT}/AirLib/include
+  ${RPC_LIB_INCLUDES}
+  ${AIRSIM_ROOT}/MavLinkCom/include
+  ${AIRSIM_ROOT}/MavLinkCom/common_utils
+  ${OpenCV_INCLUDE_DIRS}
+)
+ament_target_dependencies(vehicle_node_base 
+  rclcpp
+  sensor_msgs
+  geometry_msgs
+  nav_msgs
+  tf2_ros
+  airsim_interfaces
+  tf2_geometry_msgs
+  tf2
+  pcl_conversions
+  PCL
+  image_transport
+)
+
+add_library(multirotor_node src/vehicles/MultiRotorNode.cpp)
+target_link_libraries(multirotor_node vehicle_node_base AirLib)
+ament_target_dependencies(multirotor_node 
+  rclcpp
+  airsim_interfaces
+)
+
+add_library(car_node src/vehicles/CarNode.cpp)
+target_link_libraries(car_node vehicle_node_base AirLib)
+ament_target_dependencies(car_node 
+  rclcpp
+  airsim_interfaces
+)
+
+add_library(computer_vision_node src/vehicles/ComputerVisionNode.cpp)
+target_link_libraries(computer_vision_node vehicle_node_base AirLib)
+ament_target_dependencies(computer_vision_node 
+  rclcpp
+  airsim_interfaces
+)
+
+add_library(vehicle_node_factory src/VehicleNodeFactory.cpp)
+target_link_libraries(vehicle_node_factory 
+  vehicle_node_base 
+  multirotor_node 
+  car_node 
+  computer_vision_node 
+  AirLib 
+  airsim_settings_parser)
+ament_target_dependencies(vehicle_node_factory 
+  rclcpp
 )
 
 add_library(airsim_ros src/airsim_ros_wrapper.cpp)
@@ -105,16 +173,24 @@ ament_target_dependencies(pd_position_controller_simple_node
   tf2_geometry_msgs
 )
 
-# rosidl_target_interfaces(airsim_node
-# ${PROJECT_NAME} "rosidl_typesupport_cpp")
+# Test executable for concurrent RPC connections
+add_executable(test_concurrent_rpc src/test_concurrent_rpc.cpp)
+target_link_libraries(test_concurrent_rpc vehicle_node_factory AirLib)
+ament_target_dependencies(test_concurrent_rpc 
+  rclcpp
+)
 
-# rosidl_target_interfaces(pd_position_controller_simple_node
-#   ${PROJECT_NAME} "rosidl_typesupport_cpp")
-
-install(TARGETS airsim_node pd_position_controller_simple_node
+install(TARGETS airsim_node pd_position_controller_simple_node test_concurrent_rpc
   DESTINATION lib/${PROJECT_NAME})
 
-install(TARGETS airsim_ros pd_position_controller_simple
+install(TARGETS 
+  airsim_ros 
+  pd_position_controller_simple
+  vehicle_node_base
+  multirotor_node
+  car_node
+  computer_vision_node
+  vehicle_node_factory
   ARCHIVE
   DESTINATION lib
   LIBRARY
@@ -123,8 +199,6 @@ install(TARGETS airsim_ros pd_position_controller_simple
 install(FILES README.md DESTINATION share/${PROJECT_NAME})
 
 install(DIRECTORY launch rviz DESTINATION share/${PROJECT_NAME})
-
-
 
 ament_export_dependencies(rclcpp)
 ament_export_dependencies(nav_msgs)
@@ -149,7 +223,15 @@ ament_export_dependencies(pcl_conversions)
 ament_export_dependencies(PCL)
 
 ament_export_include_directories(${INCLUDE_DIRS})
-ament_export_libraries(airsim_settings_parser pd_position_controller_simple
-  airsim_ros)
+ament_export_libraries(
+  airsim_settings_parser 
+  pd_position_controller_simple
+  airsim_ros
+  vehicle_node_base
+  multirotor_node
+  car_node
+  computer_vision_node
+  vehicle_node_factory
+)
 
 ament_package()

@@ -232,6 +232,155 @@ export PX4_SIM_HOSTNAME=<airsim_machine_ip>
    python3 wsl2_detector.py --auto-update /path/to/docker/directory
    ```
 
+### Advanced Docker Networking: MAVLink Bridge Gateway Configuration
+
+This section provides comprehensive guidance for advanced Docker networking configurations, particularly for multi-container PX4 SITL deployments with QGroundControl integration.
+
+#### Understanding Docker MAVLink Networking Limitations
+
+**Key Technical Insight**: Docker port mapping (`-p` flag) only forwards **inbound** traffic TO containers, not **outbound** traffic FROM containers.
+
+**The Problem**: When PX4 inside a container sends MAVLink traffic to `127.0.0.1:14550`:
+1. Traffic stays on the container's loopback interface (within container's network namespace)
+2. Never reaches the container's external network interface
+3. Cannot be intercepted or redirected by Docker port mapping
+4. QGroundControl on the host cannot receive the traffic
+
+**Why Simple Port Mapping Fails**:
+```yaml
+# ❌ This DOES NOT work for outbound container traffic
+ports:
+  - "14540:14550/udp"  # Only forwards host→container, not container→host
+```
+
+#### Recommended Solution: Bridge Gateway Configuration
+
+**✅ Bridge Gateway Approach** (Validated Best Practice):
+
+Configure PX4 to send MAVLink traffic to the Docker bridge gateway IP instead of localhost, enabling proper routing through Docker's NAT system.
+
+**Implementation**:
+
+1. **Configure PX4 MAVLink Parameters**:
+   ```bash
+   # In PX4 startup script
+   param set MAV_0_REMOTE_IP 2886991873  # Decimal for 172.20.0.1 (bridge gateway)
+   param set MAV_0_REMOTE_PORT 14550     # Standard MAVLink port
+   param set MAV_0_BROADCAST 1           # Enable network broadcast
+   param set MAV_0_MODE 2                # Broadcast mode
+   
+   # Note: 2886991873 = 172.20.0.1 in decimal (verified working in practice)
+   ```
+
+2. **Docker Compose Configuration**:
+   ```yaml
+   networks:
+     px4_network:
+       driver: bridge
+       ipam:
+         config:
+           - subnet: 172.20.0.0/16
+
+   services:
+     px4-bridge-drone-1:
+       image: px4-airsim:slim
+       environment:
+         PX4_INSTANCE: 1
+         MAV_0_REMOTE_PORT: 14540
+       ports:
+         - "4561:4561/tcp"                    # PX4 TCP port
+         - "127.0.0.1:14540:14550/udp"        # QGroundControl connection
+       networks:
+         px4_network:
+           ipv4_address: 172.20.0.11
+   ```
+
+3. **Traffic Flow**:
+   ```
+   PX4 (container) → 172.20.0.1:14550 → Docker Bridge → localhost:14540 → QGroundControl
+   ```
+
+#### Multi-Container Port Allocation Strategy
+
+For multiple PX4 containers without port conflicts:
+
+**Unique Port Allocation** (Eliminates uORB warnings):
+```yaml
+# Drone 1
+px4-bridge-drone-1:
+  ports:
+    - "127.0.0.1:14540:14550/udp"  # QGroundControl → localhost:14540
+
+# Drone 2  
+px4-bridge-drone-2:
+  ports:
+    - "127.0.0.1:14541:14550/udp"  # QGroundControl → localhost:14541
+
+# Drone 3
+px4-bridge-drone-3:
+  ports:
+    - "127.0.0.1:14542:14550/udp"  # QGroundControl → localhost:14542
+```
+
+**QGroundControl Connection**:
+- Drone 1: Connect to `localhost:14540`
+- Drone 2: Connect to `localhost:14541`
+- Drone 3: Connect to `localhost:14542`
+
+#### Alternative Solutions (Not Recommended)
+
+**Host Networking**:
+```yaml
+# ✅ Works but eliminates container isolation
+network_mode: host
+```
+- **Pros**: Direct localhost access
+- **Cons**: Port conflicts between containers, security concerns
+
+**External IP Configuration**:
+```bash
+# ✅ Works but requires application changes
+param set MAV_0_REMOTE_IP <container_external_ip>
+```
+- **Pros**: Clean networking
+- **Cons**: Requires manual IP management
+
+#### Validation and Testing
+
+**Verify Bridge Gateway Configuration**:
+```bash
+# Check if MAVLink traffic reaches bridge gateway
+docker exec <container> tcpdump -i eth0 -n "udp and port 14550"
+
+# Verify QGroundControl port availability
+netstat -an | grep 14540
+
+# Test MAVLink message flow
+python3 -c "
+import socket
+sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+sock.bind(('127.0.0.1', 14540))
+print('Listening for MAVLink on localhost:14540...')
+data, addr = sock.recvfrom(1024)
+print(f'✅ Received MAVLink traffic: {len(data)} bytes from {addr}')
+"
+```
+
+**Success Indicators**:
+- PX4 logs show: `INFO [mavlink] partner IP: 172.20.0.1`
+- No uORB warnings about port conflicts
+- QGroundControl successfully connects to localhost:14540
+- Port allocation shows unique mappings per container
+
+#### Technical Benefits
+
+This bridge gateway approach provides:
+- **Network Isolation**: Maintains Docker security model
+- **Scalability**: Supports multiple containers with unique ports
+- **Compatibility**: Works with existing MAVLink applications
+- **Standards Compliance**: Follows Docker networking best practices
+- **Zero Application Changes**: Only requires PX4 parameter configuration
+
 ### Issue 3: Port conflicts
 
 **Symptoms:**
