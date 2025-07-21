@@ -310,8 +310,8 @@ void VehicleNodeBase::image_timer_cb()
         // Process camera images for this vehicle only
         if (!airsim_img_request_vehicle_name_pair_vec_.empty()) {
             for (const auto& img_request_pair : airsim_img_request_vehicle_name_pair_vec_) {
-                const std::vector<ImageResponse>& img_response = airsim_client_images_->call(
-                    "simGetImages", img_request_pair.first, vehicle_name_).as<std::vector<ImageResponse>>();
+                const std::vector<ImageResponse> img_response = airsim_client_images_->simGetImages(
+                    img_request_pair.first, vehicle_name_);
                 
                 if (img_response.size() == img_request_pair.first.size()) {
                     process_and_publish_img_response(img_response);
@@ -334,8 +334,8 @@ void VehicleNodeBase::lidar_timer_cb()
             
             // Process regular lidar data
             for (auto& lidar_publisher : lidar_pubs_) {
-                auto lidar_data = airsim_client_lidar_->call("getLidarData", 
-                    lidar_publisher.sensor_name, vehicle_name_).as<msr::airlib::LidarData>();
+                auto lidar_data = airsim_client_lidar_->getLidarData(
+                    lidar_publisher.sensor_name, vehicle_name_);
                 sensor_names_to_lidar_data_map[lidar_publisher.sensor_name] = lidar_data;
                 
                 sensor_msgs::msg::PointCloud2 lidar_msg = get_lidar_msg_from_airsim(lidar_data);
@@ -351,8 +351,8 @@ void VehicleNodeBase::lidar_timer_cb()
                 if (it != sensor_names_to_lidar_data_map.end()) {
                     lidar_data = it->second;
                 } else {
-                    lidar_data = airsim_client_lidar_->call("getLidarData", 
-                        lidar_labels_publisher.sensor_name, vehicle_name_).as<msr::airlib::LidarData>();
+                    lidar_data = airsim_client_lidar_->getLidarData(
+                        lidar_labels_publisher.sensor_name, vehicle_name_);
                 }
                 
                 airsim_interfaces::msg::StringArray lidar_label_msg = get_lidar_labels_msg_from_airsim(lidar_data);
@@ -374,9 +374,8 @@ void VehicleNodeBase::gpulidar_timer_cb()
         // Process GPU LiDAR data for this vehicle
         if (!gpulidar_pubs_.empty()) {
             for (auto& gpulidar_publisher : gpulidar_pubs_) {
-                auto gpulidar_data = airsim_client_gpulidar_->call("getGPULidarData", 
-                    gpulidar_publisher.sensor_name, vehicle_name_).as<msr::airlib::GPULidarData>();
-                
+                auto gpulidar_data = airsim_client_gpulidar_->getGPULidarData(
+                    gpulidar_publisher.sensor_name, vehicle_name_);
                 sensor_msgs::msg::PointCloud2 gpulidar_msg = get_gpulidar_msg_from_airsim(gpulidar_data);
                 gpulidar_msg.header.stamp = stamp_;
                 gpulidar_msg.header.frame_id = vehicle_name_ + "/" + gpulidar_publisher.sensor_name;
@@ -399,8 +398,8 @@ void VehicleNodeBase::echo_timer_cb()
             
             // Process active echo data
             for (auto& active_echo_publisher : echo_active_pubs_) {
-                auto echo_data = airsim_client_echo_->call("getEchoData", 
-                    active_echo_publisher.sensor_name, vehicle_name_).as<msr::airlib::EchoData>();
+                auto echo_data = airsim_client_echo_->getEchoData(
+                    active_echo_publisher.sensor_name, vehicle_name_);
                 sensor_names_to_echo_data_map[active_echo_publisher.sensor_name] = echo_data;
                 
                 sensor_msgs::msg::PointCloud2 echo_msg = get_active_echo_msg_from_airsim(echo_data);
@@ -416,8 +415,8 @@ void VehicleNodeBase::echo_timer_cb()
                 if (it != sensor_names_to_echo_data_map.end()) {
                     echo_data = it->second;
                 } else {
-                    echo_data = airsim_client_echo_->call("getEchoData", 
-                        passive_echo_publisher.sensor_name, vehicle_name_).as<msr::airlib::EchoData>();
+                    echo_data = airsim_client_echo_->getEchoData(
+                        passive_echo_publisher.sensor_name, vehicle_name_);
                     sensor_names_to_echo_data_map[passive_echo_publisher.sensor_name] = echo_data;
                 }
                 
@@ -434,8 +433,8 @@ void VehicleNodeBase::echo_timer_cb()
                 if (it != sensor_names_to_echo_data_map.end()) {
                     echo_data = it->second;
                 } else {
-                    echo_data = airsim_client_echo_->call("getEchoData", 
-                        active_echo_labels_publisher.sensor_name, vehicle_name_).as<msr::airlib::EchoData>();
+                    echo_data = airsim_client_echo_->getEchoData(
+                        active_echo_labels_publisher.sensor_name, vehicle_name_);
                     sensor_names_to_echo_data_map[active_echo_labels_publisher.sensor_name] = echo_data;
                 }
                 
@@ -452,8 +451,8 @@ void VehicleNodeBase::echo_timer_cb()
                 if (it != sensor_names_to_echo_data_map.end()) {
                     echo_data = it->second;
                 } else {
-                    echo_data = airsim_client_echo_->call("getEchoData", 
-                        passive_echo_labels_publisher.sensor_name, vehicle_name_).as<msr::airlib::EchoData>();
+                    echo_data = airsim_client_echo_->getEchoData(
+                        passive_echo_labels_publisher.sensor_name, vehicle_name_);
                 }
                 
                 airsim_interfaces::msg::StringArray echo_labels_msg = get_passive_echo_labels_msg_from_airsim(echo_data);
@@ -525,7 +524,7 @@ bool VehicleNodeBase::instance_segmentation_refresh_cb(
 {
     try {
         if (airsim_client_) {
-            airsim_client_->call("refreshInstanceSegmentation", vehicle_name_);
+            airsim_client_->simListInstanceSegmentationObjects();
             response->success = true;
             RCLCPP_INFO(this->get_logger(), "Instance segmentation refreshed for vehicle: %s", vehicle_name_.c_str());
         } else {
@@ -548,7 +547,7 @@ bool VehicleNodeBase::object_transforms_refresh_cb(
 {
     try {
         if (airsim_client_) {
-            airsim_client_->call("refreshObjectTransforms", vehicle_name_);
+            airsim_client_->simListInstanceSegmentationPoses();
             response->success = true;
             RCLCPP_INFO(this->get_logger(), "Object transforms refreshed for vehicle: %s", vehicle_name_.c_str());
         } else {

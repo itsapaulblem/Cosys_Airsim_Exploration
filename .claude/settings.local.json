@@ -45,8 +45,14 @@
       "Bash(git rm:*)",
       "Bash(git add:*)",
       "Bash(./commit_docs.sh:*)",
-      "Bash(git stash:*)",
-      "mcp__mcp-compass__recommend-mcp-servers"
+      "mcp__memory__read_graph",
+      "mcp__memory__create_entities",
+      "mcp__memory__create_relations",
+      "mcp__memory__add_observations",
+      "Bash(curl:*)",
+      "Bash(pkill:*)",
+      "Bash(uv tool:*)",
+      "Bash(git stash push:*)"
     ],
     "deny": []
   }

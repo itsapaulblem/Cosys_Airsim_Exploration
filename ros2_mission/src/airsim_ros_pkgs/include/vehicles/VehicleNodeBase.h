@@ -44,7 +44,7 @@ STRICT_MODE_ON
 #include <rosgraph_msgs/msg/clock.hpp>
 #include <tf2/LinearMath/Matrix3x3.h>
 #include <tf2/LinearMath/Quaternion.h>
-#include <tf2_geometry_msgs/tf2_geometry_msgs.h>
+#include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
 #include <tf2_ros/buffer.h>
 #include <tf2_ros/static_transform_broadcaster.h>
 #include <tf2_ros/transform_broadcaster.h>
@@ -121,6 +121,7 @@ struct SensorPublisher
  */
 class VehicleNodeBase : public rclcpp::Node
 {
+public:
     using AirSimSettings = msr::airlib::AirSimSettings;
     using SensorBase = msr::airlib::SensorBase;
     using CameraSetting = msr::airlib::AirSimSettings::CameraSetting;
@@ -132,8 +133,6 @@ class VehicleNodeBase : public rclcpp::Node
     using ImageRequest = msr::airlib::ImageCaptureBase::ImageRequest;
     using ImageResponse = msr::airlib::ImageCaptureBase::ImageResponse;
     using ImageType = msr::airlib::ImageCaptureBase::ImageType;
-
-public:
     /**
      * @brief Constructor for VehicleNodeBase
      * @param vehicle_name Unique name of the vehicle

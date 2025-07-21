@@ -1,6 +1,6 @@
 #!/bin/bash
 
-echo "Testing AirSim connectivity for ultra-swarm..."
+echo "Testing AirSim connectivity for swarm..."
 echo "============================================="
 
 # Test if ports are open
