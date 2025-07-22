@@ -1,0 +1,135 @@
+#!/bin/sh
+# shellcheck disable=SC2154
+# Network MAVLink Configuration for External Connectivity
+# Based on PX4's standard mavlink configuration with external target support
+
+# Get instance from environment (converted from user-friendly drone numbers)
+px4_instance=${PX4_INSTANCE:-0}
+
+# Target host configuration
+MAVLINK_TARGET=${MAVLINK_TARGET:-192.168.65.254}
+
+# Port calculations following industry standards
+# Standard MAVLink ports for external connections
+udp_gcs_port_remote=$((14550+px4_instance))        # QGroundControl: 14550, 14551, 14552...
+udp_offboard_port_remote=$((14540+px4_instance))   # API/MAVSDK: 14540, 14541, 14542...
+
+# Local container ports (PX4 internal)
+udp_gcs_port_local=$((18570+px4_instance))         # Internal GCS port
+udp_offboard_port_local=$((14580+px4_instance))    # Internal offboard port
+
+# Additional onboard links (for completeness)
+udp_onboard_payload_port_local=$((14280+px4_instance))
+udp_onboard_payload_port_remote=$((14030+px4_instance))
+udp_onboard_gimbal_port_local=$((13030+px4_instance))
+udp_onboard_gimbal_port_remote=$((13280+px4_instance))
+
+# Handle port overlaps for more than 10 instances
+[ "$px4_instance" -gt 9 ] && udp_offboard_port_remote=14549
+
+echo "🌐 Network MAVLink Configuration"
+echo "Instance: $px4_instance"
+echo "Target Host: $MAVLINK_TARGET"
+echo "QGC Port: $MAVLINK_TARGET:$udp_gcs_port_remote"
+echo "API Port: $MAVLINK_TARGET:$udp_offboard_port_remote"
+
+# ================================
+# PRIMARY GCS LINK (QGroundControl)
+# ================================
+echo "Starting GCS MAVLink link..."
+mavlink start -x -u $udp_gcs_port_local -r 4000000 -f -t $MAVLINK_TARGET -o $udp_gcs_port_remote
+
+# GCS-optimized message streams
+mavlink stream -r 50 -s POSITION_TARGET_LOCAL_NED -u $udp_gcs_port_local
+mavlink stream -r 50 -s LOCAL_POSITION_NED -u $udp_gcs_port_local
+mavlink stream -r 50 -s GLOBAL_POSITION_INT -u $udp_gcs_port_local
+mavlink stream -r 50 -s ATTITUDE -u $udp_gcs_port_local
+mavlink stream -r 50 -s ATTITUDE_QUATERNION -u $udp_gcs_port_local
+mavlink stream -r 50 -s ATTITUDE_TARGET -u $udp_gcs_port_local
+mavlink stream -r 50 -s SERVO_OUTPUT_RAW_0 -u $udp_gcs_port_local
+mavlink stream -r 20 -s RC_CHANNELS -u $udp_gcs_port_local
+mavlink stream -r 10 -s OPTICAL_FLOW_RAD -u $udp_gcs_port_local
+
+# Essential GCS streams
+mavlink stream -r 1 -s HEARTBEAT -u $udp_gcs_port_local
+mavlink stream -r 5 -s GPS_RAW_INT -u $udp_gcs_port_local
+mavlink stream -r 5 -s BATTERY_STATUS -u $udp_gcs_port_local
+mavlink stream -r 20 -s VFR_HUD -u $udp_gcs_port_local
+mavlink stream -r 2 -s EXTENDED_SYS_STATE -u $udp_gcs_port_local
+
+# ================================
+# API/OFFBOARD LINK (MAVSDK, DroneKit)
+# ================================
+echo "Starting API/Offboard MAVLink link..."
+mavlink start -x -u $udp_offboard_port_local -r 4000000 -f -m onboard -o $udp_offboard_port_remote
+
+# -t $MAVLINK_TARGET
+# High-rate streams for API clients (already configured via onboard mode)
+# The onboard mode automatically configures appropriate streams for API usage
+
+# ================================
+# ONBOARD PAYLOAD LINK (Camera/Gimbal)
+# ================================
+echo "Starting onboard payload link..."
+mavlink start -x -u $udp_onboard_payload_port_local -r 4000 -f -m onboard -o $udp_onboard_payload_port_remote
+
+# ================================
+# GIMBAL LINK
+# ================================
+echo "Starting gimbal link..."
+mavlink start -x -u $udp_onboard_gimbal_port_local -r 400000 -f -m gimbal -o $udp_onboard_gimbal_port_remote
+
+# ================================
+# SIMULATOR-SPECIFIC LINKS
+# ================================
+
+# SIH (Simulation in Hardware) link
+if [ "$PX4_SIMULATOR" = "sihsim" ]; then
+    echo "Configuring SIH simulator link..."
+    udp_sihsim_port_local=$((19450+px4_instance))
+    udp_sihsim_port_remote=$((19410+px4_instance))
+    mavlink start -x -u $udp_sihsim_port_local -r 400000 -m custom -o $udp_sihsim_port_remote
+    mavlink stream -r 200 -s HIL_ACTUATOR_CONTROLS -u $udp_sihsim_port_local
+    mavlink stream -r 25 -s HIL_STATE_QUATERNION -u $udp_sihsim_port_local
+fi
+
+# AirSim-specific configuration
+if [ "$PX4_SIMULATOR" = "airsim" ] || [ -n "$AIRSIM_ENABLED" ]; then
+    echo "Configuring AirSim-specific streams..."
+    
+    # Additional streams useful for AirSim
+    mavlink stream -r 10 -s ALTITUDE -u $udp_gcs_port_local
+    mavlink stream -r 5 -s SYSTEM_TIME -u $udp_gcs_port_local
+    mavlink stream -r 2 -s MISSION_CURRENT -u $udp_gcs_port_local
+    
+    # High-rate IMU for API clients
+    mavlink stream -r 100 -s HIGHRES_IMU -u $udp_offboard_port_local
+    mavlink stream -r 50 -s ACTUATOR_OUTPUTS -u $udp_offboard_port_local
+fi
+
+# ================================
+# STATUS AND COMPLETION
+# ================================
+
+# Wait for instances to start
+sleep 1
+
+echo ""
+echo "✅ Network MAVLink Configuration Complete!"
+echo ""
+echo "📊 Connection Information:"
+echo "  QGroundControl: $MAVLINK_TARGET:$udp_gcs_port_remote"
+echo "  MAVSDK/API: $MAVLINK_TARGET:$udp_offboard_port_remote"
+echo "  Payload Link: localhost:$udp_onboard_payload_port_remote"
+echo "  Gimbal Link: localhost:$udp_onboard_gimbal_port_remote"
+echo ""
+echo "💡 Status Check:"
+echo "  mavlink status"
+echo ""
+echo "🔧 Debug Info:"
+echo "  Instance: $px4_instance"
+echo "  Target: $MAVLINK_TARGET"
+echo "  PX4_SIMULATOR: ${PX4_SIMULATOR:-none}"
+
+# Display mavlink status
+mavlink status

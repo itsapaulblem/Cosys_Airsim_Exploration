@@ -1,0 +1,157 @@
+# Ultra-Swarm PX4 Docker Image for AirSim Integration - Slim Ubuntu Variant
+# Multi-stage build: Ubuntu builder + Ubuntu slim runtime
+# Enhanced version supporting up to 27 drones (9 per swarm x 3 swarms)
+
+# ================================
+# BUILDER STAGE (Ubuntu 22.04)
+# ================================
+FROM ubuntu:22.04 AS builder
+
+# Set environment variables for non-interactive installation
+ENV DEBIAN_FRONTEND=noninteractive
+
+# Update and install build dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    git \
+    wget \
+    curl \
+    python3-pip \
+    python3-venv \
+    python3-dev \
+    cmake \
+    ninja-build \
+    ccache \
+    ca-certificates \
+    lsb-release \
+    sudo \
+    unzip \
+    pkg-config \
+    file \
+    rsync \
+    && rm -rf /var/lib/apt/lists/*
+
+# Create working directory for PX4
+WORKDIR /px4_workspace
+
+# Clone PX4-Autopilot repository and checkout v1.14.0
+RUN git clone https://github.com/PX4/PX4-Autopilot.git && \
+    cd PX4-Autopilot && \
+    git checkout v1.14.0 && \
+    git submodule update --init --recursive
+
+# Install PX4 dependencies
+WORKDIR /px4_workspace/PX4-Autopilot
+RUN ./Tools/setup/ubuntu.sh --no-sim-tools --no-nuttx
+
+# Fix EmPy version issue - PX4 v1.14.0 requires older EmPy version
+RUN pip3 install --force-reinstall empy==3.3.4
+
+# Build PX4 with SITL target including none_iris model for AirSim
+RUN DONT_RUN=1 make px4_sitl_default
+
+# ================================
+# RUNTIME STAGE (Ubuntu 22.04 Slim)
+# ================================
+FROM ubuntu:22.04 AS runtime
+
+# Set environment variables
+ENV DEBIAN_FRONTEND=noninteractive
+
+# Install minimal runtime dependencies (Ubuntu minimal set) + networking tools
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    python3-minimal \
+    python3-pip \
+    bc \
+    socat \
+    netcat-openbsd \
+    procps \
+    jq \
+    vim \
+    nano \
+    ca-certificates \
+    net-tools \
+    iproute2 \
+    iputils-ping \
+    tcpdump \
+    util-linux \
+    strace \
+    lsof \
+    curl \
+    wget \
+    dnsutils \
+    telnet \
+    nmap \
+    iperf3 \
+    mtr \
+    traceroute \
+    openssh-client \
+    openssl \    
+    && rm -rf /var/lib/apt/lists/* \
+    && apt-get autoremove -y \
+    && apt-get autoclean
+
+# Install minimal Python dependencies for PX4
+RUN pip3 install --no-cache-dir empy==3.3.4 toml numpy
+
+# Create PX4 workspace structure
+RUN mkdir -p /px4_workspace/PX4-Autopilot/build/px4_sitl_default
+
+# Copy PX4 build artifacts from builder stage
+COPY --from=builder /px4_workspace/PX4-Autopilot/build/px4_sitl_default/bin /px4_workspace/PX4-Autopilot/build/px4_sitl_default/bin
+COPY --from=builder /px4_workspace/PX4-Autopilot/build/px4_sitl_default/etc /px4_workspace/PX4-Autopilot/build/px4_sitl_default/etc
+COPY --from=builder /px4_workspace/PX4-Autopilot/ROMFS /px4_workspace/PX4-Autopilot/ROMFS
+COPY --from=builder /px4_workspace/PX4-Autopilot/test_data /px4_workspace/PX4-Autopilot/test_data
+
+# Create Scripts directory inside PX4-Autopilot
+RUN mkdir -p /px4_workspace/PX4-Autopilot/Scripts
+
+# Environment variables for ultra-swarm support
+ENV PX4_HOME_LAT=47.641468
+ENV PX4_HOME_LON=-122.140165
+ENV PX4_HOME_ALT=0.0
+ENV PX4_SYS_AUTOSTART=10016
+
+# Instance-specific variables (will be overridden by docker-compose or runtime)
+ENV PX4_INSTANCE=1
+ENV SWARM_ID=1
+ENV SWARM_SIZE=1
+ENV MAX_SWARMS=3
+ENV MAX_DRONES_PER_SWARM=9
+
+# Copy configuration files and optimized scripts
+COPY config/px4_params.txt /px4_workspace/PX4-Autopilot/Scripts/
+COPY config/gps_locations.json /px4_workspace/PX4-Autopilot/Scripts/
+COPY scripts/ultra_swarm_health_check.sh /px4_workspace/PX4-Autopilot/Scripts/
+
+# Copy the AirSim SITL scripts
+COPY scripts/run_airsim_sitl.sh /px4_workspace/PX4-Autopilot/Scripts/
+
+# Add direct MAVLink configuration (add this line)
+COPY config/px4-rc.mavlink.network /px4_workspace/PX4-Autopilot/ROMFS/px4fmu_common/init.d-posix/px4-rc.mavlink
+
+# Make sure it's executable
+RUN chmod +x /px4_workspace/PX4-Autopilot/ROMFS/px4fmu_common/init.d-posix/px4-rc.mavlink
+
+# Make all scripts executable
+RUN chmod +x /px4_workspace/PX4-Autopilot/Scripts/*.sh
+
+# Create convenient aliases for script management
+RUN echo 'alias ultra-status="/px4_workspace/PX4-Autopilot/Scripts/ultra_swarm_health_check.sh"' >> /root/.bashrc && \
+    echo 'alias px4-params="cat /px4_workspace/PX4-Autopilot/Scripts/px4_params.txt"' >> /root/.bashrc && \
+    echo 'alias run-airsim="/px4_workspace/PX4-Autopilot/Scripts/run_airsim_sitl.sh"' >> /root/.bashrc && \
+    echo 'alias run-airsim-broadcast="/px4_workspace/PX4-Autopilot/Scripts/run_airsim_sitl_broadcast.sh"' >> /root/.bashrc
+
+# Expose port ranges for ultra-swarm configurations
+# Supports 3 swarms x 9 drones each = 27 total drones
+EXPOSE 4560-4588/tcp 14550-14578/udp 18570-18598/udp 4660-4688/tcp
+
+# Add enhanced healthcheck for ultra-swarm monitoring
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+    CMD /px4_workspace/PX4-Autopilot/Scripts/ultra_swarm_health_check.sh || exit 1
+
+# Set the working directory
+WORKDIR /px4_workspace/PX4-Autopilot
+
+# Default command is bash for manual control
+CMD ["/bin/bash"]

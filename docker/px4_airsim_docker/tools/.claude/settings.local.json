@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(find:*)",
+      "mcp__memory__create_relations",
+      "Bash(chmod:*)",
+      "mcp__fetch__fetch",
+      "mcp__memory__read_graph"
+    ],
+    "deny": []
+  }
+}

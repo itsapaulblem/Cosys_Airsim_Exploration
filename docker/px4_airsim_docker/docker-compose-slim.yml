@@ -1,0 +1,182 @@
+# Ultra-Swarm Docker Compose Configuration - Slim Debian with Bridge Network
+# Uses Docker bridge networking for better compatibility with Docker Desktop
+
+networks:
+  px4_network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
+
+x-px4-common: &px4-common
+  image: px4-airsim:slim
+  environment: &px4-env
+    PX4_SIM_HOSTNAME: ${PX4_SIM_HOSTNAME:-172.28.240.1}
+    PX4_SIM_MODEL: none_iris
+    PX4_SIMULATOR: none
+    # Basic PX4 environment variables
+    PX4_HOME_LAT: 43.06659659989448
+    PX4_HOME_LON: -115.85470390486812
+    PX4_HOME_ALT: 0.0
+    PX4_SYS_AUTOSTART: 10016
+    # MAVLink broadcast parameters
+    MAV_0_BROADCAST: 1
+    MAV_1_BROADCAST: 1
+    MAV_2_BROADCAST: 1
+    # Manual start mode - no auto-swarm variables
+    SWARM_ID: 1
+    SWARM_SIZE: 9
+  networks:
+    - px4_network
+  volumes:
+    - px4-shared-data:/px4_data
+  restart: unless-stopped
+  tty: true
+  stdin_open: true
+  healthcheck:
+    test: ["CMD", "/px4_workspace/PX4-Autopilot/Scripts/ultra_swarm_health_check.sh"]
+    interval: 30s
+    timeout: 10s
+    retries: 3
+    start_period: 60s
+
+services:
+  px4-bridge-drone-1:
+    <<: *px4-common
+    container_name: px4-bridge-drone-1
+    hostname: px4-bridge-drone-1
+    environment:
+      <<: *px4-env
+      PX4_INSTANCE: 0
+    ports:
+      - "4560:4560/tcp"    # PX4 MAVLink TCP port
+      - "14580:14580/udp"  # Control port remote (UDP)
+      - "14540:14540/udp"  # QGroundControl UDP port (maps to PX4's actual remote port)
+      - "14550:14550/udp"  # QGroundControl UDP port (maps to PX4's actual remote port)
+    networks:
+      px4_network:
+        ipv4_address: 172.20.0.11
+
+  px4-bridge-drone-2:
+    <<: *px4-common
+    container_name: px4-bridge-drone-2
+    hostname: px4-bridge-drone-2
+    environment:
+      <<: *px4-env
+      PX4_INSTANCE: 1
+    ports:
+      - "4561:4561/tcp"
+      - "14581:14581/udp"  # Control port remote (UDP) - unique port  
+      - "14541:14541/udp"  # QGroundControl UDP port (maps to PX4's actual remote port)
+    networks:
+      px4_network:
+        ipv4_address: 172.20.0.12
+
+  px4-bridge-drone-3:
+    <<: *px4-common
+    container_name: px4-bridge-drone-3
+    hostname: px4-bridge-drone-3
+    environment:
+      <<: *px4-env
+      PX4_INSTANCE: 2
+    ports:
+      - "4562:4562/tcp"
+      - "14582:14582/udp"
+      - "14542:14542/udp"  # QGroundControl UDP port (maps to PX4's actual remote port)
+    networks:
+      px4_network:
+        ipv4_address: 172.20.0.13
+
+  px4-bridge-drone-4:
+    <<: *px4-common
+    container_name: px4-bridge-drone-4
+    hostname: px4-bridge-drone-4
+    environment:
+      <<: *px4-env
+      PX4_INSTANCE: 3
+    ports:
+      - "4563:4563/tcp"
+      - "14583:14583/udp"
+      - "14543:14543/udp"  # QGroundControl UDP port (maps to PX4's actual remote port)
+    networks:
+      px4_network:
+        ipv4_address: 172.20.0.14
+
+  px4-bridge-drone-5:
+    <<: *px4-common
+    container_name: px4-bridge-drone-5
+    hostname: px4-bridge-drone-5
+    environment:
+      <<: *px4-env
+      PX4_INSTANCE: 4
+    ports:
+      - "4564:4564/tcp"
+      - "14584:14584/udp"
+      - "14544:14544/udp"  # QGroundControl UDP port (maps to PX4's actual remote port)
+    networks:
+      px4_network:
+        ipv4_address: 172.20.0.15
+
+  px4-bridge-drone-6:
+    <<: *px4-common
+    container_name: px4-bridge-drone-6
+    hostname: px4-bridge-drone-6
+    environment:
+      <<: *px4-env
+      PX4_INSTANCE: 5
+    ports:
+      - "4565:4565/tcp"
+      - "14585:14585/udp"
+      - "14545:14545/udp"  # QGroundControl UDP port (maps to PX4's actual remote port)
+    networks:
+      px4_network:
+        ipv4_address: 172.20.0.16
+
+  px4-bridge-drone-7:
+    <<: *px4-common
+    container_name: px4-bridge-drone-7
+    hostname: px4-bridge-drone-7
+    environment:
+      <<: *px4-env
+      PX4_INSTANCE: 6
+    ports:
+      - "4566:4566/tcp"
+      - "14586:14586/udp"
+      - "14546:14546/udp"  # QGroundControl UDP port (maps to PX4's actual remote port)
+    networks:
+      px4_network:
+        ipv4_address: 172.20.0.17
+
+  px4-bridge-drone-8:
+    <<: *px4-common
+    container_name: px4-bridge-drone-8
+    hostname: px4-bridge-drone-8
+    environment:
+      <<: *px4-env
+      PX4_INSTANCE: 7
+    ports:
+      - "4567:4567/tcp"
+      - "14587:14587/udp"
+      - "14547:14547/udp"  # QGroundControl UDP port (maps to PX4's actual remote port)
+    networks:
+      px4_network:
+        ipv4_address: 172.20.0.18
+
+  px4-bridge-drone-9:
+    <<: *px4-common
+    container_name: px4-bridge-drone-9
+    hostname: px4-bridge-drone-9
+    environment:
+      <<: *px4-env
+      PX4_INSTANCE: 8
+    ports:
+      - "4568:4568/tcp"
+      - "14588:14588/udp"
+      - "14548:14548/udp"  # QGroundControl UDP port (maps to PX4's actual remote port)
+    networks:
+      px4_network:
+        ipv4_address: 172.20.0.19
+
+volumes:
+  px4-shared-data:
+    driver: local

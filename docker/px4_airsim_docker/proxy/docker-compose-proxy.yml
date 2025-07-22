@@ -1,0 +1,283 @@
+# Docker Compose for Host-Level MAVLink Proxy
+# Runs Nginx UDP proxy on Docker host to enable external IP connectivity
+# Solves container network isolation for MAVLink Router
+
+version: '3.8'
+
+networks:
+  px4_network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
+  proxy_network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.21.0.0/16
+
+services:
+  # Host-level MAVLink proxy using Nginx
+  mavlink-proxy:
+    image: nginx:alpine
+    container_name: mavlink-proxy
+    hostname: mavlink-proxy
+    
+    # Network mode for direct host access (alternative approach)
+    # network_mode: host  # Uncomment for host networking mode
+    
+    ports:
+      # External MAVLink endpoints (accessible from internet)
+      - "14550:14550/udp"    # Primary QGroundControl
+      - "14551:14551/udp"    # Drone 2 QGC
+      - "14552:14552/udp"    # Drone 3 QGC
+      - "14540:14540/udp"    # API access
+      - "14560:14560/udp"    # Load-balanced cluster
+      - "14570:14570/udp"    # Dynamic client handler
+      
+      # Management interface
+      - "8080:8080/tcp"      # Health checks and stats
+      
+    volumes:
+      # Main proxy configuration
+      - ./nginx-mavlink-proxy.conf:/etc/nginx/nginx.conf:ro
+      
+      # Log directories
+      - mavlink-proxy-logs:/var/log/nginx
+      
+      # Dynamic configuration directory
+      - ./dynamic-config:/etc/nginx/dynamic:rw
+      
+    networks:
+      px4_network:
+        ipv4_address: 172.20.0.200
+      proxy_network:
+        ipv4_address: 172.21.0.10
+        
+    environment:
+      # Proxy configuration
+      - PROXY_MODE=udp_stream
+      - LOG_LEVEL=warn
+      - WORKER_PROCESSES=auto
+      
+      # Dynamic endpoint configuration
+      - ENABLE_DYNAMIC_ENDPOINTS=true
+      - MAX_DYNAMIC_ENDPOINTS=10
+      
+    restart: unless-stopped
+    
+    # Health check for proxy service
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+      
+    labels:
+      - "service.type=mavlink-proxy"
+      - "service.role=external-gateway"
+      - "monitoring.enabled=true"
+
+  # Configuration manager for dynamic endpoints
+  proxy-config-manager:
+    image: alpine:latest
+    container_name: proxy-config-manager
+    
+    volumes:
+      - ./dynamic-config:/config:rw
+      - ./scripts:/scripts:ro
+      - mavlink-proxy-logs:/logs:ro
+      
+    networks:
+      - proxy_network
+      
+    environment:
+      - CONFIG_CHECK_INTERVAL=30
+      - LOG_RETENTION_DAYS=7
+      - PROXY_CONTAINER=mavlink-proxy
+      
+    command: >
+      sh -c "
+        # Install required tools
+        apk add --no-cache curl jq &&
+        
+        # Configuration management loop
+        while true; do
+          echo '[Config Manager] Checking for configuration changes...' &&
+          
+          # Check if dynamic config exists
+          if [ -f /config/dynamic-endpoints.conf ]; then
+            echo '[Config Manager] Dynamic config found, validating...' &&
+            
+            # Validate configuration syntax
+            if nginx -t -c /config/dynamic-endpoints.conf 2>/dev/null; then
+              echo '[Config Manager] Configuration valid' &&
+              
+              # Signal Nginx to reload
+              curl -s -X POST http://mavlink-proxy:8080/api/reload || echo '[Config Manager] Reload failed'
+            else
+              echo '[Config Manager] Configuration invalid, skipping reload'
+            fi
+          fi &&
+          
+          # Cleanup old logs
+          find /logs -name '*.log' -mtime +7 -delete 2>/dev/null || true &&
+          
+          sleep 30
+        done
+      "
+      
+    restart: unless-stopped
+    depends_on:
+      - mavlink-proxy
+      
+    labels:
+      - "service.type=config-manager"
+      - "service.role=automation"
+
+  # Test client for proxy validation
+  proxy-test-client:
+    image: alpine:latest
+    container_name: proxy-test-client
+    
+    networks:
+      - proxy_network
+      
+    environment:
+      - PROXY_HOST=mavlink-proxy
+      - TEST_INTERVAL=60
+      
+    command: >
+      sh -c "
+        # Install network tools
+        apk add --no-cache netcat-openbsd curl &&
+        
+        echo '[Test Client] Starting proxy validation tests...' &&
+        
+        while true; do
+          echo '[Test Client] Testing proxy endpoints...' &&
+          
+          # Test health endpoint
+          if curl -s http://mavlink-proxy:8080/health | grep -q 'Healthy'; then
+            echo '✅ Health check passed'
+          else
+            echo '❌ Health check failed'
+          fi &&
+          
+          # Test UDP endpoints
+          echo 'Testing UDP 14550...' &&
+          echo 'test' | nc -u -w 1 mavlink-proxy 14550 && echo '✅ UDP 14550 reachable' || echo '❌ UDP 14550 failed' &&
+          
+          echo 'Testing UDP 14540...' &&
+          echo 'test' | nc -u -w 1 mavlink-proxy 14540 && echo '✅ UDP 14540 reachable' || echo '❌ UDP 14540 failed' &&
+          
+          # Test statistics endpoint
+          curl -s http://mavlink-proxy:8080/stats | jq . 2>/dev/null && echo '✅ Stats endpoint working' || echo '❌ Stats endpoint failed' &&
+          
+          echo '[Test Client] Test cycle completed, sleeping...' &&
+          sleep 60
+        done
+      "
+      
+    restart: unless-stopped
+    depends_on:
+      - mavlink-proxy
+      
+    labels:
+      - "service.type=test-client" 
+      - "service.role=validation"
+
+  # Enhanced MAVLink Router for container (updated)
+  mavlink-router-enhanced:
+    image: px4-airsim:slim
+    container_name: mavlink-router-enhanced
+    
+    command: >
+      sh -c "
+        echo '🌐 Starting Enhanced MAVLink Router with external IP support...' &&
+        
+        # Generate enhanced configuration
+        /px4_workspace/PX4-Autopilot/Scripts/generate_mavlink_config_enhanced.py \
+          --proxy-mode \
+          --external-endpoints \
+          --container-ip 172.20.0.11 \
+          --proxy-ip 172.20.0.200 &&
+        
+        # Start MAVLink Router with enhanced config
+        mavlink-routerd -c /px4_workspace/mavlink-router-config/enhanced-router.conf
+      "
+      
+    environment:
+      - MAVLINK_ROUTER_MODE=enhanced
+      - PROXY_INTEGRATION=enabled
+      - EXTERNAL_IP_SUPPORT=true
+      
+    networks:
+      px4_network:
+        ipv4_address: 172.20.0.11
+      proxy_network:
+        ipv4_address: 172.21.0.11
+        
+    volumes:
+      - px4-shared-data:/px4_data
+      - ./scripts:/scripts:ro
+      
+    restart: unless-stopped
+    depends_on:
+      - mavlink-proxy
+      
+    labels:
+      - "service.type=mavlink-router"
+      - "service.mode=enhanced"
+      - "proxy.integration=enabled"
+
+volumes:
+  px4-shared-data:
+    driver: local
+  mavlink-proxy-logs:
+    driver: local
+
+# ================================
+# DEPLOYMENT CONFIGURATION
+# ================================
+
+x-deployment-config:
+  # Host system requirements
+  host_requirements:
+    nginx_modules:
+      - "nginx-mod-stream"  # Required for UDP proxying
+    kernel_features:
+      - "SO_REUSEPORT"     # For high-performance UDP
+    firewall_rules:
+      - "iptables -A INPUT -p udp --dport 14540:14570 -j ACCEPT"
+      - "iptables -A INPUT -p tcp --dport 8080 -j ACCEPT"
+    
+  # Performance optimization
+  performance:
+    nginx_worker_processes: "auto"
+    nginx_worker_connections: 1024
+    udp_buffer_size: "64k"
+    proxy_timeout: "5s"
+    
+  # External connectivity testing
+  external_tests:
+    # Commands to run from external client
+    qgc_test: "nc -u HOST_IP 14550"
+    api_test: "nc -u HOST_IP 14540"
+    health_test: "curl HOST_IP:8080/health"
+    stats_test: "curl HOST_IP:8080/stats"
+    
+  # Monitoring and logging
+  monitoring:
+    log_rotation: true
+    retention_days: 7
+    stats_collection: true
+    health_checks: true
+    
+  # Security considerations
+  security:
+    rate_limiting: true
+    client_ip_preservation: true
+    connection_limits: 100
+    timeout_protection: true

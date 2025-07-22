@@ -52,7 +52,9 @@
       "Bash(curl:*)",
       "Bash(pkill:*)",
       "Bash(uv tool:*)",
-      "Bash(git stash push:*)"
+      "Bash(git stash push:*)",
+      "mcp__sequential-thinking__sequentialthinking",
+      "mcp__memory__search_nodes"
     ],
     "deny": []
   }
