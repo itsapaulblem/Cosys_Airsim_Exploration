@@ -1,0 +1,314 @@
+# WireGuard VPN-Secured PX4 Remote Access Configuration
+# Provides secure tunnel for remote PX4 server connectivity
+# Based on existing infrastructure with added VPN layer
+
+version: '3.8'
+
+networks:
+  px4_network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
+  vpn_network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 10.10.0.0/24
+
+volumes:
+  px4-shared-data:
+    driver: local
+  wireguard-config:
+    driver: local
+
+x-px4-common: &px4-common
+  image: px4-airsim:slim
+  environment: &px4-env
+    # VPN-secured configuration
+    PX4_SIM_HOSTNAME: ${VPN_SERVER_IP:-10.10.0.1}
+    PX4_SIM_MODEL: none_iris
+    PX4_SIMULATOR: none
+    
+    # Security settings
+    ENABLE_REMOTE_ACCESS: 1
+    REMOTE_ACCESS_MODE: "vpn"
+    SECURITY_MODE: "wireguard"
+    VPN_NETWORK: "10.10.0.0/24"
+    
+    # PX4 environment
+    PX4_HOME_LAT: ${PX4_HOME_LAT:-47.641468}
+    PX4_HOME_LON: ${PX4_HOME_LON:--122.140165}
+    PX4_HOME_ALT: ${PX4_HOME_ALT:-0.0}
+    PX4_SYS_AUTOSTART: 10016
+    
+    # MAVLink configuration for VPN
+    MAV_0_BROADCAST: 1
+    MAV_1_BROADCAST: 1
+    MAV_2_BROADCAST: 1
+    
+    # Swarm configuration
+    SWARM_ID: 1
+    SWARM_SIZE: ${SWARM_SIZE:-3}
+    
+  networks:
+    - px4_network
+    - vpn_network
+  volumes:
+    - px4-shared-data:/px4_data
+  restart: unless-stopped
+  tty: true
+  stdin_open: true
+  
+  # Security-enhanced health check
+  healthcheck:
+    test: ["CMD-SHELL", "curl -f http://localhost:8080/health || exit 1"]
+    interval: 30s
+    timeout: 10s
+    retries: 3
+    start_period: 60s
+
+services:
+  # WireGuard VPN Server
+  wireguard:
+    image: lscr.io/linuxserver/wireguard:latest
+    container_name: px4-wireguard-server
+    cap_add:
+      - NET_ADMIN
+      - SYS_MODULE
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=${TZ:-America/New_York}
+      - SERVERURL=${VPN_SERVER_URL:-auto}  # Auto-detect public IP
+      - SERVERPORT=51820
+      - PEERS=${VPN_PEERS:-5}  # Number of client configs to generate
+      - PEERDNS=auto
+      - INTERNAL_SUBNET=10.10.0.0/24
+      - ALLOWEDIPS=10.10.0.0/24,172.20.0.0/16  # VPN + Docker networks
+      - LOG_CONFS=true
+    volumes:
+      - wireguard-config:/config
+      - /lib/modules:/lib/modules:ro
+    ports:
+      - "51820:51820/udp"  # WireGuard VPN port
+    sysctls:
+      - net.ipv4.conf.all.src_valid_mark=1
+      - net.ipv4.ip_forward=1
+    networks:
+      vpn_network:
+        ipv4_address: 10.10.0.1
+    restart: unless-stopped
+    labels:
+      - "service.type=vpn-server"
+      - "security.level=high"
+
+  # VPN-secured PX4 instances
+  px4-vpn-drone-1:
+    <<: *px4-common
+    container_name: px4-vpn-drone-1
+    hostname: px4-vpn-drone-1
+    environment:
+      <<: *px4-env
+      PX4_INSTANCE: 1
+      
+    # VPN-only port exposure (no direct internet access)
+    ports:
+      # Internal monitoring only (localhost)
+      - "127.0.0.1:8080:8080/tcp"
+      
+      # VPN network access only for MAVLink
+      # External access must go through VPN tunnel
+      
+    networks:
+      px4_network:
+        ipv4_address: 172.20.0.11
+      vpn_network:
+        ipv4_address: 10.10.0.11
+        
+    labels:
+      - "service.type=px4-sitl"
+      - "service.instance=1"
+      - "security.vpn=required"
+
+  px4-vpn-drone-2:
+    <<: *px4-common
+    container_name: px4-vpn-drone-2
+    hostname: px4-vpn-drone-2
+    environment:
+      <<: *px4-env
+      PX4_INSTANCE: 2
+    ports:
+      - "127.0.0.1:8081:8080/tcp"
+    networks:
+      px4_network:
+        ipv4_address: 172.20.0.12
+      vpn_network:
+        ipv4_address: 10.10.0.12
+    labels:
+      - "service.type=px4-sitl"
+      - "service.instance=2"
+      - "security.vpn=required"
+
+  px4-vpn-drone-3:
+    <<: *px4-common
+    container_name: px4-vpn-drone-3
+    hostname: px4-vpn-drone-3
+    environment:
+      <<: *px4-env
+      PX4_INSTANCE: 3
+    ports:
+      - "127.0.0.1:8082:8080/tcp"
+    networks:
+      px4_network:
+        ipv4_address: 172.20.0.13
+      vpn_network:
+        ipv4_address: 10.10.0.13
+    labels:
+      - "service.type=px4-sitl"
+      - "service.instance=3"
+      - "security.vpn=required"
+
+  # MAVLink Router with VPN-aware configuration
+  mavlink-router-vpn:
+    image: px4-airsim:slim
+    container_name: px4-mavlink-router-vpn
+    command: >
+      sh -c "
+        # Generate VPN-aware MAVLink Router configuration
+        /px4_workspace/PX4-Autopilot/Scripts/generate_mavlink_config.py --vpn-mode --network 10.10.0.0/24 &&
+        mavlink-routerd -c /px4_workspace/mavlink-router-config/mavlink-router-vpn.conf
+      "
+    environment:
+      - VPN_NETWORK=10.10.0.0/24
+      - MAVLINK_SECURITY_MODE=vpn
+    ports:
+      # MAVLink endpoints accessible only via VPN
+      - "10.10.0.1:14550:14550/udp"    # QGroundControl (VPN clients only)
+      - "10.10.0.1:14540:14540/udp"    # API access (VPN clients only)
+      - "10.10.0.1:4561:4561/tcp"      # AirSim HIL (VPN clients only)
+    networks:
+      px4_network:
+        ipv4_address: 172.20.0.100
+      vpn_network:
+        ipv4_address: 10.10.0.100
+    depends_on:
+      - wireguard
+      - px4-vpn-drone-1
+    restart: unless-stopped
+    labels:
+      - "service.type=mavlink-router"
+      - "security.vpn=required"
+
+  # Authentication and access control service
+  auth-service:
+    image: nginx:alpine
+    container_name: px4-auth-service
+    ports:
+      - "127.0.0.1:8443:443"  # HTTPS authentication endpoint (localhost only)
+    volumes:
+      - ./security/auth/nginx-auth.conf:/etc/nginx/nginx.conf:ro
+      - ./security/auth/ssl:/etc/ssl/private:ro
+      - ./security/auth/htpasswd:/etc/nginx/.htpasswd:ro
+    networks:
+      - vpn_network
+    restart: unless-stopped
+    labels:
+      - "service.type=authentication"
+      - "security.level=high"
+
+  # VPN monitoring and management
+  vpn-monitor:
+    image: alpine:latest
+    container_name: px4-vpn-monitor
+    command: >
+      sh -c "
+        apk add --no-cache curl &&
+        while true; do
+          echo '[VPN Monitor] Checking VPN status...' &&
+          curl -s http://px4-wireguard-server:8080/status || echo '[VPN Monitor] VPN service unreachable' &&
+          sleep 300
+        done
+      "
+    networks:
+      - vpn_network
+    depends_on:
+      - wireguard
+    restart: unless-stopped
+    labels:
+      - "service.type=monitoring"
+      - "monitoring.target=vpn"
+
+# VPN deployment configuration
+x-vpn-deployment:
+  # WireGuard server configuration
+  server_config:
+    # Public key will be auto-generated
+    listen_port: 51820
+    internal_subnet: "10.10.0.0/24"
+    
+    # DNS servers for VPN clients
+    dns_servers:
+      - "1.1.1.1"
+      - "8.8.8.8"
+    
+    # Allowed IPs for clients
+    allowed_ips:
+      - "10.10.0.0/24"    # VPN network
+      - "172.20.0.0/16"   # Docker network
+      
+  # Client configuration template
+  client_config:
+    # Generated automatically by WireGuard container
+    # Configs will be available in wireguard-config volume
+    # Path: /config/peer_*/peer_*.conf
+    
+    # Client connection instructions:
+    # 1. Download config file from server
+    # 2. Import into WireGuard client
+    # 3. Connect to VPN
+    # 4. Access PX4 via 10.10.0.11:14550 (drone 1)
+    
+  # Security features
+  security:
+    # Automatic key rotation (optional)
+    key_rotation_days: 90
+    
+    # Connection limits
+    max_clients: 10
+    max_connections_per_client: 3
+    
+    # Logging and monitoring
+    log_connections: true
+    monitor_bandwidth: true
+    
+    # Firewall rules (iptables)
+    firewall_rules:
+      - "iptables -A INPUT -p udp --dport 51820 -j ACCEPT"  # WireGuard port
+      - "iptables -A FORWARD -i wg0 -j ACCEPT"              # Forward VPN traffic
+      - "iptables -A FORWARD -o wg0 -j ACCEPT"              # Forward to VPN
+      - "iptables -t nat -A POSTROUTING -s 10.10.0.0/24 -o eth0 -j MASQUERADE"  # NAT for VPN
+
+  # Performance optimization
+  performance:
+    # WireGuard kernel module (faster than userspace)
+    use_kernel_module: true
+    
+    # MTU optimization
+    mtu: 1420
+    
+    # Keep-alive settings
+    persistent_keepalive: 25
+    
+  # Monitoring and alerts
+  monitoring:
+    # VPN connection status
+    check_interval: 300  # seconds
+    
+    # Bandwidth monitoring
+    monitor_bandwidth: true
+    bandwidth_alert_threshold: "100MB/day"
+    
+    # Connection logging
+    log_level: "INFO"
+    log_file: "/var/log/wireguard.log"

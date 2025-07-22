@@ -1,0 +1,238 @@
+# Google Cloud Platform (GCP) Deployment Configuration
+# Optimized for Google Compute Engine instances
+# Supports Cloud NAT and Load Balancer integration
+
+version: '3.8'
+
+networks:
+  px4_network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
+
+volumes:
+  px4-shared-data:
+    driver: local
+
+x-px4-common: &px4-common
+  image: px4-airsim:slim
+  environment: &px4-env
+    # GCP-specific configuration
+    PX4_SIM_HOSTNAME: ${GCP_EXTERNAL_IP:-AUTO_DETECT}
+    PX4_SIM_MODEL: none_iris
+    PX4_SIMULATOR: none
+    
+    # GCP metadata configuration
+    GCP_PROJECT_ID: ${GCP_PROJECT_ID}
+    GCP_ZONE: ${GCP_ZONE:-us-central1-a}
+    GCP_REGION: ${GCP_REGION:-us-central1}
+    
+    # PX4 environment
+    PX4_HOME_LAT: ${PX4_HOME_LAT:-47.641468}
+    PX4_HOME_LON: ${PX4_HOME_LON:--122.140165}
+    PX4_HOME_ALT: ${PX4_HOME_ALT:-0.0}
+    PX4_SYS_AUTOSTART: 10016
+    
+    # MAVLink configuration for GCP networking
+    MAV_0_BROADCAST: 1
+    MAV_1_BROADCAST: 1
+    MAV_2_BROADCAST: 1
+    
+    # GCP Cloud-specific settings
+    ENABLE_REMOTE_ACCESS: 1
+    REMOTE_ACCESS_MODE: "gcp"
+    SECURITY_MODE: ${SECURITY_MODE:-cloud-firewall}
+    LOAD_BALANCER_MODE: ${LOAD_BALANCER_MODE:-disabled}
+    
+    # Swarm configuration
+    SWARM_ID: 1
+    SWARM_SIZE: ${SWARM_SIZE:-3}
+    
+  networks:
+    - px4_network
+  volumes:
+    - px4-shared-data:/px4_data
+  restart: unless-stopped
+  tty: true
+  stdin_open: true
+  
+  # GCP-optimized health check
+  healthcheck:
+    test: ["CMD-SHELL", "curl -f http://localhost:8080/health || wget -q --spider http://localhost:8080/health || exit 1"]
+    interval: 30s
+    timeout: 10s
+    retries: 5
+    start_period: 120s
+
+services:
+  # Cloud Load Balancer backend service
+  px4-gcp-drone-1:
+    <<: *px4-common
+    container_name: px4-gcp-drone-1
+    hostname: px4-gcp-drone-1
+    environment:
+      <<: *px4-env
+      PX4_INSTANCE: 1
+      
+    # GCP-optimized port mapping with Cloud NAT support
+    ports:
+      # MAVLink endpoints (Cloud Load Balancer compatible)
+      - "14550:14550/udp"    # Standard QGroundControl
+      - "14540:14540/udp"    # API access
+      - "14541:14541/udp"    # Per-drone QGC
+      
+      # Internal connections (private network only)
+      - "127.0.0.1:4561:4561/tcp"  # AirSim HIL
+      
+      # Monitoring (internal network)
+      - "8080:8080/tcp"      # Health checks for Load Balancer
+      - "127.0.0.1:9090:9090/tcp"  # Metrics endpoint
+      
+    networks:
+      px4_network:
+        ipv4_address: 172.20.0.11
+        
+    # GCP service labels for Cloud Monitoring
+    labels:
+      - "cloud.provider=gcp"
+      - "service.type=px4-sitl"
+      - "service.instance=1"
+      - "monitoring.enabled=true"
+      - "loadbalancer.target=true"
+
+  px4-gcp-drone-2:
+    <<: *px4-common
+    container_name: px4-gcp-drone-2
+    hostname: px4-gcp-drone-2
+    environment:
+      <<: *px4-env
+      PX4_INSTANCE: 2
+    ports:
+      - "14551:14551/udp"
+      - "14542:14542/udp"
+      - "127.0.0.1:4562:4562/tcp"
+      - "8081:8080/tcp"
+    networks:
+      px4_network:
+        ipv4_address: 172.20.0.12
+    labels:
+      - "cloud.provider=gcp"
+      - "service.type=px4-sitl"
+      - "service.instance=2"
+
+  px4-gcp-drone-3:
+    <<: *px4-common
+    container_name: px4-gcp-drone-3
+    hostname: px4-gcp-drone-3
+    environment:
+      <<: *px4-env
+      PX4_INSTANCE: 3
+    ports:
+      - "14552:14552/udp"
+      - "14543:14543/udp"
+      - "127.0.0.1:4563:4563/tcp"
+      - "8082:8080/tcp"
+    networks:
+      px4_network:
+        ipv4_address: 172.20.0.13
+    labels:
+      - "cloud.provider=gcp"
+      - "service.type=px4-sitl"
+      - "service.instance=3"
+
+  # Cloud Monitoring Agent
+  stackdriver-agent:
+    image: gcr.io/stackdriver-agents/stackdriver-logging-agent:latest
+    container_name: px4-stackdriver-agent
+    environment:
+      - GOOGLE_APPLICATION_CREDENTIALS=/etc/google/auth/service-account.json
+      - GCP_PROJECT_ID=${GCP_PROJECT_ID}
+    volumes:
+      - /var/log:/var/log:ro
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+      - ./cloud-deployments/gcp/service-account.json:/etc/google/auth/service-account.json:ro
+    networks:
+      - px4_network
+    restart: unless-stopped
+
+  # Cloud SQL Proxy (for logging/telemetry storage)
+  cloud-sql-proxy:
+    image: gcr.io/cloudsql-docker/gce-proxy:latest
+    container_name: px4-cloud-sql-proxy
+    command: /cloud_sql_proxy -instances=${GCP_PROJECT_ID}:${GCP_REGION}:px4-telemetry=tcp:0.0.0.0:5432
+    ports:
+      - "127.0.0.1:5432:5432"
+    environment:
+      - GOOGLE_APPLICATION_CREDENTIALS=/etc/google/auth/service-account.json
+    volumes:
+      - ./cloud-deployments/gcp/service-account.json:/etc/google/auth/service-account.json:ro
+    networks:
+      - px4_network
+    restart: unless-stopped
+
+# GCP-specific deployment configuration
+x-gcp-deployment:
+  # Compute Engine instance recommendations
+  machine_type: "e2-standard-2"  # 2 vCPU, 8 GB RAM
+  boot_disk_size: "20GB"         # SSD persistent disk
+  boot_disk_type: "pd-ssd"
+  
+  # VPC network configuration
+  network: "px4-network"
+  subnet: "px4-subnet"
+  
+  # Firewall rules (apply via gcloud CLI)
+  firewall_rules:
+    - name: "px4-mavlink-udp"
+      direction: "INGRESS"
+      action: "ALLOW"
+      rules:
+        - protocols: ["udp"]
+          ports: ["14540-14560"]
+      source_ranges: ["0.0.0.0/0"]
+      target_tags: ["px4-server"]
+      
+    - name: "px4-health-check"
+      direction: "INGRESS"
+      action: "ALLOW"
+      rules:
+        - protocols: ["tcp"]
+          ports: ["8080-8082"]
+      source_ranges: ["35.191.0.0/16", "130.211.0.0/22"]  # GCP Load Balancer ranges
+      target_tags: ["px4-server"]
+      
+    - name: "px4-ssh-access"
+      direction: "INGRESS"
+      action: "ALLOW"
+      rules:
+        - protocols: ["tcp"]
+          ports: ["22"]
+      source_ranges: ["YOUR_IP/32"]  # Replace with your IP
+      target_tags: ["px4-server"]
+  
+  # Cloud Load Balancer configuration
+  load_balancer:
+    type: "NETWORK"  # Layer 4 load balancer for UDP
+    protocol: "UDP"
+    ports: ["14540", "14550"]
+    health_check:
+      type: "HTTP"
+      port: 8080
+      path: "/health"
+      
+  # Cloud NAT configuration
+  cloud_nat:
+    name: "px4-nat"
+    region: "${GCP_REGION}"
+    router: "px4-router"
+    
+  # External IP configuration
+  external_ip:
+    type: "STATIC"
+    name: "px4-server-ip"
+    
+  # Cloud DNS configuration (optional)
+  dns:
+    zone: "px4-zone"
+    name: "px4-server.yourdomain.com"

@@ -1,0 +1,43 @@
+# AirSim ROS2 Python Examples Requirements
+# 
+# Install with: pip install -r requirements.txt
+
+# Core ROS2 Python client library
+rclpy>=3.0.0
+
+# Standard Python libraries for data processing
+numpy>=1.19.0
+matplotlib>=3.3.0
+
+# Optional: For advanced data analysis and plotting
+pandas>=1.3.0
+scipy>=1.7.0
+
+# Optional: For JSON data processing and validation
+jsonschema>=3.2.0
+
+# Optional: For more advanced logging
+colorlog>=6.0.0
+
+# Optional: For progress bars and terminal UI
+tqdm>=4.60.0
+
+# Optional: For configuration file handling
+pyyaml>=5.4.0
+
+# Optional: For improved command-line argument parsing
+argcomplete>=1.12.0
+
+# Development and testing dependencies (optional)
+pytest>=6.0.0
+pytest-cov>=2.10.0
+flake8>=3.8.0
+black>=21.0.0
+
+# Note: ROS2 message packages are installed via colcon build
+# These are automatically available when you source the ROS2 workspace:
+# - airsim_interfaces
+# - nav_msgs
+# - sensor_msgs
+# - geometry_msgs
+# - std_msgs

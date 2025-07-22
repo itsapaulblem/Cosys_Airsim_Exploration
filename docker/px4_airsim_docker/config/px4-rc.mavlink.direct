@@ -1,0 +1,176 @@
+#!/bin/sh
+# Enhanced px4-rc.mavlink for Direct External Connectivity
+# Configures PX4 to directly send MAVLink messages to external IPs
+# This bypasses the need for mavlink-router in simple scenarios
+
+echo "🚀 Starting PX4 MAVLink with Direct External Connectivity"
+
+# Configuration from environment variables with sensible defaults
+MAVLINK_TARGET=${MAVLINK_TARGET:-192.168.65.254}
+INSTANCE=${PX4_INSTANCE:-0}  # Default to 0 for standard ports
+DEBUG_MAVLINK=${DEBUG_MAVLINK:-false}
+
+# Calculate instance-specific ports to avoid conflicts
+# Drone 1 (INSTANCE=0): QGC=14550, API=14540  <- Industry Standard
+# Drone 2 (INSTANCE=1): QGC=14551, API=14541
+# Drone 3 (INSTANCE=2): QGC=14552, API=14542
+GCS_PORT=$((14550 + $INSTANCE))
+API_PORT=$((14540 + $INSTANCE))
+
+# Data rates (bytes per second)
+GCS_RATE=${GCS_RATE:-4000000}    # 4MB/s for GCS
+API_RATE=${API_RATE:-2000000}    # 2MB/s for API
+
+echo "📡 MAVLink Configuration:"
+echo "   Instance: $INSTANCE"
+echo "   Target: $MAVLINK_TARGET"
+echo "   GCS Port: $GCS_PORT (rate: $GCS_RATE B/s)"
+echo "   API Port: $API_PORT (rate: $API_RATE B/s)"
+
+# Verbose flag for debugging
+VERBOSE_FLAG=""
+if [ "$DEBUG_MAVLINK" = "true" ]; then
+    VERBOSE_FLAG="-v"
+    echo "   Debug: Enabled"
+fi
+
+echo "🌐 Starting MAVLink instances..."
+
+# Primary GCS connection (QGroundControl)
+echo "   Starting GCS MAVLink on port $GCS_PORT..."
+mavlink start -u $GCS_PORT -r $GCS_RATE -t $MAVLINK_TARGET $VERBOSE_FLAG
+
+# Secondary API connection (MAVSDK, DroneKit, etc.)
+echo "   Starting API MAVLink on port $API_PORT..."
+mavlink start -u $API_PORT -r $API_RATE -t $MAVLINK_TARGET $VERBOSE_FLAG
+
+# Wait a moment for instances to initialize
+sleep 1
+
+echo "📊 Configuring message streams..."
+
+# ================================
+# GCS STREAMS (QGroundControl)
+# ================================
+# Optimized for human operators
+
+echo "   Configuring GCS streams (port $GCS_PORT)..."
+
+# Core attitude and position (high rate for smooth visualization)
+mavlink stream -u $GCS_PORT -s HIGHRES_IMU -r 50
+mavlink stream -u $GCS_PORT -s ATTITUDE -r 50
+mavlink stream -u $GCS_PORT -s ATTITUDE_QUATERNION -r 50
+mavlink stream -u $GCS_PORT -s LOCAL_POSITION_NED -r 50
+mavlink stream -u $GCS_PORT -s GLOBAL_POSITION_INT -r 50
+
+# Navigation and control
+mavlink stream -u $GCS_PORT -s ALTITUDE -r 20
+mavlink stream -u $GCS_PORT -s VFR_HUD -r 20
+mavlink stream -u $GCS_PORT -s ATTITUDE_TARGET -r 10
+mavlink stream -u $GCS_PORT -s POSITION_TARGET_LOCAL_NED -r 10
+
+# Sensors and health (moderate rate)
+mavlink stream -u $GCS_PORT -s GPS_RAW_INT -r 10
+mavlink stream -u $GCS_PORT -s GPS2_RAW -r 5
+mavlink stream -u $GCS_PORT -s BATTERY_STATUS -r 5
+mavlink stream -u $GCS_PORT -s SYSTEM_TIME -r 1
+mavlink stream -u $GCS_PORT -s HEARTBEAT -r 1
+
+# Mission and status
+mavlink stream -u $GCS_PORT -s MISSION_CURRENT -r 2
+mavlink stream -u $GCS_PORT -s NAV_CONTROLLER_OUTPUT -r 10
+mavlink stream -u $GCS_PORT -s RC_CHANNELS -r 5
+
+# Extended status (low rate)
+mavlink stream -u $GCS_PORT -s EXTENDED_SYS_STATE -r 2
+mavlink stream -u $GCS_PORT -s POWER_STATUS -r 1
+mavlink stream -u $GCS_PORT -s VIBRATION -r 1
+
+# ================================
+# API STREAMS (MAVSDK, DroneKit)
+# ================================
+# Optimized for programmatic access
+
+echo "   Configuring API streams (port $API_PORT)..."
+
+# High-rate data for control loops
+mavlink stream -u $API_PORT -s HIGHRES_IMU -r 100
+mavlink stream -u $API_PORT -s ATTITUDE -r 100
+mavlink stream -u $API_PORT -s ATTITUDE_QUATERNION -r 100
+mavlink stream -u $API_PORT -s LOCAL_POSITION_NED -r 100
+
+# Position and navigation (high rate)
+mavlink stream -u $API_PORT -s GLOBAL_POSITION_INT -r 50
+mavlink stream -u $API_PORT -s GPS_RAW_INT -r 20
+mavlink stream -u $API_PORT -s ALTITUDE -r 50
+
+# Control targets and outputs
+mavlink stream -u $API_PORT -s ATTITUDE_TARGET -r 50
+mavlink stream -u $API_PORT -s POSITION_TARGET_LOCAL_NED -r 50
+mavlink stream -u $API_PORT -s ACTUATOR_OUTPUTS -r 50
+
+# Essential status
+mavlink stream -u $API_PORT -s HEARTBEAT -r 1
+mavlink stream -u $API_PORT -s SYSTEM_TIME -r 10
+mavlink stream -u $API_PORT -s BATTERY_STATUS -r 10
+
+# Mission and mode
+mavlink stream -u $API_PORT -s EXTENDED_SYS_STATE -r 10
+mavlink stream -u $API_PORT -s MISSION_CURRENT -r 5
+
+# ================================
+# CONDITIONAL STREAMS
+# ================================
+
+# Additional streams for specific use cases
+if [ "${ENABLE_CAMERA_STREAMS:-false}" = "true" ]; then
+    echo "   Enabling camera streams..."
+    mavlink stream -u $GCS_PORT -s CAMERA_INFORMATION -r 1
+    mavlink stream -u $GCS_PORT -s CAMERA_SETTINGS -r 1
+    mavlink stream -u $GCS_PORT -s CAMERA_CAPTURE_STATUS -r 2
+fi
+
+if [ "${ENABLE_GIMBAL_STREAMS:-false}" = "true" ]; then
+    echo "   Enabling gimbal streams..."
+    mavlink stream -u $GCS_PORT -s GIMBAL_MANAGER_INFORMATION -r 1
+    mavlink stream -u $GCS_PORT -s GIMBAL_MANAGER_STATUS -r 2
+    mavlink stream -u $GCS_PORT -s GIMBAL_DEVICE_ATTITUDE_STATUS -r 10
+fi
+
+if [ "${ENABLE_DEBUG_STREAMS:-false}" = "true" ]; then
+    echo "   Enabling debug streams..."
+    mavlink stream -u $API_PORT -s DEBUG_VECT -r 20
+    mavlink stream -u $API_PORT -s NAMED_VALUE_FLOAT -r 10
+    mavlink stream -u $API_PORT -s STATUSTEXT -r 5
+fi
+
+echo "✅ MAVLink configuration completed!"
+
+# Display status information
+sleep 1
+echo ""
+echo "📋 MAVLink Status:"
+mavlink status
+
+echo ""
+echo "🎯 Connection Information:"
+echo "   QGroundControl: Connect to $MAVLINK_TARGET:$GCS_PORT"
+echo "   MAVSDK/API: udp://$MAVLINK_TARGET:$API_PORT"
+echo ""
+echo "💡 To modify streams at runtime:"
+echo "   mavlink stream -u $GCS_PORT -s <MESSAGE_NAME> -r <RATE>"
+echo ""
+echo "📊 To check status:"
+echo "   mavlink status"
+echo ""
+
+# Log configuration for debugging
+if [ "$DEBUG_MAVLINK" = "true" ]; then
+    echo "🔍 Debug Information:"
+    echo "   PX4_INSTANCE: $PX4_INSTANCE"
+    echo "   MAVLINK_TARGET: $MAVLINK_TARGET"
+    echo "   Available streams: mavlink stream -l"
+    echo ""
+fi
+
+echo "🚀 PX4 MAVLink Direct Configuration Complete!"
