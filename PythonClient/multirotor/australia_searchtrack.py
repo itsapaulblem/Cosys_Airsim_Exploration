@@ -50,11 +50,12 @@ def set_segmentation_ids(client):
     # Try to set the target object - with and without regex
     success1 = client.simSetSegmentationObjectID("SkeletalMeshActor_0", 2, False)  # Exact match first
     success2 = client.simSetSegmentationObjectID("SkeletalMeshActor_0", 2, True)   # Regex match
-    
+    colorMap = client.simGetSegmentationColorMap()
+
     print(f"[INFO] Target object 'SkeletalMeshActor_0' - Exact match: {success1}, Regex match: {success2}")
     
     # Also try some common variations
-    variations = ["SciFiSoldier", "Soldier", "Person", "Target", "SkeletalMeshActor_0", ".*[Pp]erson.*"]
+    variations = ["SK_SciFiSoldier02", "Soldier", "Person", "Target", "SkeletalMeshActor_0", ".*[Pp]erson.*"]
     for variation in variations:
         success = client.simSetSegmentationObjectID(variation, 2, True)
         if success:
@@ -254,6 +255,7 @@ def main():
 
     client = airsim.MultirotorClient(ip="172.22.112.1")
     client.confirmConnection()
+    client.setSegmentationObjectID(".*", 0, True)  # Reset segmentation IDs to default
     
     # Set segmentation IDs for background and target
     set_segmentation_ids(client)

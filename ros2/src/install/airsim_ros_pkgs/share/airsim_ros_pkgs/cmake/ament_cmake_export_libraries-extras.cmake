@@ -1,6 +1,6 @@
 # generated from ament_cmake_export_libraries/cmake/template/ament_cmake_export_libraries.cmake.in
 
-set(_exported_libraries "airsim_settings_parser;pd_position_controller_simple;airsim_ros")
+set(_exported_libraries "airsim_settings_parser;pd_position_controller_simple;airsim_ros;vehicle_node_base;multirotor_node_lib;vehicle_settings_parser;coordination_impl")
 set(_exported_library_names "")
 
 # populate airsim_ros_pkgs_LIBRARIES

@@ -1,6 +1,36 @@
 #include <airsim_ros_wrapper.h>
 #include "common/AirSimSettings.hpp"
-#include <tf2_sensor_msgs/tf2_sensor_msgs.h>
+#include <tf2_sensor_msgs/tf2_sensor_msgs.hpp>
+
+
+// The old ROS 2 wrapper uses a single monolithic node that manages ALL vehicles in the simulation 
+
+// Current limitations & bottlenecks
+// 1) Single point of failure 
+//     - One vehicle issue (RPC timeout, exception) affects ALL vehicles
+//     - Node crash brings down entire multi vehicle operation 
+//     - No isolation between vehicle processing
+
+// 2) Performance bottkenecks
+// - Shared processing: All vehicles processed sequentially in timer callbacks
+// - Resource contention: high frequnecy sensors compete for CPU time
+// - Memory sharing: Large point clouds from multiple vehicles in same process
+// - RPC queuing: single connection handles all vehicle requests
+
+// 3) Scalability issues
+// - Linear perfomance degration: processing time increases with time count 
+// - Timer synchronisation: all vehicles must complete processing wihtin timer period
+// - Memory growth: unbounded growth with additional vehicles/sensors
+
+// 4) Development & Debugging Challenges
+// - Mixed logs: all vehicle logs intermixed in single node output
+// - Complex state: hard to isolate issues to specific vehicles 
+// - Restart impact: restarting node affects all vehicles simultaneously 
+
+// 5) Resource management
+// - CPU binding: all processing on single core/thread
+// - Memory pooling: no per vehicle memory limits
+// - Network sharing: isngle tcp connection for all vehicles
 
 using namespace std::placeholders;
 
@@ -80,9 +110,9 @@ void AirsimROSWrapper::initialize_airsim()
         if (airsim_mode_ == AIRSIM_MODE::DRONE) {
             airsim_client_ = std::unique_ptr<msr::airlib::RpcLibClientBase>(new msr::airlib::MultirotorRpcLibClient(host_ip_, host_port_));
         }
-        else if(airsim_mode_ == AIRSIM_MODE::CAR) {
+        else if (airsim_mode_ == AIRSIM_MODE::CAR) {
             airsim_client_ = std::unique_ptr<msr::airlib::RpcLibClientBase>(new msr::airlib::CarRpcLibClient(host_ip_, host_port_));
-        }else{
+        } else {
             airsim_client_ = std::unique_ptr<msr::airlib::RpcLibClientBase>(new msr::airlib::ComputerVisionRpcLibClient(host_ip_, host_port_));
         }
         airsim_client_->confirmConnection();
@@ -222,8 +252,6 @@ void AirsimROSWrapper::create_ros_pubs_from_settings_json()
 
             std::function<bool(std::shared_ptr<airsim_interfaces::srv::Land::Request>, std::shared_ptr<airsim_interfaces::srv::Land::Response>)> fcn_land_srvr = std::bind(&AirsimROSWrapper::land_srv_cb, this, _1, _2, vehicle_ros->vehicle_name_);
             drone->land_srvr_ = nh_->create_service<airsim_interfaces::srv::Land>(topic_prefix + "/land", fcn_land_srvr);
-
-            drone->set_altitude_srvr_ = nh_->create_service<airsim_interfaces::srv::SetAltitude>("~/" + curr_vehicle_name + "/set_altitude", std::bind(&AirsimROSWrapper::set_altitude_srv_cb, this, std::placeholders::_1, std::placeholders::_2, curr_vehicle_name));
 
             // vehicle_ros.reset_srvr = nh_->create_service(curr_vehicle_name + "/reset",&AirsimROSWrapper::reset_srv_cb, this);
         }
@@ -403,13 +431,6 @@ void AirsimROSWrapper::create_ros_pubs_from_settings_json()
 
         takeoff_group_srvr_ = nh_->create_service<airsim_interfaces::srv::TakeoffGroup>("~/group_of_robots/takeoff", std::bind(&AirsimROSWrapper::takeoff_group_srv_cb, this, _1, _2));
         land_group_srvr_ = nh_->create_service<airsim_interfaces::srv::LandGroup>("~/group_of_robots/land", std::bind(&AirsimROSWrapper::land_group_srv_cb, this, _1, _2));
-        set_altitude_all_srvr_ = nh_->create_service<airsim_interfaces::srv::SetAltitude>("~/all_robots/set_altitude", std::bind(&AirsimROSWrapper::set_altitude_all_srv_cb, this, std::placeholders::_1, std::placeholders::_2));
-        set_altitude_group_srv_ = nh_->create_service<airsim_interfaces::srv::SetAltitudeGroup>("~/group_of_robots/set_altitude", std::bind(&AirsimROSWrapper::set_altitude_group_srv_cb, this, std::placeholders::_1, std::placeholders::_2));
-        fly_orbit_srvr_ = nh_->create_service<airsim_interfaces::srv::FlyOrbit>("~/all_robots/fly_orbit", std::bind(&AirsimROSWrapper::fly_orbit_srv_cb, this, std::placeholders::_1, std::placeholders::_2));
-    }
-
-    if (airsim_mode_ == AIRSIM_MODE::DRONE) {
-        fly_orbit_srvr_ = nh_->create_service<airsim_interfaces::srv::FlyOrbit>("~/all_robots/fly_orbit", std::bind(&AirsimROSWrapper::fly_orbit_srv_cb, this, std::placeholders::_1, std::placeholders::_2));
     }
 
     // todo add per vehicle reset in AirLib API
@@ -517,145 +538,7 @@ bool AirsimROSWrapper::takeoff_all_srv_cb(std::shared_ptr<airsim_interfaces::srv
         for (const auto& vehicle_name_ptr_pair : vehicle_name_ptr_map_)
             static_cast<msr::airlib::MultirotorRpcLibClient*>(airsim_client_.get())->takeoffAsync(20, vehicle_name_ptr_pair.first);
     // response->success =
-
-    return true;
-}
-
-bool AirsimROSWrapper::set_altitude_srv_cb(std::shared_ptr<airsim_interfaces::srv::SetAltitude::Request> request, std::shared_ptr<airsim_interfaces::srv::SetAltitude::Response> response, const std::string& vehicle_name) {
-    std::lock_guard<std::mutex> guard(control_mutex_);
-
-    try {
-        auto pose = static_cast<msr::airlib::MultirotorRpcLibClient*>(airsim_client_.get())->simGetVehiclePose(vehicle_name);
-
-        msr::airlib::Vector3r new_position(pose.position.x(), pose.position.y(), -request->altitude);
-
-        if (request->wait_on_last_task) {
-            static_cast<msr::airlib::MultirotorRpcLibClient*>(airsim_client_.get())
-                ->moveToPositionAsync(new_position.x(), new_position.y(), new_position.z(),
-                request-> velocity, 60.0f, msr::airlib::DrivetrainType::MaxDegreeOfFreedom,
-                msr::airlib::YawMode(), -1, 0, vehicle_name)->waitOnLastTask();
-        } else {
-            static_cast<msr::airlib::MultirotorRpcLibClient*>(airsim_client_.get())
-                ->moveToPositionAsync(new_position.x(), new_position.y(), new_position.z(),
-                request->velocity, 60.0f, msr::airlib::DrivetrainType::MaxDegreeOfFreedom,
-                msr::airlib::YawMode(), -1, 0, vehicle_name);
-        }
-
-        response->success = true;
-        response->message = "Altitude set successfully for " + vehicle_name;
-    }
-    catch (const std::exception& e) {
-        response-> success = false; 
-        response->message = "Failed to set altitude: " + std::string(e.what());
-        RCLCPP_ERROR_STREAM(nh_->get_logger(), "Error setting altitude for " << vehicle_name << ": " << e.what());
-    }
-    
-    return true; 
-}
-
-bool AirsimROSWrapper::set_altitude_group_srv_cb(std::shared_ptr<airsim_interfaces::srv::SetAltitudeGroup::Request> request, std::shared_ptr<airsim_interfaces::srv::SetAltitudeGroup::Response> response)
-{
-    std::lock_guard<std::mutex> guard(control_mutex_);
-
-    response->success = true; 
-    response-> message = "Group altitude operation completed";
-
-    try {
-        for (const auto& vehicle_name : request->vehicle_names) {
-            auto pose = static_cast<msr::airlib::MultirotorRpcLibClient*>(airsim_client_.get())->simGetVehiclePose(vehicle_name);
-
-            msr::airlib::Vector3r new_position(pose.position.x(), pose.position.y(), -request->altitude);
-
-            if (request->wait_on_last_task) {
-                static_cast<msr::airlib::MultirotorRpcLibClient*>(airsim_client_.get())
-                    ->moveToPositionAsync(new_position.x(), new_position.y(), new_position.z(),
-                    request->velocity , 60.0f, msr::airlib::DrivetrainType::MaxDegreeOfFreedom, 
-                    msr::airlib::YawMode(), -1, 0, vehicle_name)->waitOnLastTask();
-            } else {
-                static_cast<msr::airlib::MultirotorRpcLibClient*>(airsim_client_.get())
-                    ->moveToPositionAsync(new_position.x(), new_position.y(), new_position.z(),
-                    request->velocity, 60.0f, msr::airlib::DrivetrainType::MaxDegreeOfFreedom,
-                    msr::airlib::YawMode(), -1, 0, vehicle_name);
-            }
-        }
-    }
-    catch (const std::exception& e) {
-        response->success = false;
-        response->message = "Failed to set altitude for group: " + std::string(e.what());
-        RCLCPP_ERROR_STREAM(nh_->get_logger(), "Error setting altitude for group: " << e.what());
-    }
-    return true;
-}
-
-bool AirsimROSWrapper::set_altitude_all_srv_cb(std::shared_ptr<airsim_interfaces::srv::SetAltitude::Request> request, 
-                                              std::shared_ptr<airsim_interfaces::srv::SetAltitude::Response> response)
-{
-    std::lock_guard<std::mutex> guard(control_mutex_);
-    
-    try {
-        for (const auto& vehicle_name_ptr_pair : vehicle_name_ptr_map_) {
-            const std::string& vehicle_name = vehicle_name_ptr_pair.first;
-            
-            // Get current position
-            auto pose = static_cast<msr::airlib::MultirotorRpcLibClient*>(airsim_client_.get())->simGetVehiclePose(vehicle_name);
-            
-            // Set new position with desired altitude
-            msr::airlib::Vector3r new_position(pose.position.x(), pose.position.y(), -request->altitude);
-            
-            if (request->wait_on_last_task) {
-                static_cast<msr::airlib::MultirotorRpcLibClient*>(airsim_client_.get())
-                    ->moveToPositionAsync(new_position.x(), new_position.y(), new_position.z(), 
-                                        request->velocity, 60.0f, msr::airlib::DrivetrainType::MaxDegreeOfFreedom, 
-                                        msr::airlib::YawMode(), -1, 0, vehicle_name)->waitOnLastTask();
-            } else {
-                static_cast<msr::airlib::MultirotorRpcLibClient*>(airsim_client_.get())
-                    ->moveToPositionAsync(new_position.x(), new_position.y(), new_position.z(), 
-                                        request->velocity, 60.0f, msr::airlib::DrivetrainType::MaxDegreeOfFreedom, 
-                                        msr::airlib::YawMode(), -1, 0, vehicle_name);
-            }
-        }
-        
-        response->success = true;
-        response->message = "Altitude set successfully for all vehicles";
-    }
-    catch (const std::exception& e) {
-        response->success = false;
-        response->message = "Failed to set altitude for all vehicles: " + std::string(e.what());
-        RCLCPP_ERROR_STREAM(nh_->get_logger(), "Error setting altitude for all vehicles: " << e.what());
-    }
-    
-    return true;
-}
-
-bool AirsimROSWrapper::fly_orbit_srv_cb (
-    const std::shared_ptr<airsim_interfaces::srv::FlyOrbit::Request> request,
-    const std::shared_ptr<airsim_interfaces::srv::FlyOrbit::Response> response)
-{
-    std::lock_guard<std::mutex> guard(control_mutex_);
-    try {
-        for (const auto& vehicle_name_ptr_pair : vehicle_name_ptr_map_) {
-            const std::string& vehicle_name = vehicle_name_ptr_pair.first;
-            auto* client = static_cast<msr::airlib::MultirotorRpcLibClient*>(airsim_client_.get());
-            client->moveToPositionAsync(
-                request->center.x,
-                request->center.y,
-                request->center.z,
-                request->velocity,
-                request->duration, // timeout_sec
-                msr::airlib::DrivetrainType::MaxDegreeOfFreedom, // drivetrain
-                msr::airlib::YawMode(false, request->yaw_mode),  // yaw_mode
-                -1, // lookahead
-                0,  // adaptive_lookahead
-                vehicle_name
-        );
-        }
-        response->success = true;
-        response->message = "Orbit started for all vehicles";
-    } catch (const std::exception& e) {
-        response->success = false;
-        response->message = "Failed to start orbit: " + std::string(e.what());
-        RCLCPP_ERROR_STREAM(nh_->get_logger(), "Error starting orbit: " << e.what()); 
-    }
+// collision , coordination node, qgroundcontrol
     return true;
 }
 
@@ -1090,7 +973,7 @@ sensor_msgs::msg::PointCloud2 AirsimROSWrapper::get_gpulidar_msg_from_airsim(con
             point.y = y;
             point.z = z;
             std::uint32_t rgb = ((std::uint32_t)r << 16 | (std::uint32_t)g << 8 | (std::uint32_t)b);
-            point.rgb = *reinterpret_cast<float*>(&rgb);
+            std::memcpy(&point.rgb, &rgb, sizeof(float));
             point.intensity = intensity;
             cloud.points[i] = point;
         }

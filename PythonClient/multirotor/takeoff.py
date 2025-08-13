@@ -11,19 +11,19 @@ z = 5
 if len(sys.argv) > 1:
     z = float(sys.argv[1])
 
-client = airsim.MultirotorClient()
+client = airsim.MultirotorClient(ip="172.22.112.1")
 client.confirmConnection()
-client.enableApiControl(True)
+client.enableApiControl(True, "Drone1")
 
-client.armDisarm(True)
+client.armDisarm(True, "Drone1")
 
-landed = client.getMultirotorState().landed_state
+landed = client.getMultirotorState(vehicle_name="Drone1").landed_state
 if landed == airsim.LandedState.Landed:
     print("taking off...")
-    client.takeoffAsync().join()
+    client.takeoffAsync(vehicle_name="Drone1").join()
 else:
     print("already flying...")
-    client.hoverAsync().join()
+    client.hoverAsync(vehicle_name="Drone1").join()
 
 print("make sure we are hovering at {} meters...".format(z))
 

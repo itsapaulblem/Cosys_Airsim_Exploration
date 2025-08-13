@@ -7,6 +7,148 @@
 #include "AnnotationComponent.h"
 #include "AirBlueprintLib.h"
 
+#include "Cesium3DTileset.h" // Cesium plugin header
+
+// Forward declaration for Cesium tile type (replace with actual Cesium header if needed)
+class FCesiumTile;
+
+bool FObjectAnnotator::HasCesiumTileset(AActor* actor) const 
+{
+	if (!actor) return false; 
+
+	TArray<UActorComponent*> cesiumComponents;
+	actor->GetComponents(UCesium3DTileset::StaticClass(), cesiumComponents);
+	return cesiumComponents.Num() > 0;
+}
+
+TArray<UMeshComponent*> FObjectAnnotator::getMeshFromActor(AActor* actor, bool staticMeshOnly) const
+{
+	TArray<UMeshComponent*> meshes;
+
+	TArray<UmeshComponent*> components;
+	actor->GetComponents<UMeshComponent>(components);
+	meshes.Append(components);
+
+	return meshes; 
+}
+
+void FObjectAnnotator::HandleCesiumTilesetsSimple(UWorld* World){
+	if (!World) return;
+
+	for (TActorIterator<AActor> ActorItr(World); ActorItr; ++ActorItr)
+	{
+		AActor* Actor = *ActorItr; 
+		if (Actor && HasCesiumTileset(Actor))
+		{
+			TArray<UActorComponent*> cesiumComponents;
+			Actor->GetComponents(UCesium3DTileset::StaticClass(), cesiumComponents);
+
+			for (UActorComponent* Component: cesiumComponents)
+			{
+				if (UCesium3DTileset* Tileset = Cast<UCesium3DTileset>(Component))
+				{
+					FString componentName = Actor->GetName() + "_CesiumTileset";
+
+					if (!cesium_tilesets_map.Contains(componentName))
+					{
+						uint32 ObjectIndex = name_to_component_map_.Num();
+						FColor new_color = ColorGenerator_.GetColorFromColorMap(ObjectIndex);
+
+						cesium_tilesets_map_.Emplace(componentName, Tileset);
+						name_to_color_index_map_.Emplace(componentName, ObjectIndex);
+
+						FString color_string = FString::FromInt(new_color.R) + "," + FString::FromInt(new_color.G) + "," + FString::FromInt(new_color.B);
+						FString color_string_gammacorrected = FString::FromInt(ColorGenerator_.GetGammaCorrectedColor(new_color.R)) + "," + FString::FromInt(ColorGenerator_.GetGammaCorrectedColor(new_color.G)) + "," + FString::FromInt(ColorGenerator_.GetGammaCorrectedColor(new_color.B));
+
+						color_to_name_map_.Emplace(color_string, componentName);
+						gammacorrected_color_to_name_map_.Emplace(color_string_gammacorrected, componentName);
+                        name_to_gammacorrected_color_map_.Emplace(componentName, color_string_gammacorrected);
+                        
+                        // Apply override material with segmentation color
+                        ApplyCesiumSegmentationMaterial(Tileset, new_color);
+                        
+                        UE_LOG(LogTemp, Log, TEXT("AirSim Annotation [%s]: Added Cesium tileset %s with color ID %d"), 
+                            *name_, *componentName, ObjectIndex);
+                    }
+				}
+			}
+		}
+	}
+}
+
+void FObjectAnnotator::ApplyCesiumSegmentationMaterial(UCesium3DTileset* Tileset, FColor SegmentationColor)
+{
+	if (!Tileset) return; 
+
+	UMaterialInterface* BaseMaterial = GetCesiumBaseMaterial();
+	if (!BaseMaterial)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("AirSim Annotation [%s]: No base material found for Cesium segmentation"), *name_);
+		return;
+	}
+
+	UMaterialInstanceDynamic* DynamicMaterial = UMaterialInstanceDynamic::Create(BaseMaterial, Tileset);
+
+	if (DynamicMaterial)
+	{
+		FLinearColor LinearColor = FLinearColor(SegmentationColor);
+		DynamicMaterial->SetVectorParameterValue("SegmentationColor", LinearColor);
+
+		Tileset->SetMaterial(DynamicMaterial);
+
+		UE_LOG(LogTemp, Log, TEXT("AirSim Annotation [%s]: Applied segmentation material to Cesium tileset"), *name_);
+	}
+}
+
+UMaterialInterface* FObjectAnnotator::GetCesiumBaseMaterial() 
+{
+	UMaterialInterface* Material = LoadObject<UMaterialInterface>(
+		nullptr,
+		TEXT("/AirSim/Materials/CesiumSegmentationMaterial")
+	);
+
+	if (!Material)
+	{
+		Material = LoadObject<UMaterialInterface>(
+			nullptr,
+			TEXT("/Engine/BasicShapes/BasicShapesMaterial")
+		);
+	}
+	return Material;
+}
+
+void FObjectAnnotator::RegisterCesiumCallbacks(UWorld* World)
+{
+	if (!World) return; 
+
+	UE_LOG(LogTemp, Log, TEXT("AirSim Annotation [%s]: Setting up Cesium integration."), *name_);
+
+	HandleCesiumTilesetsSimple(World);
+}
+
+bool FObjectAnnotator::IsPaintable(AActor* actor)
+{
+	if (!IsValid(actor))
+	{
+		return false;
+	}
+	
+	if (HasCesiumTileset(actor))
+	{
+		return true;
+	}
+
+	TArray<UMeshComponent*> paintable_components = getMeshFromActor(actor);
+	if (paintable_components.Num() == 0)
+	{
+		return false;
+	}
+	else
+	{
+		return true;
+	}
+}
+
 // For UE4 < 17
 // check https://github.com/unrealcv/unrealcv/blob/1369a72be8428547318d8a52ae2d63e1eb57a001/Source/UnrealCV/Private/Controller/ObjectAnnotator.cpp#L1
 
@@ -45,6 +187,12 @@ void FObjectAnnotator::Initialize(ULevel* level) {
 		InitializeInstanceSegmentation(level);
 		break;
 	}
+	
+	// Register Cesium callbacks for dynamic tile loading
+	if (level && level->GetWorld())
+	{
+		RegisterCesiumCallbacks(level->GetWorld());
+	}
 }
 
 bool FObjectAnnotator::IsPaintable(AActor* actor)
@@ -53,8 +201,7 @@ bool FObjectAnnotator::IsPaintable(AActor* actor)
 	{
 		return false;
 	}
-	TArray<UMeshComponent*> paintable_components;
-	actor->GetComponents<UMeshComponent>(paintable_components);
+	TArray<UMeshComponent*> paintable_components = getMeshFromActor(actor);
 	if (paintable_components.Num() == 0)
 	{
 		return false;
@@ -67,8 +214,7 @@ bool FObjectAnnotator::IsPaintable(AActor* actor)
 
 void FObjectAnnotator::getPaintableComponentMeshes(AActor* actor, TMap<FString, UMeshComponent*>* paintable_components_meshes)
 {
-	TArray<UMeshComponent*> paintable_components;
-	actor->GetComponents<UMeshComponent>(paintable_components);
+	TArray<UMeshComponent*> paintable_components = getMeshFromActor(actor);
 	int index = 0;
 	for (auto component : paintable_components)
 	{
@@ -141,8 +287,7 @@ void FObjectAnnotator::getPaintableComponentMeshes(AActor* actor, TMap<FString, 
 
 void FObjectAnnotator::getPaintableComponentMeshesAndTags(AActor* actor, TMap<FString, UMeshComponent*>* paintable_components_meshes, TMap<FString, TArray<FName>>* paintable_components_tags)
 {
-	TArray<UMeshComponent*> paintable_components;
-	actor->GetComponents<UMeshComponent>(paintable_components);
+	TArray<UMeshComponent*> paintable_components = getMeshFromActor(actor);
 	int index = 0;
 	for (auto component : paintable_components)
 	{
@@ -614,7 +759,7 @@ bool FObjectAnnotator::AnnotateNewActorGreyscale(AActor* actor) {
 					}
 					name_to_value_map_[it.Key()] = greyscale_value;
 					gammacorrected_color_to_name_map_.Emplace(color_string_gammacorrected, it.Key());
-					name_to_gammacorrected_color_map_[it.Key()] = color_string_gammacorrected;
+					name_to_gammacorrected_color_map_.Emplace(it.Key(), color_string_gammacorrected);
 					check(UpdatePaintRGBComponent(it.Value(), new_color, it.Key()));
 
 					UE_LOG(LogTemp, Log, TEXT("AirSim Annotation [%s]: Updated greyscale annotated object %s with value %f (RGB: %s)"), *name_, *it.Key(), greyscale_value, *color_string_gammacorrected);
@@ -939,8 +1084,6 @@ void FObjectAnnotator::InitializeGreyscale(ULevel* InLevel)
 					FString tag = found_tag->ToString();
 					TArray<FString> splitTag;
 					tag.ParseIntoArray(splitTag, TEXT("_"), true);
-					name_to_component_map_.Emplace(it.Key(), it.Value());
-					component_to_name_map_.Emplace(it.Value(), it.Key());
 
 					float greyscale_value = FCString::Atof(*splitTag[1]);
 					if (greyscale_value >= 1) {
@@ -959,21 +1102,30 @@ void FObjectAnnotator::InitializeGreyscale(ULevel* InLevel)
 					name_to_gammacorrected_color_map_.Emplace(it.Key(), color_string_gammacorrected);
 					name_to_value_map_.Emplace(it.Key(), greyscale_value);
 					check(PaintRGBComponent(it.Value(), new_color, it.Key()));
-					UE_LOG(LogTemp, Log, TEXT("AirSim Annotation [%s]: Added new greyscale annotated object %s with direct greyscale value %f (RGB: %s)"), *name_, *it.Key(), greyscale_value , *color_string_gammacorrected);
+					UE_LOG(LogTemp, Log, TEXT("AirSim Annotation [%s]: Updated greyscale annotated object %s with value %f (RGB: %s)"), *name_, *it.Key(), greyscale_value, *color_string_gammacorrected);
 				}
-				else if (show_by_default_ && !it.Key().Contains("hidden_sphere") && !it.Key().Contains("AnnotationSphere")) {
+				else {
 					name_to_component_map_.Emplace(it.Key(), it.Value());
 					component_to_name_map_.Emplace(it.Value(), it.Key());
-					FColor new_color = FColor(0, 0, 0);
-					FString color_string = FString::FromInt(new_color.R) + "," + FString::FromInt(new_color.G) + "," + FString::FromInt(new_color.B);
-					FString color_string_gammacorrected = color_string;
 					color_to_name_map_.Emplace(color_string, it.Key());
 					gammacorrected_color_to_name_map_.Emplace(color_string_gammacorrected, it.Key());
 					name_to_gammacorrected_color_map_.Emplace(it.Key(), color_string_gammacorrected);
-					name_to_value_map_.Emplace(it.Key(), 0);
+					name_to_value_map_.Emplace(it.Key(), greyscale_value);
 					check(PaintRGBComponent(it.Value(), new_color, it.Key()));
-					UE_LOG(LogTemp, Log, TEXT("AirSim Annotation [%s]: Added untagged greyscale annotated object %s with default color (RGB: %s)"), *name_, *it.Key(), *color_string_gammacorrected);
+					UE_LOG(LogTemp, Log, TEXT("AirSim Annotation [%s]: Added new greyscale annotated object %s with value %f (RGB: %s)"), *name_, *it.Key(), greyscale_value, *color_string_gammacorrected);
 				}
+			}else if (show_by_default_ && !it.Key().Contains("hidden_sphere") && !it.Key().Contains("AnnotationSphere")) {
+				name_to_component_map_.Emplace(it.Key(), it.Value());
+				component_to_name_map_.Emplace(it.Value(), it.Key());
+				FColor new_color = FColor(0, 0, 0);
+				FString color_string = FString::FromInt(new_color.R) + "," + FString::FromInt(new_color.G) + "," + FString::FromInt(new_color.B);
+				FString color_string_gammacorrected = color_string;
+				color_to_name_map_.Emplace(color_string, it.Key());
+				gammacorrected_color_to_name_map_.Emplace(color_string_gammacorrected, it.Key());
+				name_to_gammacorrected_color_map_.Emplace(it.Key(), color_string_gammacorrected);
+				name_to_value_map_.Emplace(it.Key(), 0);
+				check(PaintRGBComponent(it.Value(), new_color, it.Key()));
+				UE_LOG(LogTemp, Log, TEXT("AirSim Annotation [%s]: Added untagged greyscale annotated object %s with default color (RGB: %s)"), *name_, *it.Key(), *color_string_gammacorrected);
 			}
 		}
 	}
@@ -1002,22 +1154,18 @@ void FObjectAnnotator::InitializeTexture(ULevel* InLevel)
 					FString tag = found_tag->ToString();
 					TArray<FString> splitTag;
 					tag.ParseIntoArray(splitTag, TEXT("_"), true);
-					name_to_component_map_.Emplace(it.Key(), it.Value());
-					component_to_name_map_.Emplace(it.Value(), it.Key());
-
+					
 					FString new_texture;
 
 					if (set_direct_) {
 						new_texture = splitTag[1];
-					}
-					else {
+					} else {
 						FString component_name;
 						if (UStaticMeshComponent* staticmesh_component = Cast<UStaticMeshComponent>(it.Value())) {
 							if (staticmesh_component->GetStaticMesh() != nullptr) {
 								component_name = staticmesh_component->GetStaticMesh()->GetName();
 							}
-						}
-						else if (USkinnedMeshComponent* skinnedmesh_component = Cast<USkinnedMeshComponent>(it.Value())) {
+						} else if (USkinnedMeshComponent* skinnedmesh_component = Cast<USkinnedMeshComponent>(it.Value())) {
 							if (skinnedmesh_component->GetSkinnedAsset() != nullptr) {
 								component_name = skinnedmesh_component->GetSkinnedAsset()->GetName();
 							}
@@ -1028,6 +1176,7 @@ void FObjectAnnotator::InitializeTexture(ULevel* InLevel)
 					check(PaintTextureComponent(it.Value(), new_texture, it.Key()));
 					if (set_direct_) {
 						UE_LOG(LogTemp, Log, TEXT("AirSim Annotation [%s]: Added new texture annotated object %s with texture: %s"), *name_, *it.Key(), *new_texture);
+
 					}
 					else {
 						UE_LOG(LogTemp, Log, TEXT("AirSim Annotation [%s]: Added new texture annotated object %s with texture: %s"), *name_, *it.Key(), *new_texture);
@@ -1429,3 +1578,108 @@ int32 FColorGenerator::GammaCorrectionTable_[256] =
 	241, 242, 243, 244, 245, 246, 247, 248, 249, 250,
 	251, 252, 253, 254, 255
 };
+
+void FObjectAnnotator::AddMeshToAnnotation(UMeshComponent* meshComponent)
+{
+	if (!meshComponent)
+	{
+		return;
+	}
+
+	AActor* owner = meshComponent->GetOwner();
+	if (!owner)
+	{
+		return;
+	}
+
+	// Generate a unique component name
+	FString componentName = owner->GetName() + "_" + meshComponent->GetName();
+
+	// Check if already annotated
+	if (name_to_component_map_.Contains(componentName))
+	{
+		return;
+	}
+
+	// Add to annotation system
+	name_to_component_map_.Emplace(componentName, meshComponent);
+	component_to_name_map_.Emplace(meshComponent, componentName);
+
+	// Apply annotation based on current type
+	switch (type_)
+	{
+	case AnnotatorType::InstanceSegmentation:
+		{
+			uint32 ObjectIndex = name_to_component_map_.Num() - 1;
+			FColor new_color = ColorGenerator_.GetColorFromColorMap(ObjectIndex);
+			name_to_color_index_map_.Emplace(componentName, ObjectIndex);
+			
+			FString color_string = FString::FromInt(new_color.R) + "," + FString::FromInt(new_color.G) + "," + FString::FromInt(new_color.B);
+			FString color_string_gammacorrected = FString::FromInt(ColorGenerator_.GetGammaCorrectedColor(new_color.R)) + "," + FString::FromInt(ColorGenerator_.GetGammaCorrectedColor(new_color.G)) + "," + FString::FromInt(ColorGenerator_.GetGammaCorrectedColor(new_color.B));
+			
+			name_to_gammacorrected_color_map_.Emplace(componentName, color_string_gammacorrected);
+			color_to_name_map_.Emplace(color_string, componentName);
+			gammacorrected_color_to_name_map_.Emplace(color_string_gammacorrected, componentName);
+			
+			PaintRGBComponent(meshComponent, new_color, componentName);
+			UE_LOG(LogTemp, Log, TEXT("AirSim Annotation [%s]: Added Cesium mesh %s with ID # %s (RGB: %s)"), *name_, *componentName, *FString::FromInt(ObjectIndex), *color_string_gammacorrected);
+		}
+		break;
+	case AnnotatorType::RGB:
+		// For RGB mode, check for tags or use default color
+		{
+			FColor default_color = FColor(0, 0, 0);
+			name_to_color_index_map_.Emplace(componentName, 2744000 - 1);
+			FString color_string_gammacorrected = FString::FromInt(ColorGenerator_.GetGammaCorrectedColor(default_color.R)) + "," + FString::FromInt(ColorGenerator_.GetGammaCorrectedColor(default_color.G)) + "," + FString::FromInt(ColorGenerator_.GetGammaCorrectedColor(default_color.B));
+			name_to_gammacorrected_color_map_.Emplace(componentName, color_string_gammacorrected);
+			PaintRGBComponent(meshComponent, default_color, componentName);
+			UE_LOG(LogTemp, Log, TEXT("AirSim Annotation [%s]: Added Cesium mesh %s with default RGB color"), *name_, *componentName);
+		}
+		break;
+	default:
+		UE_LOG(LogTemp, Warning, TEXT("AirSim Annotation [%s]: Cesium mesh annotation not supported for type %d"), *name_, (int32)type_);
+		break;
+	}
+}
+
+// Register callbacks for dynamic Cesium tile loading
+void FObjectAnnotator::RegisterCesiumCallbacks(UWorld* World)
+{
+	if (!World)
+	{
+		return;
+	}
+
+	UE_LOG(LogTemp, Log, TEXT("AirSim Annotation [%s]: Registering Cesium callbacks for dynamic tile loading."), *name_);
+
+	// Find all existing Cesium actors and set up callbacks
+	for (TActorIterator<AActor> ActorItr(World); ActorItr; ++ActorItr)
+	{
+		AActor* Actor = *ActorItr;
+		if (Actor)
+		{
+			TArray<UActorComponent*> CesiumComponents;
+			Actor->GetComponents(UCesium3DTileset::StaticClass(), CesiumComponents);
+			
+			for (UActorComponent* Component : CesiumComponents)
+			{
+				if (UCesium3DTileset* Tileset = Cast<UCesium3DTileset>(Component))
+				{
+					// Note: The actual callback registration depends on Cesium's API
+					// This is a placeholder for where you would bind to Cesium's tile loading events
+					// You may need to use Cesium's delegate system or override virtual methods
+					UE_LOG(LogTemp, Log, TEXT("AirSim Annotation [%s]: Found Cesium tileset %s, setting up callbacks."), *name_, *Actor->GetName());
+					
+					// For now, just annotate any existing mesh components
+					TArray<UMeshComponent*> ExistingMeshes = getMeshFromActor(Actor);
+					for (UMeshComponent* Mesh : ExistingMeshes)
+					{
+						AddMeshToAnnotation(Mesh);
+					}
+				}
+			}
+		}
+	}
+}
+
+

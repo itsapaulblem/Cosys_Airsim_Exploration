@@ -21,12 +21,9 @@ STRICT_MODE_OFF //todo what does this do?
 #include <airsim_interfaces/msg/gimbal_angle_euler_cmd.hpp>
 #include <airsim_interfaces/msg/gimbal_angle_quat_cmd.hpp>
 #include <airsim_interfaces/msg/gps_yaw.hpp>
-#include <airsim_interfaces/srv/fly_orbit.hpp>
 #include <airsim_interfaces/srv/land.hpp>
 #include <airsim_interfaces/srv/land_group.hpp>
 #include <airsim_interfaces/srv/reset.hpp>
-#include <airsim_interfaces/srv/set_altitude.hpp>
-#include <airsim_interfaces/srv/set_altitude_group.hpp>
 #include <airsim_interfaces/srv/takeoff.hpp>
 #include <airsim_interfaces/srv/takeoff_group.hpp>
 #include <airsim_interfaces/srv/refresh_instance_segmentation.hpp>
@@ -72,7 +69,7 @@ STRICT_MODE_OFF //todo what does this do?
 #include <std_srvs/srv/empty.hpp>
 #include <tf2/LinearMath/Matrix3x3.h>
 #include <tf2/LinearMath/Quaternion.h>
-#include <tf2_geometry_msgs/tf2_geometry_msgs.h>
+#include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
 #include <tf2_ros/buffer.h>
 #include <tf2_ros/static_transform_broadcaster.h>
 #include <tf2_ros/transform_broadcaster.h>
@@ -81,7 +78,7 @@ STRICT_MODE_OFF //todo what does this do?
 #include <unordered_map>
 #include <memory>
 
-struct PointXYZRGBI
+struct EIGEN_ALIGN16 PointXYZRGBI
 {
     PCL_ADD_POINT4D;
     float intensity;
@@ -96,7 +93,7 @@ struct PointXYZRGBI
         float rgb;
     };
     EIGEN_MAKE_ALIGNED_OPERATOR_NEW
-} EIGEN_ALIGN16;   
+};   
 
 // Register the point type
 POINT_CLOUD_REGISTER_POINT_STRUCT(PointXYZRGBI,
@@ -254,9 +251,6 @@ private:
 
         rclcpp::Service<airsim_interfaces::srv::Takeoff>::SharedPtr takeoff_srvr_;
         rclcpp::Service<airsim_interfaces::srv::Land>::SharedPtr land_srvr_;
-        rclcpp::Service<airsim_interfaces::srv::SetAltitude>::SharedPtr set_altitude_srvr_;
-        rclcpp::Service<airsim_interfaces::srv::SetAltitudeGroup>::SharedPtr set_altitude_group_srv_;
-        rclcpp::Service<airsim_interfaces::srv::SetAltitude>::SharedPtr set_altitude_all_srvr_;
 
         bool has_vel_cmd_;
         VelCmd vel_cmd_;
@@ -303,10 +297,7 @@ private:
     bool instance_segmentation_refresh_cb(const std::shared_ptr<airsim_interfaces::srv::RefreshInstanceSegmentation::Request> request, const std::shared_ptr<airsim_interfaces::srv::RefreshInstanceSegmentation::Response> response);
     bool object_transforms_refresh_cb(const std::shared_ptr<airsim_interfaces::srv::RefreshObjectTransforms::Request> request, const std::shared_ptr<airsim_interfaces::srv::RefreshObjectTransforms::Response> response);
     bool list_scene_object_tags_srv_cb(const std::shared_ptr<airsim_interfaces::srv::ListSceneObjectTags::Request> request, const std::shared_ptr<airsim_interfaces::srv::ListSceneObjectTags::Response> response);
-    bool set_altitude_srv_cb(std::shared_ptr<airsim_interfaces::srv::SetAltitude::Request> request, std::shared_ptr<airsim_interfaces::srv::SetAltitude::Response> response, const std::string& vehicle_name);
-    bool set_altitude_group_srv_cb(std::shared_ptr<airsim_interfaces::srv::SetAltitudeGroup::Request> request, std::shared_ptr<airsim_interfaces::srv::SetAltitudeGroup::Response> response);
-    bool set_altitude_all_srv_cb(std::shared_ptr<airsim_interfaces::srv::SetAltitude::Request> request, std::shared_ptr<airsim_interfaces::srv::SetAltitude::Response> response);
-    bool fly_orbit_srv_cb(const std::shared_ptr<airsim_interfaces::srv::FlyOrbit::Request> request, const std::shared_ptr<airsim_interfaces::srv::FlyOrbit::Response> response);
+
     /// ROS tf broadcasters
     void publish_odom_tf(const nav_msgs::msg::Odometry& odom_msg);
 
@@ -386,11 +377,9 @@ private:
     // todo - subscriber / services for a GROUP of robots, which is defined by a list of `vehicle_name`s passed in the ros msg / srv request
     rclcpp::Subscription<airsim_interfaces::msg::VelCmdGroup>::SharedPtr vel_cmd_group_body_frame_sub_;
     rclcpp::Subscription<airsim_interfaces::msg::VelCmdGroup>::SharedPtr vel_cmd_group_world_frame_sub_;
-    rclcpp::Service<airsim_interfaces::srv::FlyOrbit>::SharedPtr fly_orbit_srvr_;
     rclcpp::Service<airsim_interfaces::srv::TakeoffGroup>::SharedPtr takeoff_group_srvr_;
     rclcpp::Service<airsim_interfaces::srv::LandGroup>::SharedPtr land_group_srvr_;
-    rclcpp::Service<airsim_interfaces::srv::SetAltitude>::SharedPtr set_altitude_all_srvr_;
-    rclcpp::Service<airsim_interfaces::srv::SetAltitudeGroup>::SharedPtr set_altitude_group_srv_;
+
     AIRSIM_MODE airsim_mode_ = AIRSIM_MODE::DRONE;
 
     rclcpp::Service<airsim_interfaces::srv::Reset>::SharedPtr reset_srvr_;

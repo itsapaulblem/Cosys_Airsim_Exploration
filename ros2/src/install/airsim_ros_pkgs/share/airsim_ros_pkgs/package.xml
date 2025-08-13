@@ -9,70 +9,51 @@
   <license>MIT</license>
 
   <buildtool_depend>ament_cmake</buildtool_depend>
-  <buildtool_depend>rosidl_default_generators</buildtool_depend>
 
   <member_of_group>rosidl_interface_packages</member_of_group>
 
-  <!-- Core ROS 2 dependencies -->
-  <build_depend>rclcpp</build_depend>
-  <build_export_depend>rclcpp</build_export_depend>
-  <exec_depend>rclcpp</exec_depend>
-
-  <build_depend>rclpy</build_depend>
-  <build_export_depend>rclpy</build_export_depend>
-  <exec_depend>rclpy</exec_depend>
-
-  <!-- AirSim interfaces -->
-  <build_depend>airsim_interfaces</build_depend>
-  <build_export_depend>airsim_interfaces</build_export_depend>
-  <exec_depend>airsim_interfaces</exec_depend>
-
-  <!-- Message and service dependencies -->
-  <build_depend>builtin_interfaces</build_depend>
-  <build_export_depend>builtin_interfaces</build_export_depend>
-  <exec_depend>builtin_interfaces</exec_depend>
-
-  <build_depend>std_msgs</build_depend>
-  <build_export_depend>std_msgs</build_export_depend>
-  <exec_depend>std_msgs</exec_depend>
-
-  <build_depend>geometry_msgs</build_depend>
-  <build_export_depend>geometry_msgs</build_export_depend>
-  <exec_depend>geometry_msgs</exec_depend>
-
-  <build_depend>sensor_msgs</build_depend>
-  <build_export_depend>sensor_msgs</build_export_depend>
-  <exec_depend>sensor_msgs</exec_depend>
-
-  <build_depend>nav_msgs</build_depend>
-  <build_export_depend>nav_msgs</build_export_depend>
-  <exec_depend>nav_msgs</exec_depend>
-
-  <build_depend>mavros_msgs</build_depend>
-  <build_export_depend>mavros_msgs</build_export_depend>
-  <exec_depend>mavros_msgs</exec_depend>
-
-  <build_depend>geographic_msgs</build_depend>
-  <build_export_depend>geographic_msgs</build_export_depend>
-  <exec_depend>geographic_msgs</exec_depend>
-
-  <!-- Transform dependencies -->
   <depend>tf2</depend>
   <depend>tf2_ros</depend>
   <depend>tf2_geometry_msgs</depend>
-  <depend>tf2_sensor_msgs</depend>
 
-  <!-- Other dependencies -->
-  <depend>image_transport</depend>
+  <build_depend>geometry_msgs</build_depend>
+  <build_depend>image_transport</build_depend>
+  <build_depend>message_runtime</build_depend>
+  <build_depend>mavros_msgs</build_depend>
+  <build_depend>nav_msgs</build_depend>
+  <build_depend>rclcpp</build_depend>
+  <build_depend>rclpy</build_depend>
+  <build_depend>sensor_msgs</build_depend>
+  <build_depend>std_msgs</build_depend>
+  <build_depend>geographic_msgs</build_depend>
+  <build_depend>geometry_msgs</build_depend>
+  <build_depend>tf2_sensor_msgs</build_depend>
+  
+  <depend>airsim_interfaces</depend>
   <depend>pcl_conversions</depend>
   <depend>pcl</depend>
-  <depend>joy</depend>
 
-  <!-- Runtime dependencies -->
+  <build_depend>builtin_interfaces</build_depend>
+  <exec_depend>builtin_interfaces</exec_depend>
+  <build_depend>rosidl_default_generators</build_depend>
+  
+  <exec_depend>geometry_msgs</exec_depend>
+  <exec_depend>image_transport</exec_depend>
+  <exec_depend>message_generation</exec_depend>
   <exec_depend>message_runtime</exec_depend>
+  <exec_depend>nav_msgs</exec_depend>
+  <exec_depend>rclcpp</exec_depend>
+  <exec_depend>rclpy</exec_depend>
+  <exec_depend>sensor_msgs</exec_depend>
+  <exec_depend>std_msgs</exec_depend>
+  <exec_depend>joy</exec_depend>
+
+  <buildtool_depend>rosidl_default_generators</buildtool_depend>
   <exec_depend>rosidl_default_runtime</exec_depend>
 
   <export>
     <build_type>ament_cmake</build_type>
   </export>
+
+  <buildtool_depend>ament_cmake</buildtool_depend>
 </package>

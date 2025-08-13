@@ -117,7 +117,7 @@ def search_and_land_spiral(client, ned_bounds, speed, altitude, step, max_attemp
     home_lat = gps_data.gnss.geo_point.latitude
     home_lon = gps_data.gnss.geo_point.longitude
     home_pos = client.getMultirotorState().kinematics_estimated.position
-    camera_names = ["front", "back", "left", "right", "bottom"]
+    camera_names = ["front_center", "back_center", "front_left", "front_right", "bottom_center"]
     attempt_count = 0
     left = min_x
     right = max_x

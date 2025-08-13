@@ -1,9 +1,0 @@
-# FlyOrbit.srv
-geometry_msgs/Point center
-float32 radius
-float32 velocity
-float32 yaw_mode
-float32 duration
----
-bool success
-string message

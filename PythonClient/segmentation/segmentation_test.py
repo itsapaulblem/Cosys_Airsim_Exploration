@@ -13,7 +13,7 @@ from datetime import datetime
 if __name__ == '__main__':
 
     # Make connection to AirSim API
-    client = airsim.CarClient()
+    client = airsim.MultirotorClient(ip="172.22.112.1")
     client.confirmConnection()
 
     # Generate list of all colors available for segmentation
