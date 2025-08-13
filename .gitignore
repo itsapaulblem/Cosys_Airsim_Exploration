@@ -494,3 +494,5 @@ composer.lock
 # Core dumps
 core.*
 claude_desktop_config.json
+
+Unreal/Plugins/CesiumForUnreal/
