@@ -1,0 +1,10 @@
+# Generate waypoint grid for search area
+SearchArea search_area
+GridParams grid_params
+string mission_id
+---
+bool success
+string message
+WaypointArray generated_waypoints
+float32 estimated_flight_time
+float32 total_coverage_area

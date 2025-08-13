@@ -1,0 +1,261 @@
+# Microsoft Azure Cloud Deployment Configuration  
+# Optimized for Azure Virtual Machines and Container Instances
+# Supports Azure Load Balancer and Application Gateway integration
+
+version: '3.8'
+
+networks:
+  px4_network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
+
+volumes:
+  px4-shared-data:
+    driver: local
+
+x-px4-common: &px4-common
+  image: px4-airsim:slim
+  environment: &px4-env
+    # Azure-specific configuration
+    PX4_SIM_HOSTNAME: ${AZURE_PUBLIC_IP:-AUTO_DETECT}
+    PX4_SIM_MODEL: none_iris
+    PX4_SIMULATOR: none
+    
+    # Azure metadata configuration
+    AZURE_SUBSCRIPTION_ID: ${AZURE_SUBSCRIPTION_ID}
+    AZURE_RESOURCE_GROUP: ${AZURE_RESOURCE_GROUP:-px4-rg}
+    AZURE_LOCATION: ${AZURE_LOCATION:-East US}
+    
+    # PX4 environment
+    PX4_HOME_LAT: ${PX4_HOME_LAT:-47.641468}
+    PX4_HOME_LON: ${PX4_HOME_LON:--122.140165}
+    PX4_HOME_ALT: ${PX4_HOME_ALT:-0.0}
+    PX4_SYS_AUTOSTART: 10016
+    
+    # MAVLink configuration for Azure networking
+    MAV_0_BROADCAST: 1
+    MAV_1_BROADCAST: 1
+    MAV_2_BROADCAST: 1
+    
+    # Azure Cloud-specific settings
+    ENABLE_REMOTE_ACCESS: 1
+    REMOTE_ACCESS_MODE: "azure"
+    SECURITY_MODE: ${SECURITY_MODE:-nsg}  # Network Security Group
+    APP_GATEWAY_MODE: ${APP_GATEWAY_MODE:-disabled}
+    
+    # Swarm configuration
+    SWARM_ID: 1
+    SWARM_SIZE: ${SWARM_SIZE:-3}
+    
+  networks:
+    - px4_network
+  volumes:
+    - px4-shared-data:/px4_data
+  restart: unless-stopped
+  tty: true
+  stdin_open: true
+  
+  # Azure-optimized health check
+  healthcheck:
+    test: ["CMD-SHELL", "curl -f http://localhost:8080/health || exit 1"]
+    interval: 30s
+    timeout: 10s
+    retries: 5
+    start_period: 120s
+
+services:
+  # Primary PX4 instance with Azure integration
+  px4-azure-drone-1:
+    <<: *px4-common
+    container_name: px4-azure-drone-1
+    hostname: px4-azure-drone-1
+    environment:
+      <<: *px4-env
+      PX4_INSTANCE: 1
+      
+    # Azure-optimized port mapping
+    ports:
+      # MAVLink endpoints (Azure Load Balancer compatible)
+      - "14550:14550/udp"    # Standard QGroundControl
+      - "14540:14540/udp"    # API access
+      - "14541:14541/udp"    # Per-drone QGC
+      
+      # Internal connections (virtual network only)
+      - "127.0.0.1:4561:4561/tcp"  # AirSim HIL
+      
+      # Monitoring (Load Balancer health probes)
+      - "8080:8080/tcp"      # Health endpoint
+      - "127.0.0.1:9090:9090/tcp"  # Metrics
+      
+    networks:
+      px4_network:
+        ipv4_address: 172.20.0.11
+        
+    # Azure service labels for monitoring
+    labels:
+      - "cloud.provider=azure"
+      - "service.type=px4-sitl"
+      - "service.instance=1"
+      - "monitoring.enabled=true"
+      - "loadbalancer.target=true"
+
+  px4-azure-drone-2:
+    <<: *px4-common
+    container_name: px4-azure-drone-2
+    hostname: px4-azure-drone-2
+    environment:
+      <<: *px4-env
+      PX4_INSTANCE: 2
+    ports:
+      - "14551:14551/udp"
+      - "14542:14542/udp"
+      - "127.0.0.1:4562:4562/tcp"
+      - "8081:8080/tcp"
+    networks:
+      px4_network:
+        ipv4_address: 172.20.0.12
+    labels:
+      - "cloud.provider=azure"
+      - "service.type=px4-sitl"
+      - "service.instance=2"
+
+  px4-azure-drone-3:
+    <<: *px4-common
+    container_name: px4-azure-drone-3
+    hostname: px4-azure-drone-3
+    environment:
+      <<: *px4-env
+      PX4_INSTANCE: 3
+    ports:
+      - "14552:14552/udp"
+      - "14543:14543/udp"
+      - "127.0.0.1:4563:4563/tcp"
+      - "8082:8080/tcp"
+    networks:
+      px4_network:
+        ipv4_address: 172.20.0.13
+    labels:
+      - "cloud.provider=azure"
+      - "service.type=px4-sitl"
+      - "service.instance=3"
+
+  # Azure Application Insights agent
+  appinsights-agent:
+    image: mcr.microsoft.com/applicationinsights/agent:latest
+    container_name: px4-appinsights-agent
+    environment:
+      - APPLICATIONINSIGHTS_CONNECTION_STRING=${AZURE_APPINSIGHTS_CONNECTION_STRING}
+      - APPLICATIONINSIGHTS_ROLE_NAME=px4-sitl-server
+    volumes:
+      - /var/log:/var/log:ro
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+    networks:
+      - px4_network
+    restart: unless-stopped
+
+  # Azure Monitor Log Analytics agent
+  oms-agent:
+    image: mcr.microsoft.com/oms:latest
+    container_name: px4-oms-agent
+    environment:
+      - WSID=${AZURE_LOG_ANALYTICS_WORKSPACE_ID}
+      - KEY=${AZURE_LOG_ANALYTICS_WORKSPACE_KEY}
+    volumes:
+      - /var/log:/var/log:ro
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+    networks:
+      - px4_network
+    restart: unless-stopped
+
+# Azure-specific deployment configuration
+x-azure-deployment:
+  # Virtual Machine recommendations
+  vm_size: "Standard_B2s"  # 2 vCPU, 4 GB RAM
+  os_disk_size: "30GB"     # Premium SSD
+  os_disk_type: "Premium_LRS"
+  
+  # Virtual Network configuration  
+  vnet_name: "px4-vnet"
+  subnet_name: "px4-subnet"
+  address_space: "10.0.0.0/16"
+  subnet_prefix: "10.0.1.0/24"
+  
+  # Network Security Group rules
+  nsg_rules:
+    - name: "AllowMAVLinkUDP"
+      priority: 100
+      direction: "Inbound"
+      access: "Allow"
+      protocol: "Udp"
+      source_port_range: "*"
+      destination_port_range: "14540-14560"
+      source_address_prefix: "*"
+      destination_address_prefix: "*"
+      
+    - name: "AllowHealthCheck"
+      priority: 110
+      direction: "Inbound"
+      access: "Allow"
+      protocol: "Tcp"
+      source_port_range: "*"
+      destination_port_range: "8080-8082"
+      source_address_prefix: "AzureLoadBalancer"
+      destination_address_prefix: "*"
+      
+    - name: "AllowSSH"
+      priority: 120
+      direction: "Inbound"
+      access: "Allow"
+      protocol: "Tcp"
+      source_port_range: "*"
+      destination_port_range: "22"
+      source_address_prefix: "YOUR_IP"  # Replace with your IP
+      destination_address_prefix: "*"
+  
+  # Public IP configuration
+  public_ip:
+    type: "Static"
+    sku: "Standard"
+    name: "px4-server-ip"
+    
+  # Load Balancer configuration
+  load_balancer:
+    sku: "Standard"
+    type: "Public"
+    frontend_ip: "px4-server-ip"
+    backend_pool: "px4-servers"
+    health_probe:
+      protocol: "Http"
+      port: 8080
+      path: "/health"
+    load_balancing_rules:
+      - name: "MAVLinkUDP"
+        protocol: "Udp"
+        frontend_port: 14550
+        backend_port: 14550
+        
+  # Application Gateway configuration (optional, for HTTP/HTTPS)
+  app_gateway:
+    sku: "Standard_v2"
+    capacity: 2
+    frontend_ip: "px4-appgw-ip"
+    
+  # Azure Container Registry (if using custom images)
+  acr:
+    name: "px4sitlregistry"
+    sku: "Basic"
+    
+  # Azure Key Vault (for secrets management)
+  key_vault:
+    name: "px4-keyvault"
+    sku: "Standard"
+    
+  # Azure Storage Account (for logs/telemetry)
+  storage_account:
+    name: "px4telemetrystorage"
+    sku: "Standard_LRS"
+    kind: "StorageV2"

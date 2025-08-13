@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "mcp__gemini-cli__ask-gemini",
+      "WebFetch(domain:docs.px4.io)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git config:*)",
+      "Bash(git -c user.email=\"user@example.com\" -c user.name=\"User\" commit -m \"$(cat <<''EOF''\nAdd comprehensive PX4 console commands documentation\n\n- Added PX4_CONSOLE.md with complete reference for GPS configuration and diagnostics\n- Includes GPS status, parameter configuration, RTK commands, and troubleshooting workflows\n- Organized into logical sections with command syntax and parameter explanations\n- Provides step-by-step troubleshooting guide for common GPS issues\n\n🤖 Generated with [Claude Code](https://claude.ai/code)\n\nCo-Authored-By: Claude <noreply@anthropic.com>\nEOF\n)\")"
+    ],
+    "deny": []
+  }
+}

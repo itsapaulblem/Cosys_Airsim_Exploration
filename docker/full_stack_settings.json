@@ -1,0 +1,75 @@
+{
+  "SeeDocsAt": "https://github.com/Microsoft/AirSim/blob/main/docs/settings.md",
+  "SettingsVersion": 2.0,
+  "SimMode": "Multirotor",
+  "ClockType": "SteppableClock",
+  "OriginGeopoint": {
+    "Latitude": 47.641468,
+    "Longitude": -122.140165,
+    "Altitude": 122.0
+  },
+  "Vehicles": {
+    "PX4_Drone1": {
+      "VehicleType": "PX4Multirotor",
+      "UseSerial": false,
+      "LockStep": true,
+      "UseTcp": true,
+      "TcpPort": 4561,
+      "ControlIp": "172.25.0.10",
+      "ControlPortLocal": 14541,
+      "ControlPortRemote": 14581,
+      "LocalHostIp": "0.0.0.0",
+      "UdpIp": "172.25.0.10",
+      "UdpPort": 14560,
+      "UseUdp": true,
+      "Sensors": {
+        "Barometer": {
+          "SensorType": 1,
+          "Enabled": true,
+          "PressureFactorSigma": 0.0001825
+        },
+        "Gps": {
+          "SensorType": 3,
+          "Enabled": true,
+          "EphTimeConstant": 0.9,
+          "EpvTimeConstant": 0.9,
+          "EphInitial": 5.0,
+          "EpvInitial": 5.0,
+          "EphFinal": 0.1,
+          "EpvFinal": 0.1,
+          "EphMin3d": 1.0,
+          "EphMin2d": 2.0,
+          "UpdateLatency": 0.1,
+          "UpdateFrequency": 50,
+          "StartupDelay": 1
+        },
+        "Imu": {
+          "SensorType": 2,
+          "Enabled": true
+        },
+        "Magnetometer": {
+          "SensorType": 4,
+          "Enabled": true
+        }
+      },
+      "Parameters": {
+        "NAV_RCL_ACT": 0,
+        "NAV_DLL_ACT": 0,
+        "COM_OBL_ACT": 1,
+        "LPE_LAT": 47.641468,
+        "LPE_LON": -122.140165,
+        "COM_ARM_WO_GPS": 0,
+        "EKF2_AID_MASK": 1,
+        "EKF2_HGT_MODE": 0,
+        "EKF2_GPS_CHECK": 5,
+        "EKF2_REQ_EPH": 5.0,
+        "EKF2_REQ_EPV": 8.0,
+        "EKF2_REQ_HDRIFT": 0.5,
+        "EKF2_REQ_VDRIFT": 1.0
+      },
+      "X": 0,
+      "Y": 0,
+      "Z": 0
+    }
+  }
+} 

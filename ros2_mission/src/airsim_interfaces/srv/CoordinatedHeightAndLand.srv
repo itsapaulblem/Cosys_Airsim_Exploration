@@ -1,0 +1,36 @@
+# Request: Coordinate multiple drones to go to a specific height and then land simultaneously
+# vehicle_names: List of vehicle names to coordinate (empty array = all vehicles)
+string[] vehicle_names
+
+# target_height: Target height in NED coordinates (negative values = up, e.g., -20.0 for 20m altitude)
+float64 target_height
+
+# ascent_speed: Speed for height change in m/s (default: 2.0)
+float64 ascent_speed
+
+# hover_time: Time to hover at target height before landing in seconds (default: 2.0)
+float64 hover_time
+
+# wait_on_last_task: If true, wait for all operations to complete before returning response
+bool wait_on_last_task
+
+---
+
+# Response: Results of the coordinated operation
+# success: True if all vehicles completed the operation successfully
+bool success
+
+# message: Detailed status message about the operation
+string message
+
+# failed_vehicles: List of vehicles that failed to complete the operation (if any)
+string[] failed_vehicles
+
+# total_time: Total time taken for the complete operation in seconds
+float64 total_time
+
+# vehicles_completed: Number of vehicles that successfully completed the operation
+int32 vehicles_completed
+
+# vehicles_attempted: Total number of vehicles that were commanded
+int32 vehicles_attempted

@@ -1,0 +1,274 @@
+# Generic VPS (Virtual Private Server) Deployment Configuration
+# Works with DigitalOcean, Linode, Vultr, Hetzner, and other VPS providers
+# Lightweight configuration optimized for cost-effective hosting
+
+version: '3.8'
+
+networks:
+  px4_network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
+
+volumes:
+  px4-shared-data:
+    driver: local
+
+x-px4-common: &px4-common
+  image: px4-airsim:slim
+  environment: &px4-env
+    # VPS-specific configuration
+    PX4_SIM_HOSTNAME: ${VPS_PUBLIC_IP:-AUTO_DETECT}
+    PX4_SIM_MODEL: none_iris
+    PX4_SIMULATOR: none
+    
+    # VPS provider metadata (optional)
+    VPS_PROVIDER: ${VPS_PROVIDER:-generic}
+    VPS_REGION: ${VPS_REGION:-unknown}
+    VPS_DATACENTER: ${VPS_DATACENTER:-unknown}
+    
+    # PX4 environment
+    PX4_HOME_LAT: ${PX4_HOME_LAT:-47.641468}
+    PX4_HOME_LON: ${PX4_HOME_LON:--122.140165}
+    PX4_HOME_ALT: ${PX4_HOME_ALT:-0.0}
+    PX4_SYS_AUTOSTART: 10016
+    
+    # MAVLink configuration optimized for VPS
+    MAV_0_BROADCAST: 1
+    MAV_1_BROADCAST: 1
+    MAV_2_BROADCAST: 1
+    
+    # VPS-specific settings
+    ENABLE_REMOTE_ACCESS: 1
+    REMOTE_ACCESS_MODE: "vps"
+    SECURITY_MODE: ${SECURITY_MODE:-iptables}
+    BANDWIDTH_LIMIT: ${BANDWIDTH_LIMIT:-disabled}
+    
+    # Resource-conscious swarm configuration
+    SWARM_ID: 1
+    SWARM_SIZE: ${SWARM_SIZE:-2}  # Smaller default for VPS
+    
+  networks:
+    - px4_network
+  volumes:
+    - px4-shared-data:/px4_data
+  restart: unless-stopped
+  tty: true
+  stdin_open: true
+  
+  # Lightweight health check for VPS
+  healthcheck:
+    test: ["CMD-SHELL", "nc -z localhost 8080 || exit 1"]
+    interval: 45s
+    timeout: 10s
+    retries: 3
+    start_period: 90s
+
+services:
+  # Primary PX4 instance optimized for VPS hosting
+  px4-vps-drone-1:
+    <<: *px4-common
+    container_name: px4-vps-drone-1
+    hostname: px4-vps-drone-1
+    environment:
+      <<: *px4-env
+      PX4_INSTANCE: 1
+      
+    # VPS-optimized port mapping (resource conscious)
+    ports:
+      # MAVLink endpoints (direct internet access)
+      - "14550:14550/udp"    # Standard QGroundControl
+      - "14540:14540/udp"    # API access
+      - "14541:14541/udp"    # Per-drone QGC
+      
+      # Internal connections (localhost only for security)
+      - "127.0.0.1:4561:4561/tcp"  # AirSim HIL
+      
+      # Minimal monitoring (lightweight)
+      - "127.0.0.1:8080:8080/tcp"  # Health check
+      
+    networks:
+      px4_network:
+        ipv4_address: 172.20.0.11
+        
+    # VPS service labels
+    labels:
+      - "cloud.provider=vps"
+      - "service.type=px4-sitl"
+      - "service.instance=1"
+      - "monitoring.enabled=false"  # Disabled for resource saving
+
+  px4-vps-drone-2:
+    <<: *px4-common
+    container_name: px4-vps-drone-2
+    hostname: px4-vps-drone-2
+    environment:
+      <<: *px4-env
+      PX4_INSTANCE: 2
+    ports:
+      - "14551:14551/udp"
+      - "14542:14542/udp"
+      - "127.0.0.1:4562:4562/tcp"
+      - "127.0.0.1:8081:8080/tcp"
+    networks:
+      px4_network:
+        ipv4_address: 172.20.0.12
+    labels:
+      - "cloud.provider=vps"
+      - "service.type=px4-sitl"
+      - "service.instance=2"
+
+  # Lightweight reverse proxy (optional, for HTTPS/domain routing)
+  nginx-proxy:
+    image: nginx:alpine
+    container_name: px4-nginx-proxy
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./cloud-deployments/nginx/vps-nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./cloud-deployments/nginx/ssl:/etc/ssl/private:ro
+    networks:
+      - px4_network
+    restart: unless-stopped
+    depends_on:
+      - px4-vps-drone-1
+    # Resource limits for VPS
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+        reservations:
+          memory: 64M
+
+  # Minimal monitoring (optional, can be disabled for very small VPS)
+  prometheus-lite:
+    image: prom/prometheus:latest
+    container_name: px4-prometheus-lite
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--storage.tsdb.retention.time=7d'  # Short retention for VPS
+      - '--web.enable-lifecycle'
+    ports:
+      - "127.0.0.1:9091:9090"
+    volumes:
+      - ./cloud-deployments/prometheus/vps-prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    networks:
+      - px4_network
+    restart: unless-stopped
+    # Resource limits for VPS
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+        reservations:
+          memory: 128M
+
+volumes:
+  prometheus-data:
+    driver: local
+
+# VPS-specific deployment configuration
+x-vps-deployment:
+  # VPS size recommendations by provider
+  providers:
+    digitalocean:
+      size: "s-2vcpu-4gb"  # $24/month
+      region: "nyc3"
+      image: "ubuntu-20-04-x64"
+      
+    linode:
+      size: "g6-standard-2"  # $24/month  
+      region: "us-east"
+      image: "linode/ubuntu20.04"
+      
+    vultr:
+      size: "vc2-2c-4gb"  # $24/month
+      region: "ewr"
+      image: "ubuntu-20.04"
+      
+    hetzner:
+      size: "cx21"  # €5.83/month
+      region: "fsn1"
+      image: "ubuntu-20.04"
+      
+    aws_lightsail:
+      size: "medium_2_0"  # $20/month
+      region: "us-east-1"
+      image: "ubuntu_20_04"
+  
+  # Firewall configuration (iptables/ufw commands)
+  firewall_rules:
+    - "ufw allow 22/tcp"           # SSH
+    - "ufw allow 14540:14560/udp"  # MAVLink ports
+    - "ufw allow 80/tcp"           # HTTP (optional)
+    - "ufw allow 443/tcp"          # HTTPS (optional)
+    - "ufw --force enable"         # Enable firewall
+    
+  # Resource optimization for VPS
+  resource_limits:
+    # Docker daemon configuration
+    docker_daemon:
+      log_driver: "json-file"
+      log_opts:
+        max_size: "10m"
+        max_file: "3"
+    
+    # Container resource limits
+    container_limits:
+      memory: "512m"
+      cpus: "0.5"
+      
+  # Cost optimization settings
+  cost_optimization:
+    # Disable monitoring for smallest VPS
+    disable_monitoring_below_ram: "2GB"
+    
+    # Use single drone for development
+    single_drone_mode: true
+    
+    # Reduce log retention
+    log_retention_days: 3
+    
+    # Disable health checks for minimal overhead
+    minimal_health_checks: true
+    
+  # Security hardening for public VPS
+  security:
+    # SSH key authentication only
+    ssh_password_auth: false
+    
+    # Change default SSH port
+    ssh_port: 2222
+    
+    # Install fail2ban
+    fail2ban: true
+    
+    # Automatic security updates
+    unattended_upgrades: true
+    
+    # Docker security options
+    docker_security:
+      userns_mode: "host"
+      security_opt:
+        - "no-new-privileges:true"
+      
+  # Domain and SSL (optional)
+  domain_config:
+    # Use Let's Encrypt for free SSL
+    ssl_provider: "letsencrypt"
+    domain: "px4.yourdomain.com"
+    email: "admin@yourdomain.com"
+    
+  # Backup configuration (optional)
+  backup:
+    # Simple rsync backup to external storage
+    method: "rsync"
+    destination: "user@backup-server:/backup/px4/"
+    schedule: "daily"
+    retention: "7 days"

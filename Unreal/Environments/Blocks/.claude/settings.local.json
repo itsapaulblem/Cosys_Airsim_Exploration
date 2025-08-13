@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(docker run:*)",
+      "Bash(winpty docker run --rm -ti -v \"D:\\Cosys_Airsim_Exploration\\Unreal\\Environments\\Blocks:/project\" ghcr.io/epicgames/unreal-engine:dev-5.5.4)",
+      "Bash(docker exec:*)",
+      "Bash(winpty docker run --rm -v \"/d/Cosys_Airsim_Exploration/Unreal/Environments/Blocks:/project\" ghcr.io/epicgames/unreal-engine:dev-5.5.4 /home/ue4/UnrealEngine/Engine/Build/BatchFiles/RunUAT.sh BuildCookRun -utf8output -platform=Linux -clientconfig=Shipping -serverconfig=Shipping -project=/project/Blocks.uproject -noP4 -nodebuginfo -allmaps -cook -build -stage -prereqs -pak -archive -archivedirectory=/project/Packaged)",
+      "WebFetch(domain:unrealcontainers.com)",
+      "mcp__sequential-thinking__sequentialthinking",
+      "mcp__gemini-cli__ask-gemini"
+    ],
+    "deny": []
+  }
+}

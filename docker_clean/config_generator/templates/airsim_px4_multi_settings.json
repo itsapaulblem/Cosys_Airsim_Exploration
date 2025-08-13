@@ -1,0 +1,204 @@
+{
+  "SettingsVersion": 2.0,
+  "SimMode": "Multirotor",
+  "ClockType": "SteppableClock",
+  "ApiServerPort": 41451,
+  "LocalHostIp": "127.0.0.1",
+  "Vehicles": {
+    "Drone1": {
+      "VehicleType": "PX4Multirotor",
+      "UseSerial": false,
+      "UseTcp": true,
+      "TcpPort": 4561,
+      "ControlPortLocal": 14541,
+      "ControlPortRemote": 14581,
+      "LocalHostIp": "127.0.0.1",
+      "UdpIp": "127.0.0.1",
+      "UdpPort": 14560,
+      "LockStep": true,
+      "Sensors": {
+        "Gps": {
+          "SensorType": 3,
+          "Enabled": true,
+          "StartLatitude": 47.641468,
+          "StartLongitude": -122.140165,
+          "StartAltitude": 122.0
+        },
+        "Magnetometer": {
+          "SensorType": 4,
+          "Enabled": true
+        },
+        "Barometer": {
+          "SensorType": 1,
+          "Enabled": true
+        },
+        "Imu": {
+          "SensorType": 2,
+          "Enabled": true
+        }
+      },
+      "X": 0,
+      "Y": 0,
+      "Z": -1,
+      "Pitch": 0,
+      "Roll": 0,
+      "Yaw": 0
+    },
+    "Drone2": {
+      "VehicleType": "PX4Multirotor",
+      "UseSerial": false,
+      "UseTcp": true,
+      "TcpPort": 4562,
+      "ControlPortLocal": 14542,
+      "ControlPortRemote": 14582,
+      "LocalHostIp": "127.0.0.1",
+      "UdpIp": "127.0.0.1",
+      "UdpPort": 14561,
+      "LockStep": true,
+      "Sensors": {
+        "Gps": {
+          "SensorType": 3,
+          "Enabled": true,
+          "StartLatitude": 47.641468,
+          "StartLongitude": -122.140165,
+          "StartAltitude": 122.0
+        },
+        "Magnetometer": {
+          "SensorType": 4,
+          "Enabled": true
+        },
+        "Barometer": {
+          "SensorType": 1,
+          "Enabled": true
+        },
+        "Imu": {
+          "SensorType": 2,
+          "Enabled": true
+        }
+      },
+      "X": 5,
+      "Y": 0,
+      "Z": -1,
+      "Pitch": 0,
+      "Roll": 0,
+      "Yaw": 0
+    },
+    "Drone3": {
+      "VehicleType": "PX4Multirotor",
+      "UseSerial": false,
+      "UseTcp": true,
+      "TcpPort": 4563,
+      "ControlPortLocal": 14543,
+      "ControlPortRemote": 14583,
+      "LocalHostIp": "127.0.0.1",
+      "UdpIp": "127.0.0.1",
+      "UdpPort": 14562,
+      "LockStep": true,
+      "Sensors": {
+        "Gps": {
+          "SensorType": 3,
+          "Enabled": true,
+          "StartLatitude": 47.641468,
+          "StartLongitude": -122.140165,
+          "StartAltitude": 122.0
+        },
+        "Magnetometer": {
+          "SensorType": 4,
+          "Enabled": true
+        },
+        "Barometer": {
+          "SensorType": 1,
+          "Enabled": true
+        },
+        "Imu": {
+          "SensorType": 2,
+          "Enabled": true
+        }
+      },
+      "X": 10,
+      "Y": 0,
+      "Z": -1,
+      "Pitch": 0,
+      "Roll": 0,
+      "Yaw": 0
+    },
+    "Drone4": {
+      "VehicleType": "PX4Multirotor",
+      "UseSerial": false,
+      "UseTcp": true,
+      "TcpPort": 4564,
+      "ControlPortLocal": 14544,
+      "ControlPortRemote": 14584,
+      "LocalHostIp": "127.0.0.1",
+      "UdpIp": "127.0.0.1",
+      "UdpPort": 14563,
+      "LockStep": true,
+      "Sensors": {
+        "Gps": {
+          "SensorType": 3,
+          "Enabled": true,
+          "StartLatitude": 47.641468,
+          "StartLongitude": -122.140165,
+          "StartAltitude": 122.0
+        },
+        "Magnetometer": {
+          "SensorType": 4,
+          "Enabled": true
+        },
+        "Barometer": {
+          "SensorType": 1,
+          "Enabled": true
+        },
+        "Imu": {
+          "SensorType": 2,
+          "Enabled": true
+        }
+      },
+      "X": 0,
+      "Y": 5,
+      "Z": -1,
+      "Pitch": 0,
+      "Roll": 0,
+      "Yaw": 0
+    },
+    "Drone5": {
+      "VehicleType": "PX4Multirotor",
+      "UseSerial": false,
+      "UseTcp": true,
+      "TcpPort": 4565,
+      "ControlPortLocal": 14545,
+      "ControlPortRemote": 14585,
+      "LocalHostIp": "127.0.0.1",
+      "UdpIp": "127.0.0.1",
+      "UdpPort": 14564,
+      "LockStep": true,
+      "Sensors": {
+        "Gps": {
+          "SensorType": 3,
+          "Enabled": true,
+          "StartLatitude": 47.641468,
+          "StartLongitude": -122.140165,
+          "StartAltitude": 122.0
+        },
+        "Magnetometer": {
+          "SensorType": 4,
+          "Enabled": true
+        },
+        "Barometer": {
+          "SensorType": 1,
+          "Enabled": true
+        },
+        "Imu": {
+          "SensorType": 2,
+          "Enabled": true
+        }
+      },
+      "X": 5,
+      "Y": 5,
+      "Z": -1,
+      "Pitch": 0,
+      "Roll": 0,
+      "Yaw": 0
+    }
+  }
+}

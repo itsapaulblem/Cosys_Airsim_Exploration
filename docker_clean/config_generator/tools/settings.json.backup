@@ -1,0 +1,304 @@
+{
+  "SeeDocsAt": "https://github.com/Microsoft/AirSim/blob/main/docs/settings.md",
+  "SettingsVersion": 2.0,
+  "SimMode": "Multirotor",
+  "ClockType": "SteppableClock",
+  "ApiServerEndpoint": "0.0.0.0:41451",
+  "OriginGeopoint": {
+    "Latitude": 47.641467999990454,
+    "Longitude": -122.1401649999999,
+    "Altitude": 1143.1270751953125
+  },
+  "Vehicles": {
+    "PX4_Drone1": {
+      "VehicleType": "PX4Multirotor",
+      "X": 0,
+      "Y": 0,
+      "Z": -2,
+      "Pitch": 0.0,
+      "Roll": 0.0,
+      "Yaw": 0.0,
+      "UseSerial": false,
+      "UseTcp": true,
+      "TcpPort": 4561,
+      "ControlPortLocal": 14541,
+      "ControlPortRemote": 14581,
+      "LocalHostIp": "172.28.240.1",
+      "LockStep": true,
+      "Sensors": {
+        "Gps": {
+          "SensorType": 3,
+          "Enabled": true,
+          "EphTimeConstant": 0.9,
+          "EpvTimeConstant": 0.9,
+          "EphInitial": 25.0,
+          "EpvInitial": 25.0,
+          "EphFinal": 0.1,
+          "EpvFinal": 0.1,
+          "EphMin3d": 3.0,
+          "EphMin2d": 4.0,
+          "UpdateLatency": 0.2,
+          "UpdateFrequency": 50,
+          "StartupDelay": 1
+        },
+        "Magnetometer": {
+          "SensorType": 4,
+          "Enabled": true
+        },
+        "Barometer": {
+          "SensorType": 1,
+          "Enabled": true,
+          "PressureFactorSigma": 0.0001825
+        },
+        "Imu": {
+          "SensorType": 2,
+          "Enabled": true
+        }
+      },
+      "Parameters": {
+        "NAV_RCL_ACT": 0,
+        "NAV_DLL_ACT": 0,
+        "COM_OBL_ACT": 1,
+        "LPE_LAT": 47.641468,
+        "LPE_LON": -122.140165,
+        "COM_ARM_WO_GPS": 0,
+        "EKF2_AID_MASK": 1,
+        "EKF2_HGT_MODE": 0,
+        "EKF2_GPS_CHECK": 31
+      }
+    },
+    "PX4_Drone2": {
+      "VehicleType": "PX4Multirotor",
+      "X": 5,
+      "Y": 0,
+      "Z": -2,
+      "Pitch": 0.0,
+      "Roll": 0.0,
+      "Yaw": 0.0,
+      "UseSerial": false,
+      "UseTcp": true,
+      "TcpPort": 4562,
+      "ControlPortLocal": 14542,
+      "ControlPortRemote": 14582,
+      "LocalHostIp": "172.28.240.1",
+      "LockStep": true,
+      "Sensors": {
+        "Gps": {
+          "SensorType": 3,
+          "Enabled": true,
+          "EphTimeConstant": 0.9,
+          "EpvTimeConstant": 0.9,
+          "EphInitial": 25.0,
+          "EpvInitial": 25.0,
+          "EphFinal": 0.1,
+          "EpvFinal": 0.1,
+          "EphMin3d": 3.0,
+          "EphMin2d": 4.0,
+          "UpdateLatency": 0.2,
+          "UpdateFrequency": 50,
+          "StartupDelay": 1
+        },
+        "Magnetometer": {
+          "SensorType": 4,
+          "Enabled": true
+        },
+        "Barometer": {
+          "SensorType": 1,
+          "Enabled": true,
+          "PressureFactorSigma": 0.0001825
+        },
+        "Imu": {
+          "SensorType": 2,
+          "Enabled": true
+        }
+      },
+      "Parameters": {
+        "NAV_RCL_ACT": 0,
+        "NAV_DLL_ACT": 0,
+        "COM_OBL_ACT": 1,
+        "LPE_LAT": 47.641468,
+        "LPE_LON": -122.140165,
+        "COM_ARM_WO_GPS": 0,
+        "EKF2_AID_MASK": 1,
+        "EKF2_HGT_MODE": 0,
+        "EKF2_GPS_CHECK": 31
+      }
+    },
+    "PX4_Drone3": {
+      "VehicleType": "PX4Multirotor",
+      "X": 10,
+      "Y": 0,
+      "Z": -2,
+      "Pitch": 0.0,
+      "Roll": 0.0,
+      "Yaw": 0.0,
+      "UseSerial": false,
+      "UseTcp": true,
+      "TcpPort": 4563,
+      "ControlPortLocal": 14543,
+      "ControlPortRemote": 14583,
+      "LocalHostIp": "172.28.240.1",
+      "LockStep": true,
+      "Sensors": {
+        "Gps": {
+          "SensorType": 3,
+          "Enabled": true,
+          "EphTimeConstant": 0.9,
+          "EpvTimeConstant": 0.9,
+          "EphInitial": 25.0,
+          "EpvInitial": 25.0,
+          "EphFinal": 0.1,
+          "EpvFinal": 0.1,
+          "EphMin3d": 3.0,
+          "EphMin2d": 4.0,
+          "UpdateLatency": 0.2,
+          "UpdateFrequency": 50,
+          "StartupDelay": 1
+        },
+        "Magnetometer": {
+          "SensorType": 4,
+          "Enabled": true
+        },
+        "Barometer": {
+          "SensorType": 1,
+          "Enabled": true,
+          "PressureFactorSigma": 0.0001825
+        },
+        "Imu": {
+          "SensorType": 2,
+          "Enabled": true
+        }
+      },
+      "Parameters": {
+        "NAV_RCL_ACT": 0,
+        "NAV_DLL_ACT": 0,
+        "COM_OBL_ACT": 1,
+        "LPE_LAT": 47.641468,
+        "LPE_LON": -122.140165,
+        "COM_ARM_WO_GPS": 0,
+        "EKF2_AID_MASK": 1,
+        "EKF2_HGT_MODE": 0,
+        "EKF2_GPS_CHECK": 31
+      }
+    },
+    "PX4_Drone4": {
+      "VehicleType": "PX4Multirotor",
+      "X": 15,
+      "Y": 0,
+      "Z": -2,
+      "Pitch": 0.0,
+      "Roll": 0.0,
+      "Yaw": 0.0,
+      "UseSerial": false,
+      "UseTcp": true,
+      "TcpPort": 4564,
+      "ControlPortLocal": 14544,
+      "ControlPortRemote": 14584,
+      "LocalHostIp": "172.28.240.1",
+      "LockStep": true,
+      "Sensors": {
+        "Gps": {
+          "SensorType": 3,
+          "Enabled": true,
+          "EphTimeConstant": 0.9,
+          "EpvTimeConstant": 0.9,
+          "EphInitial": 25.0,
+          "EpvInitial": 25.0,
+          "EphFinal": 0.1,
+          "EpvFinal": 0.1,
+          "EphMin3d": 3.0,
+          "EphMin2d": 4.0,
+          "UpdateLatency": 0.2,
+          "UpdateFrequency": 50,
+          "StartupDelay": 1
+        },
+        "Magnetometer": {
+          "SensorType": 4,
+          "Enabled": true
+        },
+        "Barometer": {
+          "SensorType": 1,
+          "Enabled": true,
+          "PressureFactorSigma": 0.0001825
+        },
+        "Imu": {
+          "SensorType": 2,
+          "Enabled": true
+        }
+      },
+      "Parameters": {
+        "NAV_RCL_ACT": 0,
+        "NAV_DLL_ACT": 0,
+        "COM_OBL_ACT": 1,
+        "LPE_LAT": 47.641468,
+        "LPE_LON": -122.140165,
+        "COM_ARM_WO_GPS": 0,
+        "EKF2_AID_MASK": 1,
+        "EKF2_HGT_MODE": 0,
+        "EKF2_GPS_CHECK": 31
+      }
+    },
+    "PX4_Drone5": {
+      "VehicleType": "PX4Multirotor",
+      "X": 20,
+      "Y": 0,
+      "Z": -2,
+      "Pitch": 0.0,
+      "Roll": 0.0,
+      "Yaw": 0.0,
+      "UseSerial": false,
+      "UseTcp": true,
+      "TcpPort": 4565,
+      "ControlPortLocal": 14545,
+      "ControlPortRemote": 14585,
+      "LocalHostIp": "172.28.240.1",
+      "LockStep": true,
+      "Sensors": {
+        "Gps": {
+          "SensorType": 3,
+          "Enabled": true,
+          "EphTimeConstant": 0.9,
+          "EpvTimeConstant": 0.9,
+          "EphInitial": 25.0,
+          "EpvInitial": 25.0,
+          "EphFinal": 0.1,
+          "EpvFinal": 0.1,
+          "EphMin3d": 3.0,
+          "EphMin2d": 4.0,
+          "UpdateLatency": 0.2,
+          "UpdateFrequency": 50,
+          "StartupDelay": 1
+        },
+        "Magnetometer": {
+          "SensorType": 4,
+          "Enabled": true
+        },
+        "Barometer": {
+          "SensorType": 1,
+          "Enabled": true,
+          "PressureFactorSigma": 0.0001825
+        },
+        "Imu": {
+          "SensorType": 2,
+          "Enabled": true
+        }
+      },
+      "Parameters": {
+        "NAV_RCL_ACT": 0,
+        "NAV_DLL_ACT": 0,
+        "COM_OBL_ACT": 1,
+        "LPE_LAT": 47.641468,
+        "LPE_LON": -122.140165,
+        "COM_ARM_WO_GPS": 0,
+        "EKF2_AID_MASK": 1,
+        "EKF2_HGT_MODE": 0,
+        "EKF2_GPS_CHECK": 31
+      }
+    }
+  },
+  "PawnPaths": {
+    "DefaultQuadrotor": {
+      "PawnBP": "Class'/AirSim/Blueprints/BP_SpiritPawn.BP_SpiritPawn_C'"
+    }
+  }
+}

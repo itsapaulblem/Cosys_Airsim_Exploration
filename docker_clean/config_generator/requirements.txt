@@ -1,0 +1,14 @@
+# Requirements for AirSim Configuration Generator
+# Install with: pip install -r requirements.txt
+
+# Core dependencies
+PyYAML>=5.4.1
+
+# Optional but recommended for development
+# These are already in most Python environments
+pathlib2>=2.3.0; python_version < '3.4'
+dataclasses>=0.8; python_version < '3.7'
+
+# For enhanced validation (optional)
+# jsonschema>=4.0.0
+# validators>=0.20.0

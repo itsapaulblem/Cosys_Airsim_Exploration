@@ -27,8 +27,20 @@ find_package(pcl_conversions REQUIRED)
 find_package(PCL REQUIRED)
 find_package(rosgraph_msgs REQUIRED)
 
-# AirSim paths
-set(AIRSIM_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/../../../)
+
+# Set AIRSIM_ROOT to the workspace directory where AirLib, MavLinkCom, etc. are located
+# For Docker environment, use absolute path
+if(EXISTS "/airsim_ros2_ws/cmake")
+    set(AIRSIM_ROOT "/airsim_ros2_ws")
+else()
+    # Fallback to relative path for local development
+    set(AIRSIM_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/../../../)
+endif()
+
+# Only add the required subdirectories for ROS2, not the examples/tests
+# Set CMAKE variable to prevent building examples in subdirectories
+set(BUILD_AIRSIM_EXAMPLES OFF CACHE BOOL "Disable AirSim examples" FORCE)
+>>>>>>> multirotor_node_exploration
 
 add_subdirectory("${AIRSIM_ROOT}/cmake/rpclib_wrapper" rpclib_wrapper)
 add_subdirectory("${AIRSIM_ROOT}/cmake/AirLib" AirLib)
@@ -39,6 +51,7 @@ set(CMAKE_CXX_STANDARD 17)
 
 # Suppress warnings from external libraries
 set(CMAKE_CXX_FLAGS "-O3 -Wall -Wextra -Wnoexcept -Wstrict-null-sentinel -Wno-class-memaccess -Wno-sign-compare")
+set(CMAKE_CXX_FLAGS "-O3 -Wall -Wextra -Wnoexcept -Wstrict-null-sentinel -fPIC -fPIE")
 
 set(CXX_EXP_LIB "-nostdinc++ -I/usr/include/c++/8 -I/usr/include/x86_64-linux-gnu/c++/8 -nodefaultlibs 
 -l/usr/lib/x86_64-linux-gnu/libc++.so -l/usr/lib/x86_64-linux-gnu/libc++abi.so
@@ -78,6 +91,64 @@ ament_target_dependencies(pd_position_controller_simple
   tf2
   tf2_ros
   tf2_geometry_msgs
+)
+
+# Vehicle Node Base Classes
+add_library(vehicle_node_base src/vehicles/VehicleNodeBase.cpp)
+target_link_libraries(vehicle_node_base ${OpenCV_LIBS} AirLib airsim_settings_parser)
+target_include_directories(vehicle_node_base PRIVATE 
+  ${AIRSIM_ROOT}/AirLib/deps/eigen3
+  ${AIRSIM_ROOT}/AirLib/include
+  ${RPC_LIB_INCLUDES}
+  ${AIRSIM_ROOT}/MavLinkCom/include
+  ${AIRSIM_ROOT}/MavLinkCom/common_utils
+  ${OpenCV_INCLUDE_DIRS}
+)
+ament_target_dependencies(vehicle_node_base 
+  rclcpp
+  sensor_msgs
+  geometry_msgs
+  nav_msgs
+  tf2_ros
+  airsim_interfaces
+  tf2_geometry_msgs
+  tf2
+  pcl_conversions
+  PCL
+  image_transport
+)
+
+add_library(multirotor_node src/vehicles/MultiRotorNode.cpp)
+target_link_libraries(multirotor_node vehicle_node_base AirLib)
+ament_target_dependencies(multirotor_node 
+  rclcpp
+  airsim_interfaces
+)
+
+add_library(car_node src/vehicles/CarNode.cpp)
+target_link_libraries(car_node vehicle_node_base AirLib)
+ament_target_dependencies(car_node 
+  rclcpp
+  airsim_interfaces
+)
+
+add_library(computer_vision_node src/vehicles/ComputerVisionNode.cpp)
+target_link_libraries(computer_vision_node vehicle_node_base AirLib)
+ament_target_dependencies(computer_vision_node 
+  rclcpp
+  airsim_interfaces
+)
+
+add_library(vehicle_node_factory src/VehicleNodeFactory.cpp)
+target_link_libraries(vehicle_node_factory 
+  vehicle_node_base 
+  multirotor_node 
+  car_node 
+  computer_vision_node 
+  AirLib 
+  airsim_settings_parser)
+ament_target_dependencies(vehicle_node_factory 
+  rclcpp
 )
 
 add_library(airsim_ros src/airsim_ros_wrapper.cpp)
@@ -182,6 +253,7 @@ ament_target_dependencies(pd_position_controller_simple_node
   tf2_geometry_msgs
 )
 
+<<<<<<< HEAD
 # Phase 2: Multi-node architecture executables
 # FIXED: Link to multirotor_node_lib instead of vehicle_node_base
 add_executable(multirotor_node src/multirotor_main.cpp)
@@ -289,12 +361,17 @@ ament_export_dependencies(image_transport)
 ament_export_dependencies(pcl_conversions)
 ament_export_dependencies(PCL)
 
-# Additional ROS2 dependencies
-ament_export_dependencies(geographic_msgs)
-ament_export_dependencies(std_srvs)
-ament_export_dependencies(rclpy)
-ament_export_dependencies(mavros_msgs)
-ament_export_dependencies(rosgraph_msgs)
+ament_export_include_directories(${INCLUDE_DIRS})
+ament_export_libraries(
+  airsim_settings_parser 
+  pd_position_controller_simple
+  airsim_ros
+  vehicle_node_base
+  multirotor_node
+  car_node
+  computer_vision_node
+  vehicle_node_factory
+)
 
 # Build system dependencies
 ament_export_dependencies(rosidl_default_generators)
@@ -314,7 +391,7 @@ ament_export_libraries(
   airsim_ros 
   # Phase 2 libraries
   vehicle_node_base
-  multirotor_node_lib          # ADDED: Include multirotor implementation
+  multirotor_node_lib
   # Phase 3 libraries
   vehicle_settings_parser
   coordination_impl

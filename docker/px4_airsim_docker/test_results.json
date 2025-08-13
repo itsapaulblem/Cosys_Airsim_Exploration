@@ -1,0 +1,75 @@
+{
+  "timestamp": "2025-07-21T11:05:10.027325",
+  "compose_file": "docker-compose-slim.yml",
+  "tests": {
+    "environment_detection": {
+      "environment": {
+        "is_wsl2": false,
+        "is_docker": false
+      },
+      "gateway": null,
+      "hosts": {}
+    },
+    "container_health": {
+      "px4-bridge-drone-1": true,
+      "px4-bridge-drone-2": true,
+      "px4-bridge-drone-3": true
+    },
+    "port_mappings": {
+      "px4-bridge-drone-1": {
+        "tcp_hil": "0.0.0.0:4561\n[::]:4561",
+        "udp_control": "0.0.0.0:14581\n[::]:14581",
+        "qgc_port": false
+      },
+      "px4-bridge-drone-2": {
+        "tcp_hil": "0.0.0.0:4562\n[::]:4562",
+        "udp_control": "0.0.0.0:14582\n[::]:14582",
+        "qgc_port": true
+      },
+      "px4-bridge-drone-3": {
+        "tcp_hil": "0.0.0.0:4563\n[::]:4563",
+        "udp_control": "0.0.0.0:14583\n[::]:14583",
+        "qgc_port": true
+      }
+    },
+    "mavlink_connectivity": {
+      "diagnostic": {
+        "success": true,
+        "output": "\ud83d\ude81 MAVLink Connection Diagnostic & Fix Tool\n==================================================\n\n\ud83c\udf10 Testing network routing\n\ud83d\udc27 Running in WSL2 environment\n\u2705 Windows host IP: 172.28.240.1\n\n==================================================\nTesting Drone 1 (Container: px4-bridge-drone-1, Port: 14550)\n==================================================\n\n\ud83d\udc33 Checking Docker port mapping for px4-bridge-drone-1\n\u274c Port 14550/udp is not mapped\n\n\ud83d\udd0d Checking MAVLink output in px4-bridge-drone-1\n\ud83d\udcc4 Recent MAVLink logs:\n   \u001b[0mINFO  \u001b[37m[simulator_mavlink] \u001b[0musing TCP on remote host 172.28.240.1 port 4561\u001b[0m\n   \u001b[33mWARN  \u001b[37m[simulator_mavlink] \u001b[33mPlease ensure port 4561 is not blocked by a firewall.\u001b[0m\n   \u001b[0mINFO  \u001b[37m[simulator_mavlink] \u001b[0mResolved host '172.28.240.1' to address: 172.28.240.1\u001b[0m\n   \u001b[0mINFO  \u001b[37m[simulator_mavlink] \u001b[0mWaiting for simulator to accept connection on TCP port 4561\u001b[0m\n   \u001b[0mINFO  \u001b[37m[simulator_mavlink] \u001b[0mSimulator connected on TCP port 4561.\u001b[0m\n\u2705 PX4 is configured to send to port 14550\n\n\ud83d\udce1 Testing UDP listener on port 14550\n\u2705 Successfully bound to 0.0.0.0:14550\n\u23f3 Waiting 3s for MAVLink packets...\n\u274c No MAVLink packets received in 3s\n\n\ud83d\udd27 Attempting to fix MAVLink routing for px4-bridge-drone-1\n\u274c Failed to restart MAVLink\n\n\ud83d\udd04 Retesting after fix attempt...\n\n\ud83d\udce1 Testing UDP listener on port 14550\n\u2705 Successfully bound to 0.0.0.0:14550\n\u23f3 Waiting 3s for MAVLink packets...\n\u274c No MAVLink packets received in 3s\n\n==================================================\nTesting Drone 2 (Container: px4-bridge-drone-2, Port: 14551)\n==================================================\n\n\ud83d\udc33 Checking Docker port mapping for px4-bridge-drone-2\n\u274c Port 14551/udp is not mapped\n\n\ud83d\udd0d Checking MAVLink output in px4-bridge-drone-2\n\ud83d\udcc4 Recent MAVLink logs:\n   \u001b[0mINFO  \u001b[37m[simulator_mavlink] \u001b[0musing TCP on remote host 172.28.240.1 port 4562\u001b[0m\n   \u001b[33mWARN  \u001b[37m[simulator_mavlink] \u001b[33mPlease ensure port 4562 is not blocked by a firewall.\u001b[0m\n   \u001b[0mINFO  \u001b[37m[simulator_mavlink] \u001b[0mResolved host '172.28.240.1' to address: 172.28.240.1\u001b[0m\n   \u001b[0mINFO  \u001b[37m[simulator_mavlink] \u001b[0mWaiting for simulator to accept connection on TCP port 4562\u001b[0m\n   \u001b[0mINFO  \u001b[37m[simulator_mavlink] \u001b[0mSimulator connected on TCP port 4562.\u001b[0m\n\u274c PX4 may not be sending to correct port 14551\n\n\ud83d\udce1 Testing UDP listener on port 14551\n\u2705 Successfully bound to 0.0.0.0:14551\n\u23f3 Waiting 3s for MAVLink packets...\n\u274c No MAVLink packets received in 3s\n\n\ud83d\udd27 Attempting to fix MAVLink routing for px4-bridge-drone-2\n\u274c Failed to restart MAVLink\n\n\ud83d\udd04 Retesting after fix attempt...\n\n\ud83d\udce1 Testing UDP listener on port 14551\n\u2705 Successfully bound to 0.0.0.0:14551\n\u23f3 Waiting 3s for MAVLink packets...\n\u274c No MAVLink packets received in 3s\n\n==================================================\nTesting Drone 3 (Container: px4-bridge-drone-3, Port: 14552)\n==================================================\n\n\ud83d\udc33 Checking Docker port mapping for px4-bridge-drone-3\n\u274c Port 14552/udp is not mapped\n\n\ud83d\udd0d Checking MAVLink output in px4-bridge-drone-3\n\ud83d\udcc4 Recent MAVLink logs:\n   \u001b[0mINFO  \u001b[37m[simulator_mavlink] \u001b[0musing TCP on remote host 172.28.240.1 port 4563\u001b[0m\n   \u001b[33mWARN  \u001b[37m[simulator_mavlink] \u001b[33mPlease ensure port 4563 is not blocked by a firewall.\u001b[0m\n   \u001b[0mINFO  \u001b[37m[simulator_mavlink] \u001b[0mResolved host '172.28.240.1' to address: 172.28.240.1\u001b[0m\n   \u001b[0mINFO  \u001b[37m[simulator_mavlink] \u001b[0mWaiting for simulator to accept connection on TCP port 4563\u001b[0m\n   \u001b[0mINFO  \u001b[37m[simulator_mavlink] \u001b[0mSimulator connected on TCP port 4563.\u001b[0m\n\u274c PX4 may not be sending to correct port 14552\n\n\ud83d\udce1 Testing UDP listener on port 14552\n\u2705 Successfully bound to 0.0.0.0:14552\n\u23f3 Waiting 3s for MAVLink packets...\n\u274c No MAVLink packets received in 3s\n\n\ud83d\udd27 Attempting to fix MAVLink routing for px4-bridge-drone-3\n\u274c Failed to restart MAVLink\n\n\ud83d\udd04 Retesting after fix attempt...\n\n\ud83d\udce1 Testing UDP listener on port 14552\n\u2705 Successfully bound to 0.0.0.0:14552\n\u23f3 Waiting 3s for MAVLink packets...\n\u274c No MAVLink packets received in 3s\n\n==================================================\n\ud83d\udccb Summary & Solutions:\n==================================================\n\u274c Issues found:\n   - Port mapping missing for px4-bridge-drone-1\n   - No MAVLink packets on port 14550\n   - Port mapping missing for px4-bridge-drone-2\n   - No MAVLink packets on port 14551\n   - Port mapping missing for px4-bridge-drone-3\n   - No MAVLink packets on port 14552\n\n\ud83c\udfaf Quick Fixes to Try:\n1. Restart Docker containers:\n   docker-compose -f docker-compose-slim.yml restart\n\n2. Check QGroundControl is listening on UDP (not TCP)\n\n3. In QGroundControl Comm Links:\n   - Delete existing links\n   - Add new UDP link\n   - Server Address: 0.0.0.0\n   - Local Port: 14550\n\n4. If using Windows + WSL2, ensure firewall allows UDP:\n   Run PowerShell as Admin:\n   New-NetFirewallRule -DisplayName 'QGC UDP' -Direction Inbound -Protocol UDP -LocalPort 14550-14558 -Action Allow\n",
+        "errors": ""
+      },
+      "specific_drone": {
+        "success": true,
+        "output": "\ud83d\ude81 Specific Drone MAVLink Test\n==================================================\n\n=== Testing Drone 1 ===\nContainer IP: 172.20.0.11\nHost Port: 14550\n\n1. Testing direct container connection (172.20.0.11:14550)\n\u274c Direct container connection: No MAVLink packets\n\n2. Testing port mapping connection (127.0.0.1:14550)\n\u274c Port mapping connection: No MAVLink packets\n\n\ud83d\udca1 If no packets received:\n1. Check if PX4 is actually sending MAVLink:\n   docker logs px4-bridge-drone-1 --tail 20\n2. Check MAVLink configuration in container:\n   docker exec px4-bridge-drone-1 pgrep -f px4\n3. QGroundControl should use:\n   - Type: UDP\n   - Listening Port: 14550\n   - Server Addresses: (leave empty)\n",
+        "errors": ""
+      },
+      "heartbeat": {
+        "success": true,
+        "output": "\ud83d\ude81 MAVLink Connection Test for QGroundControl\n==================================================\nTesting MAVLink communication on 127.0.0.1...\n--------------------------------------------------\nTesting MAVLink on 127.0.0.1:14550...\n  \u2192 Sent heartbeat to 127.0.0.1:14550\n  \u23f1\ufe0f  Timeout - no response received\n  \u274c Drone 1 (port 14550): Timeout\n\nTesting MAVLink on 127.0.0.1:14551...\n  \u2192 Sent heartbeat to 127.0.0.1:14551\n  \u23f1\ufe0f  Timeout - no response received\n  \u274c Drone 2 (port 14551): Timeout\n\nTesting MAVLink on 127.0.0.1:14552...\n  \u2192 Sent heartbeat to 127.0.0.1:14552\n  \u23f1\ufe0f  Timeout - no response received\n  \u274c Drone 3 (port 14552): Timeout\n\nTesting MAVLink on 127.0.0.1:14553...\n  \u2192 Sent heartbeat to 127.0.0.1:14553\n  \u23f1\ufe0f  Timeout - no response received\n  \u274c Drone 4 (port 14553): Timeout\n\nTesting MAVLink on 127.0.0.1:14554...\n  \u2192 Sent heartbeat to 127.0.0.1:14554\n  \u23f1\ufe0f  Timeout - no response received\n  \u274c Drone 5 (port 14554): Timeout\n\n==================================================\n\ud83d\udccb Summary:\n\u274c No drones responding to MAVLink heartbeat\n   Check if PX4 is running in containers:\n   ./start_swarm_bridge_optimized.sh status\n   ./start_swarm_bridge_optimized.sh run-all-px4\n",
+        "errors": ""
+      }
+    },
+    "qgc_connectivity": {
+      "simple_test": {
+        "success": true,
+        "output": "\ud83d\ude81 Simple QGroundControl UDP Test\n========================================\n1. Testing UDP port accessibility...\n----------------------------------------\nTesting UDP communication on 127.0.0.1:14550\n  \u2192 Sent test message to 127.0.0.1:14550\n  \u23f1\ufe0f  Timeout - no response (this might be normal)\n  \u2705 Drone 1 (port 14550): Port accessible, no response\n\nTesting UDP communication on 127.0.0.1:14551\n  \u2192 Sent test message to 127.0.0.1:14551\n  \u23f1\ufe0f  Timeout - no response (this might be normal)\n  \u2705 Drone 2 (port 14551): Port accessible, no response\n\nTesting UDP communication on 127.0.0.1:14552\n  \u2192 Sent test message to 127.0.0.1:14552\n  \u23f1\ufe0f  Timeout - no response (this might be normal)\n  \u2705 Drone 3 (port 14552): Port accessible, no response\n\nTesting UDP communication on 127.0.0.1:14553\n  \u2192 Sent test message to 127.0.0.1:14553\n  \u23f1\ufe0f  Timeout - no response (this might be normal)\n  \u2705 Drone 4 (port 14553): Port accessible, no response\n\nTesting UDP communication on 127.0.0.1:14554\n  \u2192 Sent test message to 127.0.0.1:14554\n  \u23f1\ufe0f  Timeout - no response (this might be normal)\n  \u2705 Drone 5 (port 14554): Port accessible, no response\n\n2. Checking PX4 processes in containers...\n----------------------------------------\nChecking px4-bridge-drone-1...\n  \u2705 Drone 1: PX4 running (PIDs: 1, 7)\n\nChecking px4-bridge-drone-2...\n  \u2705 Drone 2: PX4 running (PIDs: 1, 7)\n\nChecking px4-bridge-drone-3...\n  \u2705 Drone 3: PX4 running (PIDs: 1, 7)\n\nChecking px4-bridge-drone-4...\n  \u2705 Drone 4: PX4 running (PIDs: 1, 7)\n\nChecking px4-bridge-drone-5...\n  \u2705 Drone 5: PX4 running (PIDs: 1, 7)\n\n========================================\n\ud83d\udccb Summary:\n\u2705 Found 5 accessible ports and 5 running PX4 instances\n\n\ud83c\udfaf QGroundControl Setup:\n   \u2022 Connection Type: UDP\n   \u2022 Host: 127.0.0.1\n   \u2022 Try these ports:\n     - Port 14550 for Drone 1\n     - Port 14551 for Drone 2\n     - Port 14552 for Drone 3\n     - Port 14553 for Drone 4\n     - Port 14554 for Drone 5\n\n\ud83d\udcdd Configuration Steps:\n   1. Open QGroundControl\n   2. Go to Application Settings \u2192 Comm Links\n   3. Add UDP connection:\n      - Type: UDP\n      - Listening Port: 14550\n      - Auto Connect: Enable\n   4. Connect and wait for heartbeat\n",
+        "errors": ""
+      },
+      "qgc_fix": {
+        "success": true,
+        "output": "QGroundControl Connection Diagnostic\n========================================\n\nDrone 1 (port 14550):\n\nTesting MAVLink reception on port 14550\n----------------------------------------\nSuccessfully bound to 0.0.0.0:14550\nWaiting for MAVLink packets...\n\nERROR: No MAVLink packets received\n\nTroubleshooting steps:\n1. Ensure PX4 container is running:\n   docker ps | grep px4-bridge-drone-1\n2. Check container logs:\n   docker logs px4-bridge-drone-1 --tail 50\n3. Verify Windows Firewall allows UDP 14550\n4. Try restarting the container:\n   docker restart px4-bridge-drone-1\n",
+        "errors": ""
+      }
+    }
+  },
+  "summary": {
+    "containers_running": "3/3",
+    "ports_working": "8/9",
+    "mavlink_tests_passed": "3/3",
+    "overall_status": "PASS"
+  },
+  "recommendations": [
+    "\ud83d\udd17 Check Docker port mappings in docker-compose-slim.yml",
+    "\ud83d\udd27 Restart containers to refresh port mappings"
+  ]
+}

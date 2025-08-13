@@ -19,6 +19,7 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "msg/GimbalAngleQuatCmd.msg"
   "msg/GPSYaw.msg"
   "msg/VelCmd.msg"
+  "msg/YawMode.msg"
   "msg/VelCmdGroup.msg"
   "msg/CarControls.msg"
   "msg/CarState.msg"

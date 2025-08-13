@@ -1,0 +1,216 @@
+# AWS EC2 Cloud Deployment Configuration
+# Optimized for Amazon Web Services Elastic Compute Cloud
+# Enables remote PX4 server access with public IP connectivity
+
+version: '3.8'
+
+networks:
+  px4_network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
+
+volumes:
+  px4-shared-data:
+    driver: local
+
+x-px4-common: &px4-common
+  image: px4-airsim:slim
+  environment: &px4-env
+    # AWS-specific configuration
+    PX4_SIM_HOSTNAME: ${AWS_PUBLIC_IP:-AUTO_DETECT}
+    PX4_SIM_MODEL: none_iris
+    PX4_SIMULATOR: none
+    
+    # AWS Instance metadata for auto-configuration
+    AWS_REGION: ${AWS_REGION:-us-east-1}
+    AWS_AVAILABILITY_ZONE: ${AWS_AVAILABILITY_ZONE:-us-east-1a}
+    
+    # PX4 environment
+    PX4_HOME_LAT: ${PX4_HOME_LAT:-47.641468}
+    PX4_HOME_LON: ${PX4_HOME_LON:--122.140165}
+    PX4_HOME_ALT: ${PX4_HOME_ALT:-0.0}
+    PX4_SYS_AUTOSTART: 10016
+    
+    # MAVLink configuration for internet access
+    MAV_0_BROADCAST: 1
+    MAV_1_BROADCAST: 1
+    MAV_2_BROADCAST: 1
+    
+    # Remote connectivity settings
+    ENABLE_REMOTE_ACCESS: 1
+    REMOTE_ACCESS_MODE: "internet"
+    SECURITY_MODE: ${SECURITY_MODE:-firewall}
+    
+    # Swarm configuration
+    SWARM_ID: 1
+    SWARM_SIZE: ${SWARM_SIZE:-3}
+    
+  networks:
+    - px4_network
+  volumes:
+    - px4-shared-data:/px4_data
+  restart: unless-stopped
+  tty: true
+  stdin_open: true
+  
+  # Enhanced health check for cloud deployment
+  healthcheck:
+    test: ["CMD-SHELL", "curl -f http://localhost:8080/health || exit 1"]
+    interval: 30s
+    timeout: 10s
+    retries: 5
+    start_period: 120s
+
+services:
+  # Reverse proxy for secure external access
+  nginx-proxy:
+    image: nginx:alpine
+    container_name: px4-nginx-proxy
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./cloud-deployments/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./cloud-deployments/nginx/ssl:/etc/ssl/private:ro
+    networks:
+      - px4_network
+    restart: unless-stopped
+    depends_on:
+      - px4-cloud-drone-1
+
+  # Main PX4 drone instance with enhanced cloud configuration
+  px4-cloud-drone-1:
+    <<: *px4-common
+    container_name: px4-cloud-drone-1
+    hostname: px4-cloud-drone-1
+    environment:
+      <<: *px4-env
+      PX4_INSTANCE: 1
+      
+    # AWS-optimized port mapping
+    ports:
+      # MAVLink endpoints (accessible from internet)
+      - "14550:14550/udp"    # Standard QGroundControl port
+      - "14540:14540/udp"    # API access (MAVSDK, MAVROS)
+      - "14541:14541/udp"    # Per-drone QGC access
+      
+      # AirSim HIL connection (secure internal only)
+      - "127.0.0.1:4561:4561/tcp"  # Localhost only for security
+      
+      # Monitoring and management
+      - "8080:8080/tcp"      # Health check endpoint
+      - "127.0.0.1:9090:9090/tcp"  # Prometheus metrics (localhost only)
+      
+    networks:
+      px4_network:
+        ipv4_address: 172.20.0.11
+        
+    # AWS-specific labels for service discovery
+    labels:
+      - "cloud.provider=aws"
+      - "service.type=px4-sitl"
+      - "service.instance=1"
+      - "monitoring.enabled=true"
+
+  px4-cloud-drone-2:
+    <<: *px4-common
+    container_name: px4-cloud-drone-2
+    hostname: px4-cloud-drone-2
+    environment:
+      <<: *px4-env
+      PX4_INSTANCE: 2
+    ports:
+      - "14551:14551/udp"    # Per-drone QGC access
+      - "14542:14542/udp"    # Alternative API access
+      - "127.0.0.1:4562:4562/tcp"
+      - "8081:8080/tcp"      # Health check endpoint
+    networks:
+      px4_network:
+        ipv4_address: 172.20.0.12
+    labels:
+      - "cloud.provider=aws"
+      - "service.type=px4-sitl"
+      - "service.instance=2"
+
+  px4-cloud-drone-3:
+    <<: *px4-common
+    container_name: px4-cloud-drone-3
+    hostname: px4-cloud-drone-3
+    environment:
+      <<: *px4-env
+      PX4_INSTANCE: 3
+    ports:
+      - "14552:14552/udp"
+      - "14543:14543/udp"
+      - "127.0.0.1:4563:4563/tcp"
+      - "8082:8080/tcp"
+    networks:
+      px4_network:
+        ipv4_address: 172.20.0.13
+    labels:
+      - "cloud.provider=aws"
+      - "service.type=px4-sitl"
+      - "service.instance=3"
+
+  # Monitoring stack for cloud deployment
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: px4-prometheus
+    ports:
+      - "127.0.0.1:9091:9090"  # Localhost only
+    volumes:
+      - ./cloud-deployments/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    networks:
+      - px4_network
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: px4-grafana
+    ports:
+      - "127.0.0.1:3000:3000"  # Localhost only
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD:-admin123}
+    volumes:
+      - grafana-storage:/var/lib/grafana
+    networks:
+      - px4_network
+    restart: unless-stopped
+
+volumes:
+  grafana-storage:
+    driver: local
+
+# AWS-specific deployment configuration
+x-aws-deployment:
+  # EC2 instance recommendations
+  instance_type: "t3.medium"  # 2 vCPU, 4 GB RAM minimum
+  ebs_volume_size: "20GB"     # SSD storage
+  
+  # Security group rules (add to AWS console)
+  security_group_rules:
+    - type: "ingress"
+      protocol: "udp"
+      port_range: "14540-14560"
+      cidr: "0.0.0.0/0"
+      description: "MAVLink UDP ports"
+    
+    - type: "ingress"
+      protocol: "tcp"
+      port_range: "80,443"
+      cidr: "0.0.0.0/0"
+      description: "HTTP/HTTPS for web interface"
+    
+    - type: "ingress"
+      protocol: "tcp"
+      port_range: "22"
+      cidr: "YOUR_IP/32"  # Replace with your IP
+      description: "SSH access"
+      
+  # Elastic IP configuration
+  elastic_ip: true
+  
+  # Route 53 DNS (optional)
+  dns_name: "px4-server.yourdomain.com"

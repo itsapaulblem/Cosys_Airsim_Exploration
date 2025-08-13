@@ -1,0 +1,21 @@
+# Waypoint Navigation Action for individual waypoint execution
+# Request - Navigation parameters  
+WaypointArray waypoints
+string vehicle_name
+bool loop_mission              # Loop back to start when complete
+float32 speed_override         # Override waypoint speeds (0 = use waypoint speed)
+---
+# Result - Navigation completion result
+bool success
+string result_message
+uint32 waypoints_completed
+float32 total_distance_traveled
+builtin_interfaces/Duration execution_time
+---
+# Feedback - Real-time navigation progress
+CurrentWaypoint current_waypoint
+geometry_msgs/Point current_position
+geometry_msgs/Twist current_velocity
+float32 distance_to_target
+float32 time_to_target
+string navigation_status

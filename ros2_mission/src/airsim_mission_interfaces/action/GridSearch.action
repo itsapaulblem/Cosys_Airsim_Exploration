@@ -1,0 +1,25 @@
+# Grid Search Mission Action
+# Request - Mission parameters
+SearchArea search_area
+GridParams grid_params
+SafetyParams safety_params
+string mission_id
+string vehicle_name
+bool auto_start                 # Automatically start mission after planning
+bool return_home_on_completion  # Return to home position when done
+---
+# Result - Mission completion result
+bool success
+string result_message
+SearchStats mission_stats
+WaypointArray executed_waypoints
+float32 final_battery_percentage
+builtin_interfaces/Duration total_execution_time
+---
+# Feedback - Real-time mission progress
+MissionProgress progress
+CurrentWaypoint current_waypoint
+float32 completion_percentage
+geometry_msgs/Point current_position
+float32 current_battery_percentage
+string status_message

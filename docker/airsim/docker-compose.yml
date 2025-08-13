@@ -1,0 +1,53 @@
+version: '3.8'
+
+services:
+  # Cosys-AirSim Container
+  cosys-airsim:
+    build:
+      context: .
+      dockerfile: Dockerfile.binary
+      args:
+        BASE_IMAGE: ghcr.io/epicgames/unreal-engine:dev-5.5.4
+    container_name: cosys-airsim
+    hostname: cosys-airsim
+    environment:
+      - DISPLAY=${DISPLAY:-:1}
+      - DISPLAY_MODE=${DISPLAY_MODE:-vnc}
+      - VNC_RESOLUTION=${VNC_RESOLUTION:-1920x1080}
+      - SCREEN_WIDTH=${SCREEN_WIDTH:-1280}
+      - SCREEN_HEIGHT=${SCREEN_HEIGHT:-720}
+      - SDL_VIDEODRIVER=x11
+    ports:
+      - "41451:41451/tcp"    # AirSim API
+      - "5900:5900/tcp"      # VNC access
+    volumes:
+      # Mount X11 socket for display (Linux/WSL2 only)
+      - /tmp/.X11-unix:/tmp/.X11-unix:rw
+      # Mount custom settings if needed
+      - ./settings/container_settings.json:/home/airsim_user/Documents/AirSim/settings.json:ro
+    restart: unless-stopped
+    # Use host networking for easy PX4 connectivity
+    network_mode: host
+
+# Alternative configuration with custom network
+# Uncomment this section if you prefer isolated networking
+#
+# services:
+#   cosys-airsim:
+#     # ... same config as above ...
+#     networks:
+#       cosys-network:
+#         ipv4_address: 172.30.0.10
+#     ports:
+#       - "41451:41451/tcp"
+#       - "5900:5900/tcp"
+#
+# networks:
+#   cosys-network:
+#     name: cosys-network
+#     driver: bridge
+#     ipam:
+#       driver: default
+#       config:
+#         - subnet: 172.30.0.0/16
+#           gateway: 172.30.0.1 

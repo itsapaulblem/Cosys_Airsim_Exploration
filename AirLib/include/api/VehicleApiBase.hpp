@@ -290,7 +290,7 @@ Some methods may not be applicable to specific vehicle in which case an exceptio
                     toReturn.mura_tagPosZ.push_back(output.pose.position[2]);
 
                     // Create a new range for all beacon/tag hits in the current sensor/anchor outputs
-                    for (int itId = 0; itId < output.beaconsActiveID.size(); itId++) {
+                    for (size_t itId = 0; itId < output.beaconsActiveID.size(); itId++) {
                         ranges.push_back(RangeNumber++);
                         toReturn.mur_time_stamp.push_back(output.time_stamp);
                         toReturn.mur_anchorId.push_back(output.beaconsActiveID[itId]);
@@ -364,7 +364,7 @@ Some methods may not be applicable to specific vehicle in which case an exceptio
                     toReturn.wra_tagPosZ.push_back(output.pose.position[2]);
 
                     // Create a new range for all beacon/tag hits in the current sensor/anchor outputs
-                    for (int itId = 0; itId < output.beaconsActiveID.size(); itId++) {
+                    for (size_t itId = 0; itId < output.beaconsActiveID.size(); itId++) {
                         ranges.push_back(RangeNumber++);
                         toReturn.wr_time_stamp.push_back(output.time_stamp);
                         toReturn.wr_anchorId.push_back(output.beaconsActiveID[itId]);

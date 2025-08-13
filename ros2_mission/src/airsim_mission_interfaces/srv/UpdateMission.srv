@@ -1,0 +1,22 @@
+# Update active mission parameters
+string mission_id
+uint8 update_type
+
+# Update types
+uint8 PAUSE = 0
+uint8 RESUME = 1
+uint8 ABORT = 2
+uint8 MODIFY_SPEED = 3
+uint8 MODIFY_ALTITUDE = 4
+uint8 ADD_WAYPOINT = 5
+uint8 REMOVE_WAYPOINT = 6
+
+# Optional parameters based on update_type
+float32 new_speed              # For MODIFY_SPEED
+float32 new_altitude           # For MODIFY_ALTITUDE
+Waypoint waypoint_to_add       # For ADD_WAYPOINT
+uint32 waypoint_id_to_remove   # For REMOVE_WAYPOINT
+---
+bool success
+string message
+MissionProgress updated_progress
