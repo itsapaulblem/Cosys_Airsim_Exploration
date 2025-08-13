@@ -39,7 +39,8 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "srv/RefreshInstanceSegmentation.srv"
   "srv/RefreshObjectTransforms.srv"
   "srv/SetLocalPosition.srv"
-  "srv/ListSceneObjectTags.srv" DEPENDENCIES std_msgs geometry_msgs geographic_msgs LIBRARY_NAME ${PROJECT_NAME}
+  "srv/ListSceneObjectTags.srv" 
+  DEPENDENCIES std_msgs geometry_msgs geographic_msgs
 )
 
 ament_export_dependencies(rosidl_default_runtime)

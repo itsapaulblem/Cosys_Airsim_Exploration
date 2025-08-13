@@ -14,6 +14,10 @@
 #include "UObject/ScriptMacros.h"
 #include "Runtime/Engine/Classes/GameFramework/Actor.h"
 
+// Forward declarations for Cesium support
+class UCesium3DTileset;
+class FCesiumTile;
+
 class FColorGenerator
 {
 public:
@@ -92,6 +96,12 @@ public:
 	TMap<FString, float> GetComponentToValueMap();
 	TMap<UMeshComponent*, FString> GetComponentToNameMap();
 
+	// Cesium support methods
+	TArray<UMeshComponent*> getMeshFromActor(AActor* actor, bool staticMeshOnly = false) const;
+	void OnCesiumTileLoaded(UCesium3DTileset* Tileset, const FCesiumTile& Tile);
+	void AddMeshToAnnotation(UMeshComponent* meshComponent);
+	void RegisterCesiumCallbacks(UWorld* World);
+
 private:
 	FColorGenerator ColorGenerator_;
 
@@ -125,5 +135,12 @@ private:
 	TMap<FString, UMeshComponent*> name_to_component_map_;
 	TMap<UMeshComponent*, FString> component_to_name_map_;
 	TArray<TWeakObjectPtr<UPrimitiveComponent>> annotation_component_list_;
+
+private:
+	TMap<FString, UCesium3DTileset*> cesium_tilesets_map_;
+	bool HasCesiumTileset(AActor* actor) const;
+	void HandleCesiumTilesetsSimple(UWorld* World);
+	void ApplyCesiumSegmentationMaterial(UCesium3DTileset* Tileset, FColor SegmentationColor);
+	UMaterialInterface* GetCesiumBaseMaterial();
 };
 

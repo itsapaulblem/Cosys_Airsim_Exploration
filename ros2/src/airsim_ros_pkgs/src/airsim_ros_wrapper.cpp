@@ -1,10 +1,43 @@
 #include <airsim_ros_wrapper.h>
 #include "common/AirSimSettings.hpp"
 #include <tf2_sensor_msgs/tf2_sensor_msgs.hpp>
+<<<<<<< HEAD
 #include <chrono>
 #include <future>
 #include <thread>
 #include <algorithm>
+=======
+
+
+// The old ROS 2 wrapper uses a single monolithic node that manages ALL vehicles in the simulation 
+
+// Current limitations & bottlenecks
+// 1) Single point of failure 
+//     - One vehicle issue (RPC timeout, exception) affects ALL vehicles
+//     - Node crash brings down entire multi vehicle operation 
+//     - No isolation between vehicle processing
+
+// 2) Performance bottkenecks
+// - Shared processing: All vehicles processed sequentially in timer callbacks
+// - Resource contention: high frequnecy sensors compete for CPU time
+// - Memory sharing: Large point clouds from multiple vehicles in same process
+// - RPC queuing: single connection handles all vehicle requests
+
+// 3) Scalability issues
+// - Linear perfomance degration: processing time increases with time count 
+// - Timer synchronisation: all vehicles must complete processing wihtin timer period
+// - Memory growth: unbounded growth with additional vehicles/sensors
+
+// 4) Development & Debugging Challenges
+// - Mixed logs: all vehicle logs intermixed in single node output
+// - Complex state: hard to isolate issues to specific vehicles 
+// - Restart impact: restarting node affects all vehicles simultaneously 
+
+// 5) Resource management
+// - CPU binding: all processing on single core/thread
+// - Memory pooling: no per vehicle memory limits
+// - Network sharing: isngle tcp connection for all vehicles
+>>>>>>> bcc393d6c (Update README and finalise code)
 
 using namespace std::placeholders;
 
@@ -84,9 +117,9 @@ void AirsimROSWrapper::initialize_airsim()
         if (airsim_mode_ == AIRSIM_MODE::DRONE) {
             airsim_client_ = std::unique_ptr<msr::airlib::RpcLibClientBase>(new msr::airlib::MultirotorRpcLibClient(host_ip_, host_port_));
         }
-        else if(airsim_mode_ == AIRSIM_MODE::CAR) {
+        else if (airsim_mode_ == AIRSIM_MODE::CAR) {
             airsim_client_ = std::unique_ptr<msr::airlib::RpcLibClientBase>(new msr::airlib::CarRpcLibClient(host_ip_, host_port_));
-        }else{
+        } else {
             airsim_client_ = std::unique_ptr<msr::airlib::RpcLibClientBase>(new msr::airlib::ComputerVisionRpcLibClient(host_ip_, host_port_));
         }
         airsim_client_->confirmConnection();
@@ -227,12 +260,15 @@ void AirsimROSWrapper::create_ros_pubs_from_settings_json()
             std::function<bool(std::shared_ptr<airsim_interfaces::srv::Land::Request>, std::shared_ptr<airsim_interfaces::srv::Land::Response>)> fcn_land_srvr = std::bind(&AirsimROSWrapper::land_srv_cb, this, _1, _2, vehicle_ros->vehicle_name_);
             drone->land_srvr_ = nh_->create_service<airsim_interfaces::srv::Land>(topic_prefix + "/land", fcn_land_srvr);
 
+<<<<<<< HEAD
             std::function<bool(std::shared_ptr<airsim_interfaces::srv::SetAltitude::Request>, std::shared_ptr<airsim_interfaces::srv::SetAltitude::Response>)> fcn_set_altitude_srvr = std::bind(&AirsimROSWrapper::set_altitude_srv_cb, this, _1, _2, vehicle_ros->vehicle_name_);
             drone->set_altitude_srvr_ = nh_->create_service<airsim_interfaces::srv::SetAltitude>(topic_prefix + "/set_altitude", fcn_set_altitude_srvr);
 
             std::function<bool(std::shared_ptr<airsim_interfaces::srv::SetLocalPosition::Request>, std::shared_ptr<airsim_interfaces::srv::SetLocalPosition::Response>)> fcn_set_local_position_srvr = std::bind(&AirsimROSWrapper::set_local_position_srv_cb, this, _1, _2, vehicle_ros->vehicle_name_);
             drone->set_local_position_srvr_ = nh_->create_service<airsim_interfaces::srv::SetLocalPosition>(topic_prefix + "/set_local_position", fcn_set_local_position_srvr);
 
+=======
+>>>>>>> bcc393d6c (Update README and finalise code)
             // vehicle_ros.reset_srvr = nh_->create_service(curr_vehicle_name + "/reset",&AirsimROSWrapper::reset_srv_cb, this);
         }
         else if(airsim_mode_ == AIRSIM_MODE::CAR) {
@@ -521,7 +557,11 @@ bool AirsimROSWrapper::takeoff_all_srv_cb(std::shared_ptr<airsim_interfaces::srv
         for (const auto& vehicle_name_ptr_pair : vehicle_name_ptr_map_)
             static_cast<msr::airlib::MultirotorRpcLibClient*>(airsim_client_.get())->takeoffAsync(20, vehicle_name_ptr_pair.first);
     // response->success =
+<<<<<<< HEAD
 
+=======
+// collision , coordination node, qgroundcontrol
+>>>>>>> bcc393d6c (Update README and finalise code)
     return true;
 }
 
@@ -1188,7 +1228,7 @@ sensor_msgs::msg::PointCloud2 AirsimROSWrapper::get_gpulidar_msg_from_airsim(con
             point.y = y;
             point.z = z;
             std::uint32_t rgb = ((std::uint32_t)r << 16 | (std::uint32_t)g << 8 | (std::uint32_t)b);
-            point.rgb = *reinterpret_cast<float*>(&rgb);
+            std::memcpy(&point.rgb, &rgb, sizeof(float));
             point.intensity = intensity;
             cloud.points[i] = point;
         }

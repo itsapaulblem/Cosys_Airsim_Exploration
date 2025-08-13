@@ -78,7 +78,7 @@ STRICT_MODE_OFF //todo what does this do?
 #include <unordered_map>
 #include <memory>
 
-struct PointXYZRGBI
+struct EIGEN_ALIGN16 PointXYZRGBI
 {
     PCL_ADD_POINT4D;
     float intensity;
@@ -93,7 +93,7 @@ struct PointXYZRGBI
         float rgb;
     };
     EIGEN_MAKE_ALIGNED_OPERATOR_NEW
-} EIGEN_ALIGN16;   
+};   
 
 // Register the point type
 POINT_CLOUD_REGISTER_POINT_STRUCT(PointXYZRGBI,
