@@ -1,6 +1,5 @@
 # AirSim ROS2 Multi-Vehicle Modular Architecture
 
-
 ## Table of Contents 
 1. Introduction
 2. Startup Instructions
@@ -23,7 +22,7 @@ This documentation describes the **Cosys-AirSim ROS 2 multi-vehicle modular arch
 ## 2. Startup Instructions (wsl 2.5.10.0 & Windows 10)
 
 ### Step 1: Run the Python generate settings.py file to determine the number of drones
-``` bash
+```bash
 wsl
 cd Cosys-AirSim/PythonClient/multirotor
 python3 generate_settings.py 2
@@ -36,26 +35,24 @@ For each drone, run in separate terminals:
 ```bash
 PX4_SYS_AUTOSTART=10016 PX4_SIM_MODEL=none ./build/px4_sitl_default/bin/px4 -i <instance_id>
 ```
-
 Example for two drones:
 ```bash
 PX4_SYS_AUTOSTART=10016 PX4_SIM_MODEL=none ./build/px4_sitl_default/bin/px4 -i 0
 PX4_SYS_AUTOSTART=10016 PX4_SIM_MODEL=none ./build/px4_sitl_default/bin/px4 -i 1
 ```
-
 Or use:
 ```bash
 make px4_sitl_default none_iris
 ```
 
-### Step 3: Build and Source ROS 2 Workspace
+### Step 4: Build and Source ROS 2 Workspace
 
 ```bash
 colcon build
 source install/setup.bash 
 ```
 
-### Step 4: Launch ROS2 Nodes
+### Step 5: Launch ROS2 Nodes
 
 - **Single drone for testing (simple):** 
 ```bash
@@ -81,7 +78,7 @@ ros2 launch airsim_pos_pkgs multi_drone.launch.py
 #### A. Vehicle Nodes
 
 - **VehicleNodeBase**: Abstract base for all vehicle types. Handles parameter management, AirSim connections, publishers/services/timers and callback groups for parallel sensor processing. 
-- **MultirotorNode**: Inherits from VehicleNodeBase. Implements drone-specific publishers (odom, GPS, IMU, environment, camera, lidar), services (takeoff, land), velocity command subscrivers, and sensor data processing. 
+- **MultirotorNode**: Inherits from VehicleNodeBase. Implements drone-specific publishers (odom, GPS, IMU, environment, camera, lidar), services (takeoff, land, gps_waypoint, track_object), velocity command subscribers, and sensor data processing. 
 - **SimpleMultirotorNode**: Minimal node for single-drone testing/debugging. No inheritance, direct AirSim connection.
 
 #### B. Coordination Node
@@ -124,6 +121,8 @@ ros2 launch airsim_pos_pkgs multi_drone.launch.py
 | `/droneX/takeoff`         | `airsim_interfaces/srv/Takeoff`    | Takeoff command for this vehicle                 |
 | `/droneX/land`            | `airsim_interfaces/srv/Land`       | Land command for this vehicle                    |
 | `/droneX/reset`           | `airsim_interfaces/srv/Reset`      | Reset this vehicle in AirSim                     |
+| `/droneX/gps_waypoint`    | `airsim_interfaces/srv/GpsWaypoint`| Move to GPS waypoint                             |
+| `/droneX/track_object`    | `airsim_interfaces/srv/TrackObject`| Search and track a named object (NEW)            |
 
 ### Global Services (Coordination Node)
 
@@ -144,6 +143,27 @@ ros2 launch airsim_pos_pkgs multi_drone.launch.py
 
 ---
 
+## Example: Track Object Service
+
+The new `/droneX/track_object` service allows a drone to search for and track a named object in the simulation.
+
+**Service definition (`airsim_interfaces/srv/TrackObject.srv`):**
+```plaintext
+string object_name
+float64 search_radius
+float64 track_duration
+---
+bool success
+string message
+```
+
+**Example usage:**
+```bash
+ros2 service call /drone1/track_object airsim_interfaces/srv/TrackObject "{object_name: 'TargetCar', search_radius: 50.0, track_duration: 30.0}"
+```
+
+---
+
 ## 5. File-by-File Explanation 
 
 ### New Modular Architecture Files
@@ -151,7 +171,7 @@ ros2 launch airsim_pos_pkgs multi_drone.launch.py
 | File Name                        | Purpose / Contribution                                                                                   |
 |-----------------------------------|--------------------------------------------------------------------------------------------------------|
 | `vehicle_node_base.hpp/cpp`       | Abstract base for all vehicle nodes. Handles parameters, connections, publishers, timers, callback groups.|
-| `multirotor_node.hpp/cpp`         | Implements drone-specific logic: sensor publishers, command subscribers, takeoff/land services.         |
+| `multirotor_node.hpp/cpp`         | Implements drone-specific logic: sensor publishers, command subscribers, takeoff/land/gps_waypoint/track_object services.         |
 | `simple_multirotor_node.cpp`      | Minimal node for single-drone testing/debugging. Direct AirSim connection, basic publishers/services.   |
 | `coordination_node.hpp/cpp`       | Global node for system-wide services, status monitoring, GPS origin publishing, health checks.          |
 | `vehicle_settings_parser.hpp/cpp` | Parses AirSim `settings.json` for dynamic vehicle configuration. Used by launch files for node creation.|
@@ -197,7 +217,9 @@ ros2 launch airsim_pos_pkgs multi_drone.launch.py
 The new architecture is modular, robust, and scalable. Each vehicle runs in its own node and namespace, with isolated connections and timers. The coordination node manages global services and monitoring. This design enables parallel sensor processing, fault isolation, and dynamic vehicle management, making it ideal for large-scale multi-vehicle simulation.
 
 ---
+
 ## Overview
+
 This documentation describes the modular, multi-node ROS2 architecture for Cosys-AirSim, supporting robust multi-drone simulation and control. It covers:
 
 - The new architecture and its components
@@ -235,7 +257,7 @@ This documentation describes the modular, multi-node ROS2 architecture for Cosys
 - [ROS2 Tutorials](https://docs.ros.org/en/rolling/Tutorials.html)
 
 ---
-  
+
 - **List nodes:**
   ```bash
   ros2 node list
@@ -260,6 +282,13 @@ This documentation describes the modular, multi-node ROS2 architecture for Cosys
   ```bash
   ros2 service call /takeoff_all airsim_interfaces/srv/Takeoff "{wait_on_last_task: true}"
   ```
-
-
+- **Move to GPS waypoint:**
+  ```bash
+  ros2 service call /drone1/gps_waypoint airsim_interfaces/srv/GpsWaypoint "{latitude: 47.641468, longitude: -122.140165, altitude: 10.0, speed: 5.0, tolerance: 1.0, wait_on_last_task: true}"
+  ```
+- **Track object (TODO):**
+  ```bash
+  ros2 service call /drone1/track_object airsim_interfaces/srv/TrackObject "{object_name: 'TargetCar', search_radius: 50.0, track_duration: 30.0}"
+  ```
+Last update on 20 Aug 2025
 ---

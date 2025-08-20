@@ -1,12 +1,42 @@
+/*
+* AirSim Multirotor Node
+* 
+* PURPOSE: Individual drone control and sensor data interface for single multirotor vehicle
+*
+* MAIN FUNCTIONALITY:
+* - Individual Vehicle Control: Handles commands for a specific drone (takeoff, land, velocity)
+* - Sensor Data Publishing: Streams camera, LiDAR, IMU, GPS, magnetometer, barometer data
+* - State Management: Publishes odometry, pose and vehicle status information
+* - Real-time Communication: Maintains continuous connection with AirSim for one vehicle
+*
+*
+* DIFFERENCE FROM COORDINATION NODE:
+* - Coordination Node: Controls MULTIPLE drones simultaneously (fleet management)
+* - Multirotor Node: Controls ONE specific drone (individual vehicle interface)
+*
+* TYPICAL SETUP:
+* - One Multirotor Node per drone in the simulation
+* - Each node manages its own sensors, commands and state publishing
+* - Coordination Node can command all Multirotor Nodes simultaneously
+*
+* ROS INTERFACES
+* Publishers: camera images, lidar points, imu data, gps, odometry, environment
+* Subscribers: velocity commands (body frame and world frame)
+* Services: individual takeoff, individual land
+*/
+
 #include "multirotor_node.hpp"
 #include <tf2/LinearMath/Matrix3x3.h>
 #include <rclcpp/rclcpp.hpp>
 #include <cmath>
 #include <cstring>
+#include "common/common_utils/Utils.hpp"
+
+using namespace msr::airlib;
 
 MultirotorNode::MultirotorNode(const std::string& vehicle_name, 
-                               const std::string& host_ip, 
-                               uint16_t host_port)
+                             const std::string& host_ip, 
+                             uint16_t host_port)
     : VehicleNodeBase(vehicle_name, host_ip, host_port)
     , stamp_(this->get_clock()->now())
 {
@@ -24,7 +54,6 @@ MultirotorNode::MultirotorNode(const std::string& vehicle_name,
         }
     );
 
-    // Initialize common components
     initialize_common();
     
     RCLCPP_INFO(this->get_logger(), "Multirotor node created for: %s", vehicle_name_.c_str());
@@ -49,19 +78,25 @@ void MultirotorNode::initialize_vehicle_client()
 
 void MultirotorNode::setup_sensor_publishers()
 {
-    for (int i =  0; i < 4; ++i) {
-        auto camera_pub = this->create_publisher<sensor_msgs::msg::Image>("camera" + std::to_string(i) + "/image", 10);
+    // Camera publishers
+    for (int i = 0; i < 4; ++i) {
+        auto camera_pub = this->create_publisher<sensor_msgs::msg::Image>(
+            "camera" + std::to_string(i) + "/image", 10);
         camera_pubs_.push_back(camera_pub);
 
-        auto camera_info_pub = this->create_publisher<sensor_msgs::msg::CameraInfo>("camera" + std::to_string(i) + "/camera_info", 10); 
+        auto camera_info_pub = this->create_publisher<sensor_msgs::msg::CameraInfo>(
+            "camera" + std::to_string(i) + "/camera_info", 10); 
         camera_info_pubs_.push_back(camera_info_pub); 
     }
 
+    // LiDAR publisher
     for (int i = 0; i < 1; ++i) {
-        auto lidar_pub  = this-> create_publisher<sensor_msgs::msg::PointCloud2>("lidar" + std::to_string(i) + "/points", 10);
+        auto lidar_pub = this->create_publisher<sensor_msgs::msg::PointCloud2>(
+            "lidar" + std::to_string(i) + "/points", 10);
         lidar_pubs_.push_back(lidar_pub);
     }
 
+    // Other sensor publishers
     imu_pub_ = this->create_publisher<sensor_msgs::msg::Imu>("imu", 10);
     mag_pub_ = this->create_publisher<sensor_msgs::msg::MagneticField>("mag", 10); 
     baro_pub_ = this->create_publisher<sensor_msgs::msg::Range>("baro", 10);
@@ -69,8 +104,6 @@ void MultirotorNode::setup_sensor_publishers()
 
 void MultirotorNode::setup_vehicle_publishers()
 {
-    // Base class already sets up odom_pub_, gps_pub_, env_pub_
-    // Add any drone-specific publishers here if needed in the future
     RCLCPP_DEBUG(this->get_logger(), "Setting up vehicle publishers for: %s", vehicle_name_.c_str());
 }
 
@@ -92,151 +125,34 @@ void MultirotorNode::setup_vehicle_services()
     takeoff_service_ = this->create_service<airsim_interfaces::srv::Takeoff>(
         "takeoff",
         std::bind(&MultirotorNode::takeoff_callback, this, std::placeholders::_1, std::placeholders::_2));
-        
+
     land_service_ = this->create_service<airsim_interfaces::srv::Land>(
         "land",
         std::bind(&MultirotorNode::land_callback, this, std::placeholders::_1, std::placeholders::_2));
-        
+
+    gps_waypoint_service_ = this->create_service<airsim_interfaces::srv::GpsWaypoint>(
+        "gps_waypoint",
+        std::bind(&MultirotorNode::gps_waypoint_callback, this, std::placeholders::_1, std::placeholders::_2));
+
     RCLCPP_DEBUG(this->get_logger(), "Setting up vehicle services for: %s", vehicle_name_.c_str());
 }
 
-void MultirotorNode::update_vehicle_state()
+bool MultirotorNode::takeoff_callback(
+    const std::shared_ptr<airsim_interfaces::srv::Takeoff::Request> request,
+    std::shared_ptr<airsim_interfaces::srv::Takeoff::Response> response)
 {
+    (void)request;
     try {
         auto multirotor_client = static_cast<msr::airlib::MultirotorRpcLibClient*>(airsim_client_.get());
-        curr_drone_state_ = multirotor_client->getMultirotorState(vehicle_name_);
-        
-        // Update timestamp
-        stamp_ = this->get_clock()->now();
-        
-        // Update odometry
-        curr_odom_ = get_odom_from_multirotor_state(curr_drone_state_);
-        curr_odom_.header.frame_id = world_frame_id_;
-        curr_odom_.child_frame_id = vehicle_name_ + "/" + odom_frame_id_;
-        curr_odom_.header.stamp = stamp_;
-        
-        // Update GPS
-        auto gps_data = multirotor_client->getGpsData("", vehicle_name_);
-        gps_sensor_msg_.header.stamp = stamp_;
-        gps_sensor_msg_.header.frame_id = vehicle_name_;
-        gps_sensor_msg_.latitude = gps_data.gnss.geo_point.latitude;
-        gps_sensor_msg_.longitude = gps_data.gnss.geo_point.longitude;
-        gps_sensor_msg_.altitude = gps_data.gnss.geo_point.altitude;
-
-        // IMU
-        auto imu_data = multirotor_client->getImuData("", vehicle_name_);
-        imu_msg_.header.stamp = stamp_;
-        imu_msg_.header.frame_id = vehicle_name_ + "_base_link"; 
-        imu_msg_.orientation.x = imu_data.orientation.x();
-        imu_msg_.orientation.y = - imu_data.orientation.y();
-        imu_msg_.orientation.z = - imu_data.orientation.z();
-        imu_msg_.orientation.w = imu_data.orientation.w();
-        imu_msg_.angular_velocity.x = imu_data.angular_velocity.x();
-        imu_msg_.angular_velocity.y = - imu_data.angular_velocity.y();
-        imu_msg_.angular_velocity.z = - imu_data.angular_velocity.z();
-        imu_msg_.linear_acceleration.x = imu_data.linear_acceleration.x();
-        imu_msg_.linear_acceleration.y = - imu_data.linear_acceleration.y();
-        imu_msg_.linear_acceleration.z = - imu_data.linear_acceleration.z();
-
-        // Get environment data
-        auto env_data = airsim_client_->simGetGroundTruthEnvironment(vehicle_name_);
-        env_msg_.header.stamp = stamp_;
-        env_msg_.header.frame_id = vehicle_name_;
-        env_msg_.position.x = env_data.position.x();
-        env_msg_.position.y = env_data.position.y();
-        env_msg_.position.z = env_data.position.z();
-        env_msg_.air_pressure = env_data.air_pressure;
-        env_msg_.temperature = env_data.temperature;
-        env_msg_.air_density = env_data.air_density;
-
-        // Magnetometer (optional)
-        auto mag_data = multirotor_client->getMagnetometerData("", vehicle_name_);
-        mag_msg_.header.stamp = stamp_;
-        mag_msg_.header.frame_id = vehicle_name_ + "_base_link";
-        mag_msg_.magnetic_field.x = mag_data.magnetic_field_body.x();
-        mag_msg_.magnetic_field.y = mag_data.magnetic_field_body.y();
-        mag_msg_.magnetic_field.z = mag_data.magnetic_field_body.z();
-
-        // Barometer (optional)
-        auto baro_data = multirotor_client->getBarometerData("", vehicle_name_); 
-        baro_msg_.header.stamp = stamp_;
-        baro_msg_.header.frame_id = vehicle_name_ + "_base_link";
-        baro_msg_.range = baro_data.altitude;
-
-    }
-    catch (const rpc::rpc_error& e) {
-        handle_rpc_error(e, "multirotor state update");
-    }
-}
-
-void MultirotorNode::publish_vehicle_state()
-{
-    // Publish odometry
-    odom_pub_->publish(curr_odom_);
-    publish_odometry_tf(curr_odom_);
-    
-    // Publish GPS
-    gps_pub_->publish(gps_sensor_msg_);
-    
-    // Publish environment
-    env_pub_->publish(env_msg_);
-    mag_pub_->publish(mag_msg_);
-    baro_pub_->publish(baro_msg_);
-    imu_pub_->publish(imu_msg_);
-}
-
-void MultirotorNode::handle_vehicle_commands()
-{
-    std::lock_guard<std::mutex> lock(cmd_mutex_);
-    
-    if (has_vel_cmd_) {
-        try {
-            auto multirotor_client = static_cast<msr::airlib::MultirotorRpcLibClient*>(airsim_client_.get());
-            multirotor_client->moveByVelocityAsync(
-                current_vel_cmd_.x, current_vel_cmd_.y, current_vel_cmd_.z,
-                0.05,
-                current_vel_cmd_.drivetrain,
-                current_vel_cmd_.yaw_mode,
-                vehicle_name_);
-                
-            has_vel_cmd_ = false;
-        }
-        catch (const rpc::rpc_error& e) {
-            handle_rpc_error(e, "velocity command");
-        }
-    }
-}
-
-void MultirotorNode::vel_cmd_body_callback(const airsim_interfaces::msg::VelCmd::SharedPtr msg)
-{
-    std::lock_guard<std::mutex> lock(cmd_mutex_);
-    current_vel_cmd_ = get_airlib_body_vel_cmd(*msg, curr_drone_state_.kinematics_estimated.pose.orientation);
-    has_vel_cmd_ = true;
-    RCLCPP_DEBUG(this->get_logger(), "Received body velocity command for: %s", vehicle_name_.c_str());
-}
-
-void MultirotorNode::vel_cmd_world_callback(const airsim_interfaces::msg::VelCmd::SharedPtr msg)
-{
-    std::lock_guard<std::mutex> lock(cmd_mutex_);
-    current_vel_cmd_ = get_airlib_world_vel_cmd(*msg);
-    has_vel_cmd_ = true;
-    RCLCPP_DEBUG(this->get_logger(), "Received world velocity command for: %s", vehicle_name_.c_str());
-}
-
-bool MultirotorNode::takeoff_callback(const std::shared_ptr<airsim_interfaces::srv::Takeoff::Request> request,
-                                     std::shared_ptr<airsim_interfaces::srv::Takeoff::Response> response)
-{
-    try {
-        auto multirotor_client = static_cast<msr::airlib::MultirotorRpcLibClient*>(airsim_client_.get());
-        
-        if (request->wait_on_last_task) {
-            multirotor_client->takeoffAsync(20, vehicle_name_)->waitOnLastTask();
+        multirotor_client->takeoffAsync(20, vehicle_name_)->waitOnLastTask();
+        auto state = multirotor_client->getMultirotorState(vehicle_name_);
+        bool in_air = state.landed_state == msr::airlib::LandedState::Flying;
+        response->success = in_air;
+        if (in_air) {
+            RCLCPP_INFO(this->get_logger(), "Takeoff successful for: %s", vehicle_name_.c_str());
         } else {
-            multirotor_client->takeoffAsync(20, vehicle_name_);
+            RCLCPP_WARN(this->get_logger(), "Takeoff command completed but vehicle is not in air: %s", vehicle_name_.c_str());
         }
-        
-        response->success = true;
-        RCLCPP_INFO(this->get_logger(), "Takeoff command sent for: %s", vehicle_name_.c_str());
         return true;
     }
     catch (const rpc::rpc_error& e) {
@@ -244,22 +160,29 @@ bool MultirotorNode::takeoff_callback(const std::shared_ptr<airsim_interfaces::s
         response->success = false;
         return false;
     }
+    catch (const std::exception& e) {
+        RCLCPP_ERROR(this->get_logger(), "Takeoff error for %s: %s", vehicle_name_.c_str(), e.what());
+        response->success = false;
+        return false;
+    }
 }
 
-bool MultirotorNode::land_callback(const std::shared_ptr<airsim_interfaces::srv::Land::Request> request,
-                                  std::shared_ptr<airsim_interfaces::srv::Land::Response> response)
+bool MultirotorNode::land_callback(
+    const std::shared_ptr<airsim_interfaces::srv::Land::Request> request,
+    std::shared_ptr<airsim_interfaces::srv::Land::Response> response)
 {
+    (void)request;
     try {
         auto multirotor_client = static_cast<msr::airlib::MultirotorRpcLibClient*>(airsim_client_.get());
-        
-        if (request->wait_on_last_task) {
-            multirotor_client->landAsync(60, vehicle_name_)->waitOnLastTask();
+        multirotor_client->landAsync(60, vehicle_name_)->waitOnLastTask();
+        auto state = multirotor_client->getMultirotorState(vehicle_name_);
+        bool is_landed = state.landed_state == msr::airlib::LandedState::Landed;
+        response->success = is_landed;
+        if (is_landed) {
+            RCLCPP_INFO(this->get_logger(), "Landing successful for: %s", vehicle_name_.c_str());
         } else {
-            multirotor_client->landAsync(60, vehicle_name_);
+            RCLCPP_WARN(this->get_logger(), "Landing command completed but vehicle is not landed: %s", vehicle_name_.c_str());
         }
-        
-        response->success = true;
-        RCLCPP_INFO(this->get_logger(), "Land command sent for: %s", vehicle_name_.c_str());
         return true;
     }
     catch (const rpc::rpc_error& e) {
@@ -267,23 +190,249 @@ bool MultirotorNode::land_callback(const std::shared_ptr<airsim_interfaces::srv:
         response->success = false;
         return false;
     }
+    catch (const std::exception& e) {
+        RCLCPP_ERROR(this->get_logger(), "Landing error for %s: %s", vehicle_name_.c_str(), e.what());
+        response->success = false;
+        return false;
+    }
+}
+
+void MultirotorNode::vel_cmd_body_callback(const airsim_interfaces::msg::VelCmd::SharedPtr msg)
+{
+    try {
+        auto multirotor_client = static_cast<msr::airlib::MultirotorRpcLibClient*>(airsim_client_.get());
+        auto state = multirotor_client->getMultirotorState(vehicle_name_);
+        auto vel_cmd = get_airlib_body_vel_cmd(*msg, state.kinematics_estimated.pose.orientation);
+        multirotor_client->moveByVelocityAsync(
+            vel_cmd.x, vel_cmd.y, vel_cmd.z, 0.1f,
+            msr::airlib::DrivetrainType::MaxDegreeOfFreedom,
+            vel_cmd.yaw_mode, vehicle_name_);
+    }
+    catch (const rpc::rpc_error& e) {
+        handle_rpc_error(e, "body velocity command");
+    }
+}
+
+void MultirotorNode::vel_cmd_world_callback(const airsim_interfaces::msg::VelCmd::SharedPtr msg)
+{
+    try {
+        auto multirotor_client = static_cast<msr::airlib::MultirotorRpcLibClient*>(airsim_client_.get());
+        auto vel_cmd = get_airlib_world_vel_cmd(*msg);
+        multirotor_client->moveByVelocityAsync(
+            vel_cmd.x, vel_cmd.y, vel_cmd.z, 0.1f,
+            msr::airlib::DrivetrainType::MaxDegreeOfFreedom,
+            vel_cmd.yaw_mode, vehicle_name_);
+    }
+    catch (const rpc::rpc_error& e) {
+        handle_rpc_error(e, "world velocity command");
+    }
+}
+
+void MultirotorNode::update_vehicle_state()
+{
+    try {
+        auto multirotor_client = static_cast<msr::airlib::MultirotorRpcLibClient*>(airsim_client_.get());
+        curr_drone_state_ = multirotor_client->getMultirotorState(vehicle_name_);
+        stamp_ = this->get_clock()->now();
+    }
+    catch (const rpc::rpc_error& e) {
+        handle_rpc_error(e, "state update");
+    }
+}
+
+void MultirotorNode::publish_vehicle_state()
+{
+    try {
+        if (airsim_client_) {
+            curr_odom_ = get_odom_from_multirotor_state(curr_drone_state_);
+            curr_odom_.header.stamp = stamp_;
+            curr_odom_.header.frame_id = "world";
+            curr_odom_.child_frame_id = vehicle_name_;
+
+            // Process and publish sensor data
+            process_images();
+            process_lidar();
+            process_gpulidar();
+            process_echo();
+
+            RCLCPP_DEBUG(this->get_logger(), "Published state for: %s", vehicle_name_.c_str());
+        }
+    }
+    catch (const rpc::rpc_error& e) {
+        handle_rpc_error(e, "state publishing");
+    }
+}
+
+void MultirotorNode::handle_vehicle_commands()
+{
+    // This method handles incoming vehicle commands
+    // Currently a placeholder - implement specific command handling if needed
+    RCLCPP_DEBUG(this->get_logger(), "Handling commands for: %s", vehicle_name_.c_str());
+}
+
+bool MultirotorNode::gps_waypoint_callback(
+    const std::shared_ptr<airsim_interfaces::srv::GpsWaypoint::Request> request,
+    std::shared_ptr<airsim_interfaces::srv::GpsWaypoint::Response> response)
+{
+    try {
+        if (!validate_gps_coordinates(request->latitude, request->longitude)) {
+            response->success = false;
+            response->message = "Invalid GPS coordinates provided";
+            response->final_distance = -1.0;
+            return true;
+        }
+
+        if (request->altitude <= 0) {
+            response->success = false; 
+            response->message = "Altitude must be positive (above ground level)";
+            response->final_distance = -1.0;
+            return true;
+        }
+
+        double speed = request->speed > 0 ? request->speed : 5.0;
+        double tolerance = request->tolerance > 0 ? request->tolerance : 1.0;
+
+        auto multirotor_client = static_cast<msr::airlib::MultirotorRpcLibClient*>(airsim_client_.get());
+
+        auto current_gps = multirotor_client->getGpsData("", vehicle_name_);
+        double home_lat = current_gps.gnss.geo_point.latitude;
+        double home_lon = current_gps.gnss.geo_point.longitude;
+
+        auto [north_offset, east_offset] = gps_to_ned(request->latitude, request->longitude, home_lat, home_lon);
+
+        auto current_state = multirotor_client->getMultirotorState(vehicle_name_);
+        const auto& current_pos = current_state.kinematics_estimated.pose.position;
+        
+        double target_x = current_pos.x() + north_offset;
+        double target_y = current_pos.y() + east_offset;
+        double target_z = -abs(request->altitude);
+
+        RCLCPP_INFO(this->get_logger(),
+            "GPS Waypoint for %s: GPS(%.6f, %.6f) -> NED(%.2f, %.2f, %.2f)",
+            vehicle_name_.c_str(), request->latitude, request->longitude,
+            target_x, target_y, target_z);
+        
+        if (request->wait_on_last_task) {
+            auto task = multirotor_client->moveToPositionAsync(
+                target_x, 
+                target_y, 
+                target_z, 
+                speed,
+                Utils::max<float>(),
+                DrivetrainType::MaxDegreeOfFreedom,
+                YawMode(),
+                -1,
+                1,
+                vehicle_name_.c_str()
+            );
+            
+            task->waitOnLastTask();
+
+            auto final_state = multirotor_client->getMultirotorState(vehicle_name_);
+            const auto& final_pos = final_state.kinematics_estimated.pose.position;
+
+            double dx = final_pos.x() - target_x; 
+            double dy = final_pos.y() - target_y;
+            double dz = final_pos.z() - target_z; 
+            double final_distance = sqrt(dx*dx + dy*dy + dz*dz);
+
+            response->final_distance = final_distance;
+            
+            if (final_distance <= tolerance) {
+                response->success = true;
+                response->message = "Reached GPS waypoint successfully";
+                RCLCPP_INFO(this->get_logger(), 
+                    "GPS waypoint reached for %s. Final distance is %.2f m", 
+                    vehicle_name_.c_str(), final_distance);
+            } else {
+                response->success = false;
+                response->message = "GPS waypoint not reached within tolerance";
+                RCLCPP_WARN(this->get_logger(), 
+                    "GPS waypoint not reached for %s. Final distance is %.2f m (tolerance: %.2f m)", 
+                    vehicle_name_.c_str(), final_distance, tolerance);
+            }
+        } else {
+            multirotor_client->moveToPositionAsync(
+                target_x,
+                target_y, 
+                target_z,
+                speed,
+                Utils::max<float>(),
+                DrivetrainType::MaxDegreeOfFreedom,
+                YawMode(),
+                -1,
+                1,
+                vehicle_name_.c_str()
+            );
+            
+            response->success = true;
+            response->message = "GPS waypoint command sent (non-blocking)";
+            response->final_distance = 0.0;
+            RCLCPP_INFO(this->get_logger(), 
+                "GPS waypoint command sent for %s (non blocking)", 
+                vehicle_name_.c_str());
+        }
+
+        return true;
+    } catch (const rpc::rpc_error& e) {
+        handle_rpc_error(e, "GPS waypoint");
+        response->success = false; 
+        response->message = "RPC error occurred during GPS waypoint mission";
+        response->final_distance = -1.0;
+        return false;
+    } catch (const std::exception& e) {
+        RCLCPP_ERROR(this->get_logger(), 
+            "GPS waypoint error for %s: %s", 
+            vehicle_name_.c_str(), e.what());
+        response->success = false;
+        response->message = std::string("GPS waypoint error: ") + e.what();
+        response->final_distance = -1.0;
+        return false;
+    }
+}
+
+std::pair<double, double> MultirotorNode::gps_to_ned(double lat, double lon, double home_lat, double home_lon)
+{
+    const double R = 6378137.0; // Earth radius in meters
+
+    double lat1 = home_lat * M_PI / 180.0;
+    double lon1 = home_lon * M_PI / 180.0;
+    double lat2 = lat * M_PI / 180.0;
+    double lon2 = lon * M_PI / 180.0;
+
+    double dlat = lat2 - lat1;
+    double dlon = lon2 - lon1;
+
+    double north = dlat * R;
+    double east = dlon * R * cos(lat1);
+
+    return {north, east};
+}
+
+bool MultirotorNode::validate_gps_coordinates(double lat, double lon)
+{
+    return (lat >= -90.0 && lat <= 90.0 && lon >= -180.0 && lon <= 180.0);
 }
 
 MultirotorNode::VelCmd MultirotorNode::get_airlib_world_vel_cmd(const airsim_interfaces::msg::VelCmd& msg)
 {
+    // Convert ROS velocity command to AirSim format in world frame
+    // World frame: velocities relative to global coordinate system
     VelCmd vel_cmd;
-    vel_cmd.x = msg.twist.linear.x;
+    vel_cmd.x = msg.twist.linear.x;  
     vel_cmd.y = msg.twist.linear.y;
     vel_cmd.z = msg.twist.linear.z;
     vel_cmd.drivetrain = msr::airlib::DrivetrainType::MaxDegreeOfFreedom;
     vel_cmd.yaw_mode.is_rate = true;
-    vel_cmd.yaw_mode.yaw_or_rate = msg.twist.angular.z * 180.0 / M_PI;
+    vel_cmd.yaw_mode.yaw_or_rate = msg.twist.angular.z * 180.0 / M_PI; // Convert rad/s to deg/s
     return vel_cmd;
 }
 
 MultirotorNode::VelCmd MultirotorNode::get_airlib_body_vel_cmd(const airsim_interfaces::msg::VelCmd& msg, 
                                                                const msr::airlib::Quaternionr& orientation)
 {
+    // Convert ROS velocity command to AirSim format (body frame)
+    // Body frame: velocities relative to drone's current orientation
     VelCmd vel_cmd;
     double roll, pitch, yaw;
     tf2::Matrix3x3(get_tf2_quat(orientation)).getRPY(roll, pitch, yaw);
@@ -301,13 +450,15 @@ MultirotorNode::VelCmd MultirotorNode::get_airlib_body_vel_cmd(const airsim_inte
 
 nav_msgs::msg::Odometry MultirotorNode::get_odom_from_multirotor_state(const msr::airlib::MultirotorState& state)
 {
+    // Convert AirSim multirotor state to ROS odometry message
+    // Handles coordinate system conversion from AirSim NED to ROS ENU
     nav_msgs::msg::Odometry odom_msg;
     const auto& kinematics = state.kinematics_estimated;
     
     // Position conversion (AirSim NED to ROS ENU)
     odom_msg.pose.pose.position.x = kinematics.pose.position.x();
-    odom_msg.pose.pose.position.y = -kinematics.pose.position.y();
-    odom_msg.pose.pose.position.z = -kinematics.pose.position.z();
+    odom_msg.pose.pose.position.y = -kinematics.pose.position.y(); // East -> North (flip)
+    odom_msg.pose.pose.position.z = -kinematics.pose.position.z(); // Down -> Up (Flip)
     
     // Orientation conversion (AirSim NED to ROS ENU)
     odom_msg.pose.pose.orientation.x = kinematics.pose.orientation.x();
@@ -317,9 +468,9 @@ nav_msgs::msg::Odometry MultirotorNode::get_odom_from_multirotor_state(const msr
     
     // Linear velocity conversion (AirSim NED to ROS ENU)
     odom_msg.twist.twist.linear.x = kinematics.twist.linear.x();
-    odom_msg.twist.twist.linear.y = -kinematics.twist.linear.y();
-    odom_msg.twist.twist.linear.z = -kinematics.twist.linear.z();
-    
+    odom_msg.twist.twist.linear.y = -kinematics.twist.linear.y(); // East -> North (flip)
+    odom_msg.twist.twist.linear.z = -kinematics.twist.linear.z(); // Down -> Up (flip)
+
     // Angular velocity conversion (AirSim NED to ROS ENU)
     odom_msg.twist.twist.angular.x = kinematics.twist.angular.x();
     odom_msg.twist.twist.angular.y = -kinematics.twist.angular.y();
@@ -445,6 +596,8 @@ void MultirotorNode::process_echo()
         // Note: This would need to be implemented based on your specific echo/radar configuration
         // For now, placeholder implementation
         RCLCPP_DEBUG(this->get_logger(), "Processing echo/radar for: %s", vehicle_name_.c_str());
+
+        (void) multirotor_client; // Suppress unused variable warning
     }
     catch (const rpc::rpc_error& e) {
         handle_rpc_error(e, "echo processing");

@@ -4,6 +4,7 @@
 #include "vehicles/multirotor/api/MultirotorRpcLibClient.hpp"
 
 #include <airsim_interfaces/msg/vel_cmd.hpp>
+#include <airsim_interfaces/srv/gps_waypoint.hpp>
 #include <airsim_interfaces/srv/takeoff.hpp>
 #include <airsim_interfaces/srv/land.hpp>
 #include <airsim_interfaces/srv/set_local_position.hpp>
@@ -104,4 +105,18 @@ private:
     std::vector<rclcpp::Publisher<sensor_msgs::msg::CameraInfo>::SharedPtr> camera_info_pubs_;
 
     rclcpp::TimerBase::SharedPtr timer_;
+
+
+    // GPS waypoint service
+    rclcpp::Service<airsim_interfaces::srv::GpsWaypoint>::SharedPtr gps_waypoint_service_;
+
+    bool gps_waypoint_callback(
+        const std::shared_ptr<airsim_interfaces::srv::GpsWaypoint::Request> request,
+        std::shared_ptr<airsim_interfaces::srv::GpsWaypoint::Response> response);
+    
+
+    // Helper functions for GPS navigation
+    std::pair<double, double> gps_to_ned(double lat, double lon, double home_lat, double home_lon);
+    double calculate_distance(double lat1, double lon1, double lat2, double lon2);
+    bool validate_gps_coordinates(double lat, double lon);
 };

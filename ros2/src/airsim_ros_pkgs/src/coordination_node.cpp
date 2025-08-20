@@ -1,3 +1,21 @@
+/*
+* AirSim Coordination Node
+*
+* PURPOSE: Centralised control hub for managing multiple drones in AirSim simulation
+*
+* MAIN FUNCTIONALITY:
+* - Fleet Management: Control multiple drones simultaneously instead of individually
+* - Coordinated Operations: Mass takeoff, landing, reset operations for entire fleet
+* - System Monitoring: Health checks and status monitoring across all vehicles
+* - Simulation Control: Pause/resume simulation, manage timing and synchronisation
+*
+* WHY THIS NODE:
+* Without coordination: ros2 service call /drone1/takeoff, /drone2/takeoff, /drone3/takeoff ...
+* With coordination: ros2 service call /takeoff_all (all drones launch simultaneously)
+*
+* Transforms individual drone control into scalable fleet-level management.
+*/
+
 #include "coordination_node.hpp"
 #include <rclcpp/rclcpp.hpp>
 #include <chrono>
@@ -59,32 +77,43 @@ void CoordinationNode::connect_to_airsim()
 void CoordinationNode::setup_global_services()
 {
     // Global reset service
+    // Service: "reset_all" - Resets all vehicles in the AirSim simulation to their initial state
+    // This includes resetting position, orientation, velocity and clearing any ongoing commands
     reset_all_service_ = this->create_service<airsim_interfaces::srv::Reset>(
         "reset_all",
         std::bind(&CoordinationNode::reset_all_callback, this, 
                  std::placeholders::_1, std::placeholders::_2));
     
     // Global takeoff service
+    // Service: "takeoff_all" - Arms and initiates takeoff for all configured vehicles simultaneously
+    // Enables API control, arms each vehicle, then commands them to takeoff to default altitude
     takeoff_all_service_ = this->create_service<airsim_interfaces::srv::Takeoff>(
         "takeoff_all",
         std::bind(&CoordinationNode::takeoff_all_callback, this,
                  std::placeholders::_1, std::placeholders::_2));
     
     // Global land service
+    // Service: "land_all" - Commands all vehicles to land simultaneously at their current positions
+    // Uses AirSim's autonomous landing algorithm with configurable timeout
     land_all_service_ = this->create_service<airsim_interfaces::srv::Land>(
         "land_all",
         std::bind(&CoordinationNode::land_all_callback, this,
                  std::placeholders::_1, std::placeholders::_2));
     
     // Pause/unpause simulation
+    // Service: "pause_simulation" - Controls the AirSim simulation time flow 
+    // Takes a boolean: true = pause simulation, false = resume simulation
     pause_service_ = this->create_service<std_srvs::srv::SetBool>(
         "pause_simulation",
         std::bind(&CoordinationNode::pause_simulation_callback, this,
                  std::placeholders::_1, std::placeholders::_2));
     
-    // Vehicle health monitoring
+    // Vehicle health monitoring (supposed to be armed check, but did not want to rename as too many dependencies already)
+    // Service: "health_check" - returns the armed/disarmed status of all configured vehicles 
+    // Checks if API control is enabled for each vehicle (equivalent to "armed" status)
+    // Returns tags like "vehicle_name_ARMED", "vehicle_name_DISARMED", or "vehicle_name_ERROR"
     health_check_service_ = this->create_service<airsim_interfaces::srv::ListSceneObjectTags>(
-        "health_check",
+        "armed_check",
         std::bind(&CoordinationNode::health_check_callback, this,
                  std::placeholders::_1, std::placeholders::_2));
     
@@ -185,6 +214,8 @@ bool CoordinationNode::reset_all_callback(
     
     try {
         RCLCPP_INFO(this->get_logger(), "Resetting all vehicles...");
+
+        // Reset all vehicle positions to spawn points, clear all velocities and rotations, reset vehicle states, clear any pending movement commands 
         airsim_client_->reset();
         
         // Wait for reset to complete
@@ -214,7 +245,8 @@ bool CoordinationNode::takeoff_all_callback(
     try {
         RCLCPP_INFO(this->get_logger(), "Taking off all vehicles...");
         
-        // Enable API control and arm all vehicles first
+        // Step 1: Enable API control and arm all vehicles first
+        // This prepares each vehicle for programmatic control
         for (const auto& vehicle_name : vehicle_names_) {
             try {
                 airsim_client_->enableApiControl(true, vehicle_name);
@@ -226,7 +258,8 @@ bool CoordinationNode::takeoff_all_callback(
             }
         }
         
-        // Start takeoff for all vehicles
+        // Step 2: Start takeoff for all vehicles simultaneously
+        // Using async calls to avoid blocking and enable simultaneous takeoff
         std::vector<std::future<bool>> futures;
         for (const auto& vehicle_name : vehicle_names_) {
             try {
@@ -244,7 +277,8 @@ bool CoordinationNode::takeoff_all_callback(
             }
         }
         
-        // Wait for completion if requested
+        // Step 3: Wait for completion if requested
+        // This makes the service call blocking until all vehicles complete takeoff
         if (request->wait_on_last_task) {
             for (auto& future : futures) {
                 future.wait();
@@ -275,6 +309,9 @@ bool CoordinationNode::land_all_callback(
     try {
         RCLCPP_INFO(this->get_logger(), "Landing all vehicles...");
         
+
+        // Initiate landing for all vehicles simultaneously
+        // Using async calls to enable concurrent landing operations
         std::vector<std::future<bool>> futures;
         for (const auto& vehicle_name : vehicle_names_) {
             try {
@@ -292,7 +329,8 @@ bool CoordinationNode::land_all_callback(
             }
         }
         
-        // Wait for completion if requested
+        // Wait for all landings to complete if requested
+        // This makes the service call blocking until all vehicles are on the ground
         if (request->wait_on_last_task) {
             for (auto& future : futures) {
                 future.wait();
@@ -321,6 +359,9 @@ bool CoordinationNode::pause_simulation_callback(
     }
     
     try {
+        // Control AirSim simulation time flow 
+        // true = pause (freeze all vehicles and sensors)
+        // false = resume (continue normal simulation)
         airsim_client_->simPause(request->data);
         response->success = true;
         response->message = request->data ? "Simulation paused" : "Simulation resumed";
@@ -346,12 +387,26 @@ bool CoordinationNode::health_check_callback(
         return true; // Return empty response if no connection
     }
     
+    // Check the armed/disarmed status of each configured vehicle 
+    // This service provides a quick way to monitor vehicle readiness across the fleet
     for (const auto& vehicle_name : vehicle_names_) {
         try {
-            auto state = airsim_client_->getMultirotorState(vehicle_name);
-            response->tags.push_back(vehicle_name + "_HEALTHY");
-        }
+            // Check if API control is enabled for this vehicle 
+            // API control enabled = vehicle is "armed" and ready for programmatic control
+            // API control disabled = vehicle is "disarmed" and in manual/safe mode 
+            bool api_control_enabled = airsim_client_->isApiControlEnabled(vehicle_name);
+
+            if (api_control_enabled) {
+                // Vehicle is ready for ROS commands
+                response->tags.push_back(vehicle_name + "_ARMED");
+            } else {
+                // Vehicle is in safe mode, not accepting programmatic commands
+                response->tags.push_back(vehicle_name + "_DISARMED");
+            }
+        } 
+        
         catch (const std::exception& e) {
+            // communication error or vehicle not found
             response->tags.push_back(vehicle_name + "_ERROR");
             RCLCPP_WARN(this->get_logger(), "Health check failed for %s: %s", 
                        vehicle_name.c_str(), e.what());

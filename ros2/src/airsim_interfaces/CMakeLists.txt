@@ -30,6 +30,7 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "msg/StringArray.msg"
   "msg/Altimeter.msg"
   "msg/Environment.msg"
+  "srv/GpsWaypoint.srv"
   "srv/SetGPSPosition.srv"
   "srv/Takeoff.srv"
   "srv/TakeoffGroup.srv"
