@@ -1,0 +1,20 @@
+// generated from rosidl_adapter/resource/msg.idl.em
+// with input from airsim_interfaces/msg/InstanceSegmentationLabel.msg
+// generated code does not contain a copyright notice
+
+
+module airsim_interfaces {
+  module msg {
+    struct InstanceSegmentationLabel {
+      string name;
+
+      uint32 index;
+
+      uint8 r;
+
+      uint8 g;
+
+      uint8 b;
+    };
+  };
+};

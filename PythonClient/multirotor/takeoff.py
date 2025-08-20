@@ -1,4 +1,5 @@
 <<<<<<< HEAD
+<<<<<<< HEAD
 import setup_path
 import cosysairsim as airsim
 import sys
@@ -48,6 +49,8 @@ client.armDisarm(False)
 client.enableApiControl(False)
 print("done.")
 =======
+=======
+>>>>>>> 475892e9e9fca2f32e65cef95afb59f60bb0718a
 import setup_path
 import cosysairsim as airsim
 import sys
@@ -61,6 +64,7 @@ z = 5
 if len(sys.argv) > 1:
     z = float(sys.argv[1])
 
+<<<<<<< HEAD
 client = airsim.MultirotorClient(ip="172.22.112.1")
 client.confirmConnection()
 client.enableApiControl(True, "Drone1")
@@ -74,6 +78,21 @@ if landed == airsim.LandedState.Landed:
 else:
     print("already flying...")
     client.hoverAsync(vehicle_name="Drone1").join()
+=======
+client = airsim.MultirotorClient()
+client.confirmConnection()
+client.enableApiControl(True)
+
+client.armDisarm(True)
+
+landed = client.getMultirotorState().landed_state
+if landed == airsim.LandedState.Landed:
+    print("taking off...")
+    client.takeoffAsync().join()
+else:
+    print("already flying...")
+    client.hoverAsync().join()
+>>>>>>> 475892e9e9fca2f32e65cef95afb59f60bb0718a
 
 print("make sure we are hovering at {} meters...".format(z))
 
@@ -96,4 +115,8 @@ print("disarming...")
 client.armDisarm(False)
 client.enableApiControl(False)
 print("done.")
+<<<<<<< HEAD
 >>>>>>> bcc393d6c (Update README and finalise code)
+=======
+
+>>>>>>> 475892e9e9fca2f32e65cef95afb59f60bb0718a

@@ -26,6 +26,10 @@ find_package(OpenCV REQUIRED)
 find_package(pcl_conversions REQUIRED)
 find_package(PCL REQUIRED)
 find_package(rosgraph_msgs REQUIRED)
+<<<<<<< HEAD
+=======
+
+>>>>>>> 475892e9e9fca2f32e65cef95afb59f60bb0718a
 
 <<<<<<< HEAD
 # Set AIRSIM_ROOT to the workspace directory where AirLib, MavLinkCom, etc. are located
@@ -52,6 +56,7 @@ add_subdirectory("${AIRSIM_ROOT}/cmake/MavLinkCom" MavLinkCom)
 # Compiler settings
 set(CMAKE_CXX_STANDARD 17)
 <<<<<<< HEAD
+<<<<<<< HEAD
 set(CMAKE_CXX_FLAGS "-O3 -Wall -Wextra -Wnoexcept -Wstrict-null-sentinel -fPIC -fPIE")
 =======
 
@@ -59,6 +64,13 @@ set(CMAKE_CXX_FLAGS "-O3 -Wall -Wextra -Wnoexcept -Wstrict-null-sentinel -fPIC -
 set(CMAKE_CXX_FLAGS "-O3 -Wall -Wextra -Wnoexcept -Wstrict-null-sentinel -Wno-class-memaccess -Wno-sign-compare")
 
 >>>>>>> bcc393d6c (Update README and finalise code)
+=======
+
+# Suppress warnings from external libraries
+set(CMAKE_CXX_FLAGS "-O3 -Wall -Wextra -Wnoexcept -Wstrict-null-sentinel -Wno-class-memaccess -Wno-sign-compare")
+set(CMAKE_CXX_FLAGS "-O3 -Wall -Wextra -Wnoexcept -Wstrict-null-sentinel -fPIC -fPIE")
+
+>>>>>>> 475892e9e9fca2f32e65cef95afb59f60bb0718a
 set(CXX_EXP_LIB "-nostdinc++ -I/usr/include/c++/8 -I/usr/include/x86_64-linux-gnu/c++/8 -nodefaultlibs 
 -l/usr/lib/x86_64-linux-gnu/libc++.so -l/usr/lib/x86_64-linux-gnu/libc++abi.so
 -lm -lc -lgcc_s -lgcc
@@ -99,63 +111,8 @@ ament_target_dependencies(pd_position_controller_simple
   tf2_geometry_msgs
 )
 
-# Vehicle Node Base Classes
-add_library(vehicle_node_base src/vehicles/VehicleNodeBase.cpp)
-target_link_libraries(vehicle_node_base ${OpenCV_LIBS} AirLib airsim_settings_parser)
-target_include_directories(vehicle_node_base PRIVATE 
-  ${AIRSIM_ROOT}/AirLib/deps/eigen3
-  ${AIRSIM_ROOT}/AirLib/include
-  ${RPC_LIB_INCLUDES}
-  ${AIRSIM_ROOT}/MavLinkCom/include
-  ${AIRSIM_ROOT}/MavLinkCom/common_utils
-  ${OpenCV_INCLUDE_DIRS}
-)
-ament_target_dependencies(vehicle_node_base 
-  rclcpp
-  sensor_msgs
-  geometry_msgs
-  nav_msgs
-  tf2_ros
-  airsim_interfaces
-  tf2_geometry_msgs
-  tf2
-  pcl_conversions
-  PCL
-  image_transport
-)
 
-add_library(multirotor_node src/vehicles/MultiRotorNode.cpp)
-target_link_libraries(multirotor_node vehicle_node_base AirLib)
-ament_target_dependencies(multirotor_node 
-  rclcpp
-  airsim_interfaces
-)
 
-add_library(car_node src/vehicles/CarNode.cpp)
-target_link_libraries(car_node vehicle_node_base AirLib)
-ament_target_dependencies(car_node 
-  rclcpp
-  airsim_interfaces
-)
-
-add_library(computer_vision_node src/vehicles/ComputerVisionNode.cpp)
-target_link_libraries(computer_vision_node vehicle_node_base AirLib)
-ament_target_dependencies(computer_vision_node 
-  rclcpp
-  airsim_interfaces
-)
-
-add_library(vehicle_node_factory src/VehicleNodeFactory.cpp)
-target_link_libraries(vehicle_node_factory 
-  vehicle_node_base 
-  multirotor_node 
-  car_node 
-  computer_vision_node 
-  AirLib 
-  airsim_settings_parser)
-ament_target_dependencies(vehicle_node_factory 
-  rclcpp
-)
 
 add_library(airsim_ros src/airsim_ros_wrapper.cpp)
 target_link_libraries(airsim_ros ${OpenCV_LIBS} yaml-cpp AirLib airsim_settings_parser)
@@ -260,20 +217,88 @@ ament_target_dependencies(pd_position_controller_simple_node
 )
 
 <<<<<<< HEAD
+<<<<<<< HEAD
 # Test executable for concurrent RPC connections
 add_executable(test_concurrent_rpc src/test_concurrent_rpc.cpp)
 target_link_libraries(test_concurrent_rpc vehicle_node_factory AirLib)
 ament_target_dependencies(test_concurrent_rpc 
+=======
+
+# Phase 2: Multi-node architecture executables
+# FIXED: Link to multirotor_node_lib instead of vehicle_node_base
+add_executable(multirotor_node src/multirotor_main.cpp)
+target_link_libraries(multirotor_node multirotor_node_lib AirLib)
+ament_target_dependencies(multirotor_node
+>>>>>>> 475892e9e9fca2f32e65cef95afb59f60bb0718a
   rclcpp
+  nav_msgs
+  sensor_msgs
+  geometry_msgs
+  tf2_ros
+  tf2_geometry_msgs
+  tf2
+  airsim_interfaces
+  cv_bridge
+  image_transport
+  pcl_conversions
+  PCL
 )
 
-install(TARGETS airsim_node pd_position_controller_simple_node test_concurrent_rpc
+# ADDED: Simple single drone executable (bypasses complex base class)
+add_executable(simple_multirotor_node src/simple_multirotor_node.cpp)
+target_link_libraries(simple_multirotor_node AirLib)
+ament_target_dependencies(simple_multirotor_node
+  rclcpp
+  nav_msgs
+  sensor_msgs
+  geometry_msgs
+  tf2_ros
+  tf2_geometry_msgs
+  tf2
+  airsim_interfaces
+)
+
+# Phase 3: Coordination node
+add_executable(coordination_node src/coordination_main.cpp)
+target_link_libraries(coordination_node coordination_impl AirLib)
+ament_target_dependencies(coordination_node
+  rclcpp
+  airsim_interfaces
+  std_srvs
+  rosgraph_msgs
+  nav_msgs
+  sensor_msgs
+  geometry_msgs
+  tf2_ros
+  tf2_geometry_msgs
+  tf2
+)
+
+#============================================================================
+# INSTALL TARGETS
+#============================================================================
+
+# Install executables
+install(TARGETS 
+  # Legacy executables
+  airsim_node 
+  pd_position_controller_simple_node
+  # Phase 2 executables
+  multirotor_node
+  simple_multirotor_node       # This was missing the executable definition above
+  # Phase 3 executables
+  coordination_node
   DESTINATION lib/${PROJECT_NAME})
 
+# Install libraries
 install(TARGETS 
+  # Legacy libraries
   airsim_ros 
   pd_position_controller_simple
+  airsim_settings_parser
+  # Phase 2 libraries
   vehicle_node_base
+<<<<<<< HEAD
   multirotor_node
   car_node
   computer_vision_node
@@ -364,18 +389,33 @@ install(TARGETS
   LIBRARY DESTINATION lib)
 >>>>>>> bcc393d6c (Update README and finalise code)
 
+=======
+  multirotor_node_lib          # ADDED: Include multirotor implementation
+  # Phase 3 libraries
+  vehicle_settings_parser
+  coordination_impl
+  ARCHIVE DESTINATION lib
+  LIBRARY DESTINATION lib)
+
+>>>>>>> 475892e9e9fca2f32e65cef95afb59f60bb0718a
 # Install additional files
 install(FILES README.md DESTINATION share/${PROJECT_NAME})
 install(DIRECTORY launch rviz DESTINATION share/${PROJECT_NAME})
 
 <<<<<<< HEAD
+<<<<<<< HEAD
 =======
+=======
+>>>>>>> 475892e9e9fca2f32e65cef95afb59f60bb0718a
 #============================================================================
 # EXPORT DEPENDENCIES
 #============================================================================
 
 # Core ROS2 dependencies
+<<<<<<< HEAD
 >>>>>>> bcc393d6c (Update README and finalise code)
+=======
+>>>>>>> 475892e9e9fca2f32e65cef95afb59f60bb0718a
 ament_export_dependencies(rclcpp)
 ament_export_dependencies(nav_msgs)
 ament_export_dependencies(sensor_msgs)
@@ -433,7 +473,11 @@ ament_export_libraries(
   airsim_ros 
   # Phase 2 libraries
   vehicle_node_base
+<<<<<<< HEAD
   multirotor_node_lib          # ADDED: Include multirotor implementation
+=======
+  multirotor_node_lib
+>>>>>>> 475892e9e9fca2f32e65cef95afb59f60bb0718a
   # Phase 3 libraries
   vehicle_settings_parser
   coordination_impl

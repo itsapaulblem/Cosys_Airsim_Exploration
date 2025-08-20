@@ -1,0 +1,15 @@
+// generated from rosidl_adapter/resource/srv.idl.em
+// with input from airsim_interfaces/srv/RefreshInstanceSegmentation.srv
+// generated code does not contain a copyright notice
+
+
+module airsim_interfaces {
+  module srv {
+    struct RefreshInstanceSegmentation_Request {
+      uint8 structure_needs_at_least_one_member;
+    };
+    struct RefreshInstanceSegmentation_Response {
+      boolean success;
+    };
+  };
+};

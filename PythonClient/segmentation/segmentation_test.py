@@ -1,4 +1,5 @@
 <<<<<<< HEAD
+<<<<<<< HEAD
 #!/usr/bin/env python
 
 import setup_path
@@ -111,6 +112,8 @@ if __name__ == '__main__':
 
     print("All instance segmentation tests completed")
 =======
+=======
+>>>>>>> 475892e9e9fca2f32e65cef95afb59f60bb0718a
 #!/usr/bin/env python
 
 import setup_path
@@ -222,4 +225,8 @@ if __name__ == '__main__':
     print("Shown and saved segmentation image from main camera\n")
 
     print("All instance segmentation tests completed")
+<<<<<<< HEAD
 >>>>>>> bcc393d6c (Update README and finalise code)
+=======
+    
+>>>>>>> 475892e9e9fca2f32e65cef95afb59f60bb0718a

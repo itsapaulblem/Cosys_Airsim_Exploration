@@ -1,0 +1,17 @@
+// generated from rosidl_adapter/resource/srv.idl.em
+// with input from airsim_interfaces/srv/ListSceneObjectTags.srv
+// generated code does not contain a copyright notice
+
+
+module airsim_interfaces {
+  module srv {
+    struct ListSceneObjectTags_Request {
+      string regex_name;
+    };
+    struct ListSceneObjectTags_Response {
+      sequence<string> objects;
+
+      sequence<string> tags;
+    };
+  };
+};
