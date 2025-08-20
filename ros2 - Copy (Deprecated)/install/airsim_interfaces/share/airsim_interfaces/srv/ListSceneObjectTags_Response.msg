@@ -1,3 +1,0 @@
-
-string[] objects
-string[] tags
