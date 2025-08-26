@@ -1151,22 +1151,47 @@ bool MultirotorNode::search_target_callback(
         RCLCPP_INFO(this->get_logger(), "Starting search pattern from position: (%.2f, %.2f, %.2f)",
                    pos.x(), pos.y(), pos.z());
         
-        int num_waypoints = 4; // Reduced for testing
-        float angle_step = 2.0f * M_PI / num_waypoints;
+        // Use a smaller, more manageable search pattern based on requested radius
+        float actual_radius = std::min(request->search_radius * 0.3f, 15.0f); // Cap at 15m for safety
+        std::vector<std::pair<float, float>> search_offsets = {
+            {actual_radius, 0.0f},          // East
+            {0.0f, actual_radius},          // North  
+            {-actual_radius, 0.0f},         // West
+            {0.0f, -actual_radius},         // South
+            {actual_radius * 0.7f, actual_radius * 0.7f},    // Northeast
+            {-actual_radius * 0.7f, actual_radius * 0.7f},   // Northwest
+            {-actual_radius * 0.7f, -actual_radius * 0.7f},  // Southwest
+            {actual_radius * 0.7f, -actual_radius * 0.7f}    // Southeast
+        };
         
-        for (int i = 0; i < num_waypoints; ++i) {
-            float angle = i * angle_step;
-            float search_x = pos.x() + (request->search_radius * 0.3f) * std::cos(angle); // Reduced radius
-            float search_y = pos.y() + (request->search_radius * 0.3f) * std::sin(angle);
+        auto search_start_time = std::chrono::steady_clock::now();
+        bool target_found = false;
+        
+        for (size_t i = 0; i < search_offsets.size() && !target_found; ++i) {
+            // Check if we've exceeded the search time limit
+            auto elapsed_time = std::chrono::duration_cast<std::chrono::seconds>(
+                std::chrono::steady_clock::now() - search_start_time);
             
-            RCLCPP_INFO(this->get_logger(), "Moving to search waypoint %d: (%.2f, %.2f, %.2f)",
+            if (elapsed_time.count() >= request->search_time) {
+                RCLCPP_WARN(this->get_logger(), "Search time limit exceeded for %s", vehicle_name_.c_str());
+                break;
+            }
+            
+            float search_x = pos.x() + search_offsets[i].first;
+            float search_y = pos.y() + search_offsets[i].second;
+            
+            RCLCPP_INFO(this->get_logger(), "Moving to search waypoint %zu: (%.2f, %.2f, %.2f)",
                        i + 1, search_x, search_y, search_altitude);
             
             try {
+                // Cancel any previous movement commands first
+                multirotor_client->cancelLastTask(vehicle_name_);
+                
+                // Use a more conservative approach with error checking
                 auto task = multirotor_client->moveToPositionAsync(
                     search_x, search_y, search_altitude,
-                    3.0f,   // velocity (reduced)
-                    15.0f,  // timeout_sec (reduced)
+                    2.0f,   // velocity (slower for stability)
+                    15.0f,  // shorter timeout per waypoint
                     msr::airlib::DrivetrainType::MaxDegreeOfFreedom,
                     msr::airlib::YawMode(false, 0.0f),
                     -1,     // lookahead
@@ -1175,13 +1200,24 @@ bool MultirotorNode::search_target_callback(
                 
                 // Wait for movement to complete with timeout
                 task->waitOnLastTask();
-                RCLCPP_INFO(this->get_logger(), "Reached waypoint %d", i + 1);
+                RCLCPP_INFO(this->get_logger(), "Reached waypoint %zu", i + 1);
                 
             } catch (const rpc::rpc_error& e) {
-                RCLCPP_ERROR(this->get_logger(), "RPC error at waypoint %d: %s", i + 1, e.what());
+                RCLCPP_ERROR(this->get_logger(), "RPC error at waypoint %zu: %s", i + 1, e.what());
+                
+                // Try to recover by hovering at current position
+                try {
+                    multirotor_client->hoverAsync(vehicle_name_)->waitOnLastTask();
+                    RCLCPP_WARN(this->get_logger(), "Recovered to hover after RPC error");
+                } catch (...) {
+                    RCLCPP_ERROR(this->get_logger(), "Failed to recover from RPC error");
+                }
+                
                 // Continue with search even if one waypoint fails
+                continue;
             } catch (const std::exception& e) {
-                RCLCPP_ERROR(this->get_logger(), "Failed to reach waypoint %d: %s", i + 1, e.what());
+                RCLCPP_ERROR(this->get_logger(), "Failed to reach waypoint %zu: %s", i + 1, e.what());
+                continue;
             }
             
             // Small delay to process sensor data
@@ -1189,26 +1225,86 @@ bool MultirotorNode::search_target_callback(
             
             // Check if target was detected during search
             if (current_target_.confidence >= request->min_confidence) {
-                RCLCPP_INFO(this->get_logger(), "Target detected during search at waypoint %d", i + 1);
+                RCLCPP_INFO(this->get_logger(), "Target detected during search at waypoint %zu", i + 1);
+                target_found = true;
                 break;
             }
         }
         
-        // Final response
-        if (current_target_.confidence >= request->min_confidence) {
+        // Final response based on search results
+        if (target_found && current_target_.confidence >= request->min_confidence) {
             response->success = true;
             response->target_x = current_target_.x;
             response->target_y = current_target_.y;
             response->target_z = current_target_.z;
             response->confidence = current_target_.confidence;
             response->message = "Target found during search by " + vehicle_name_;
+            
+            RCLCPP_INFO(this->get_logger(), "Search successful for %s - Target found with confidence %.2f", 
+                       vehicle_name_.c_str(), current_target_.confidence);
         } else {
-            response->success = false;
-            response->target_x = 0.0f;
-            response->target_y = 0.0f;
-            response->target_z = 0.0f;
-            response->confidence = 0.0f;
-            response->message = "No target found after search pattern by " + vehicle_name_;
+            // No target found - initiate safe landing and disarming
+            RCLCPP_WARN(this->get_logger(), "No target found after search pattern by %s - initiating safe landing", 
+                       vehicle_name_.c_str());
+            
+            try {
+                // Cancel any ongoing tasks
+                multirotor_client->cancelLastTask(vehicle_name_);
+                
+                // Hover first to stabilize
+                RCLCPP_INFO(this->get_logger(), "Stabilizing %s before landing...", vehicle_name_.c_str());
+                multirotor_client->hoverAsync(vehicle_name_)->waitOnLastTask();
+                
+                // Initiate landing
+                RCLCPP_INFO(this->get_logger(), "Landing %s safely after unsuccessful search...", vehicle_name_.c_str());
+                auto landing_task = multirotor_client->landAsync(60.0f, vehicle_name_);
+                landing_task->waitOnLastTask();
+                
+                // Wait a moment for landing to complete
+                std::this_thread::sleep_for(std::chrono::milliseconds(3000));
+                
+                // Check if actually landed
+                auto final_state = multirotor_client->getMultirotorState(vehicle_name_);
+                if (final_state.landed_state == msr::airlib::LandedState::Landed) {
+                    // Disarm the drone
+                    RCLCPP_INFO(this->get_logger(), "Disarming %s after safe landing...", vehicle_name_.c_str());
+                    multirotor_client->armDisarm(false, vehicle_name_);
+                    
+                    // Disable API control
+                    multirotor_client->enableApiControl(false, vehicle_name_);
+                    
+                    response->success = false;
+                    response->target_x = 0.0f;
+                    response->target_y = 0.0f;
+                    response->target_z = 0.0f;
+                    response->confidence = 0.0f;
+                    response->message = "No target found after search pattern - " + vehicle_name_ + " landed and disarmed safely";
+                    
+                    RCLCPP_INFO(this->get_logger(), "Safe landing and disarming completed for %s", vehicle_name_.c_str());
+                } else {
+                    RCLCPP_WARN(this->get_logger(), "Landing may not have completed properly for %s", vehicle_name_.c_str());
+                    response->success = false;
+                    response->message = "Search failed and landing status uncertain for " + vehicle_name_;
+                }
+                
+            } catch (const std::exception& landing_error) {
+                RCLCPP_ERROR(this->get_logger(), "Failed to land safely after search for %s: %s", 
+                           vehicle_name_.c_str(), landing_error.what());
+                
+                // Try emergency hover as last resort
+                try {
+                    multirotor_client->hoverAsync(vehicle_name_);
+                    response->message = "Search failed, emergency hover initiated for " + vehicle_name_;
+                } catch (...) {
+                    response->message = "Search failed, unable to initiate emergency procedures for " + vehicle_name_;
+                }
+                
+                response->success = false;
+                response->target_x = 0.0f;
+                response->target_y = 0.0f;
+                response->target_z = 0.0f;
+                response->confidence = 0.0f;
+            }
         }
         
     } catch (const rpc::rpc_error& e) {
@@ -1219,6 +1315,16 @@ bool MultirotorNode::search_target_callback(
         response->confidence = 0.0f;
         response->message = "Search failed: " + std::string(e.what());
         RCLCPP_ERROR(this->get_logger(), "Search RPC error for %s: %s", vehicle_name_.c_str(), e.what());
+        
+        // Try emergency landing even on RPC error
+        try {
+            auto multirotor_client = static_cast<msr::airlib::MultirotorRpcLibClient*>(airsim_client_.get());
+            RCLCPP_WARN(this->get_logger(), "Attempting emergency landing for %s due to RPC error", vehicle_name_.c_str());
+            multirotor_client->landAsync(30.0f, vehicle_name_)->waitOnLastTask();
+        } catch (...) {
+            RCLCPP_ERROR(this->get_logger(), "Emergency landing failed for %s", vehicle_name_.c_str());
+        }
+        
     } catch (const std::exception& e) {
         response->success = false;
         response->target_x = 0.0f;
