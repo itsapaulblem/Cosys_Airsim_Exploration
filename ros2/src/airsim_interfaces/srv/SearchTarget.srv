@@ -1,0 +1,10 @@
+float32 search_radius
+float32 search_time
+float32 min_confidence
+---
+bool success
+float32 target_x
+float32 target_y
+float32 target_z
+float32 confidence
+string message

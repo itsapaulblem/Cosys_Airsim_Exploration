@@ -1,0 +1,21 @@
+// generated from rosidl_adapter/resource/srv.idl.em
+// with input from airsim_interfaces/srv/TrackTarget.srv
+// generated code does not contain a copyright notice
+
+
+module airsim_interfaces {
+  module srv {
+    struct TrackTarget_Request {
+      float target_x;
+
+      float target_y;
+
+      float target_z;
+    };
+    struct TrackTarget_Response {
+      boolean success;
+
+      string message;
+    };
+  };
+};

@@ -10,6 +10,8 @@ module airsim_interfaces {
     };
     struct Land_Response {
       boolean success;
+
+      string message;
     };
   };
 };

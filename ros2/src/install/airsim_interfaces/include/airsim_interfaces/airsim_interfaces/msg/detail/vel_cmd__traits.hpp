@@ -17,6 +17,8 @@
 // Include directives for member types
 // Member 'twist'
 #include "geometry_msgs/msg/detail/twist__traits.hpp"
+// Member 'yaw_mode'
+#include "airsim_interfaces/msg/detail/yaw_mode__traits.hpp"
 
 namespace airsim_interfaces
 {
@@ -33,6 +35,20 @@ inline void to_flow_style_yaml(
   {
     out << "twist: ";
     to_flow_style_yaml(msg.twist, out);
+    out << ", ";
+  }
+
+  // member: drivetrain
+  {
+    out << "drivetrain: ";
+    rosidl_generator_traits::value_to_yaml(msg.drivetrain, out);
+    out << ", ";
+  }
+
+  // member: yaw_mode
+  {
+    out << "yaw_mode: ";
+    to_flow_style_yaml(msg.yaw_mode, out);
   }
   out << "}";
 }  // NOLINT(readability/fn_size)
@@ -48,6 +64,25 @@ inline void to_block_style_yaml(
     }
     out << "twist:\n";
     to_block_style_yaml(msg.twist, out, indentation + 2);
+  }
+
+  // member: drivetrain
+  {
+    if (indentation > 0) {
+      out << std::string(indentation, ' ');
+    }
+    out << "drivetrain: ";
+    rosidl_generator_traits::value_to_yaml(msg.drivetrain, out);
+    out << "\n";
+  }
+
+  // member: yaw_mode
+  {
+    if (indentation > 0) {
+      out << std::string(indentation, ' ');
+    }
+    out << "yaw_mode:\n";
+    to_block_style_yaml(msg.yaw_mode, out, indentation + 2);
   }
 }  // NOLINT(readability/fn_size)
 
@@ -97,11 +132,11 @@ inline const char * name<airsim_interfaces::msg::VelCmd>()
 
 template<>
 struct has_fixed_size<airsim_interfaces::msg::VelCmd>
-  : std::integral_constant<bool, has_fixed_size<geometry_msgs::msg::Twist>::value> {};
+  : std::integral_constant<bool, has_fixed_size<airsim_interfaces::msg::YawMode>::value && has_fixed_size<geometry_msgs::msg::Twist>::value> {};
 
 template<>
 struct has_bounded_size<airsim_interfaces::msg::VelCmd>
-  : std::integral_constant<bool, has_bounded_size<geometry_msgs::msg::Twist>::value> {};
+  : std::integral_constant<bool, has_bounded_size<airsim_interfaces::msg::YawMode>::value && has_bounded_size<geometry_msgs::msg::Twist>::value> {};
 
 template<>
 struct is_message<airsim_interfaces::msg::VelCmd>

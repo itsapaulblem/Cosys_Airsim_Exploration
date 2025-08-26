@@ -116,7 +116,16 @@ void CoordinationNode::setup_global_services()
         "armed_check",
         std::bind(&CoordinationNode::health_check_callback, this,
                  std::placeholders::_1, std::placeholders::_2));
-    
+
+    search_target_all_service_ = this->create_service<airsim_interfaces::srv::SearchTarget>(
+        "search_target_all",
+        std::bind(&CoordinationNode::search_target_all_callback, this, std::placeholders::_1, std::placeholders::_2));
+
+    track_target_all_service_ = this->create_service<airsim_interfaces::srv::TrackTarget>(
+        "track_target_all",
+        std::bind(&CoordinationNode::track_target_all_callback, this,
+                 std::placeholders::_1, std::placeholders::_2));
+
     RCLCPP_INFO(this->get_logger(), "Global services initialized");
 }
 
@@ -133,6 +142,9 @@ void CoordinationNode::setup_publishers()
     // Clock publisher for simulation time
     clock_pub_ = this->create_publisher<rosgraph_msgs::msg::Clock>(
         "clock", rclcpp::QoS(10).reliable());
+
+    target_detection_pub_ = this->create_publisher<airsim_interfaces::msg::TargetDetection>(
+        "fleet_target_detection", rclcpp::QoS(10).reliable());
     
     RCLCPP_INFO(this->get_logger(), "Publishers initialized");
 }
@@ -413,4 +425,131 @@ bool CoordinationNode::health_check_callback(
         }
     }
     return true;
+}
+
+bool CoordinationNode::search_target_all_callback(
+    const std::shared_ptr<airsim_interfaces::srv::SearchTarget::Request> request,
+    std::shared_ptr<airsim_interfaces::srv::SearchTarget::Response> response)
+{
+    (void)request; // Suppress unused parameter warning
+    
+    if (!airsim_client_) {
+        response->success = false;
+        response->message = "No AirSim connection for search";
+        response->confidence = 0.0f;
+        return false;
+    }
+    
+    RCLCPP_INFO(this->get_logger(), "Initiating coordinated target search...");
+    
+    // This would coordinate with individual vehicle search services
+    // For now, implement basic coordination logic
+    std::lock_guard<std::mutex> lock(target_mutex_);
+    
+    // Find best target detection across all vehicles
+    float best_confidence = 0.0f;
+    std::string best_vehicle;
+    TargetInfo best_target;
+    
+    for (const auto& [vehicle_name, target] : vehicle_targets_) {
+        if (target.confidence > best_confidence) {
+            best_confidence = target.confidence;
+            best_vehicle = vehicle_name;
+            best_target = target;
+        }
+    }
+    
+    if (best_confidence > 0.5f) {
+        response->success = true;
+        response->target_x = best_target.x;
+        response->target_y = best_target.y;
+        response->target_z = best_target.z;
+        response->confidence = best_confidence;
+        response->message = "Target found by " + best_vehicle;
+        
+        RCLCPP_INFO(this->get_logger(), "Target found by %s: (%.2f, %.2f, %.2f) confidence=%.2f",
+                   best_vehicle.c_str(), best_target.x, best_target.y, best_target.z, best_confidence);
+    } else {
+        response->success = false;
+        response->message = "No target detected by fleet";
+        response->confidence = 0.0f;
+        RCLCPP_WARN(this->get_logger(), "No target detected by any vehicle");
+    }
+    
+    return true;
+}
+
+bool CoordinationNode::track_target_all_callback(
+    const std::shared_ptr<airsim_interfaces::srv::TrackTarget::Request> request,
+    std::shared_ptr<airsim_interfaces::srv::TrackTarget::Response> response)
+{
+    if (!airsim_client_) {
+        response->success = false;
+        response->message = "No AirSim connection for tracking";
+        return false;
+    }
+    
+    RCLCPP_INFO(this->get_logger(), "Initiating coordinated target tracking...");
+    
+    try {
+        // Implement formation tracking - spread vehicles around the target
+        std::vector<std::future<bool>> futures;
+        float formation_radius = 30.0f; // meters from target
+        
+        for (size_t i = 0; i < vehicle_names_.size(); ++i) {
+            const auto& vehicle_name = vehicle_names_[i];
+            
+            // Calculate formation position around target
+            float angle = (2.0f * M_PI * i) / vehicle_names_.size();
+            float target_x = request->target_x + formation_radius * std::cos(angle);
+            float target_y = request->target_y + formation_radius * std::sin(angle);
+            float target_z = request->target_z; // Same altitude as target
+            
+            try {
+                // Fixed moveToPositionAsync parameters
+                auto future = airsim_client_->moveToPositionAsync(
+                    target_x, target_y, target_z, 
+                    5.0f,  // velocity
+                    60.0f, // timeout_sec - this was missing!
+                    msr::airlib::DrivetrainType::MaxDegreeOfFreedom,
+                    msr::airlib::YawMode(false, 0.0f),
+                    -1,    // lookahead
+                    1,     // adaptive_lookahead
+                    vehicle_name);
+                    
+                // Fixed lambda capture
+                futures.push_back(std::async(std::launch::async, [future]() -> bool {
+                    try {
+                        future->waitOnLastTask();
+                        return true;
+                    } catch (const std::exception& e) {
+                        return false;
+                    }
+                }));
+                
+                RCLCPP_INFO(this->get_logger(), "Formation tracking initiated for %s: (%.2f, %.2f, %.2f)",
+                           vehicle_name.c_str(), target_x, target_y, target_z);
+            }
+            catch (const std::exception& e) {
+                RCLCPP_ERROR(this->get_logger(), "Failed to start tracking for %s: %s", 
+                           vehicle_name.c_str(), e.what());
+            }
+        }
+        
+        // Wait for all vehicles to reach formation positions
+        for (auto& future : futures) {
+            future.wait();
+        }
+        
+        response->success = true;
+        response->message = "Fleet formation tracking initiated around target";
+        RCLCPP_INFO(this->get_logger(), "Coordinated tracking completed");
+        return true;
+    }
+    catch (const std::exception& e) {
+        response->success = false;
+        response->message = "Formation tracking failed: " + std::string(e.what());
+        RCLCPP_ERROR(this->get_logger(), "%s", response->message.c_str());
+        return false;
+    }
 }

@@ -20,6 +20,8 @@ ROSIDL_GENERATOR_C_IMPORT
 bool geometry_msgs__msg__twist__convert_from_py(PyObject * _pymsg, void * _ros_message);
 ROSIDL_GENERATOR_C_IMPORT
 PyObject * geometry_msgs__msg__twist__convert_to_py(void * raw_ros_message);
+bool airsim_interfaces__msg__yaw_mode__convert_from_py(PyObject * _pymsg, void * _ros_message);
+PyObject * airsim_interfaces__msg__yaw_mode__convert_to_py(void * raw_ros_message);
 
 ROSIDL_GENERATOR_C_EXPORT
 bool airsim_interfaces__msg__vel_cmd__convert_from_py(PyObject * _pymsg, void * _ros_message)
@@ -65,6 +67,26 @@ bool airsim_interfaces__msg__vel_cmd__convert_from_py(PyObject * _pymsg, void * 
     }
     Py_DECREF(field);
   }
+  {  // drivetrain
+    PyObject * field = PyObject_GetAttrString(_pymsg, "drivetrain");
+    if (!field) {
+      return false;
+    }
+    assert(PyLong_Check(field));
+    ros_message->drivetrain = (uint8_t)PyLong_AsUnsignedLong(field);
+    Py_DECREF(field);
+  }
+  {  // yaw_mode
+    PyObject * field = PyObject_GetAttrString(_pymsg, "yaw_mode");
+    if (!field) {
+      return false;
+    }
+    if (!airsim_interfaces__msg__yaw_mode__convert_from_py(field, &ros_message->yaw_mode)) {
+      Py_DECREF(field);
+      return false;
+    }
+    Py_DECREF(field);
+  }
 
   return true;
 }
@@ -95,6 +117,31 @@ PyObject * airsim_interfaces__msg__vel_cmd__convert_to_py(void * raw_ros_message
     }
     {
       int rc = PyObject_SetAttrString(_pymessage, "twist", field);
+      Py_DECREF(field);
+      if (rc) {
+        return NULL;
+      }
+    }
+  }
+  {  // drivetrain
+    PyObject * field = NULL;
+    field = PyLong_FromUnsignedLong(ros_message->drivetrain);
+    {
+      int rc = PyObject_SetAttrString(_pymessage, "drivetrain", field);
+      Py_DECREF(field);
+      if (rc) {
+        return NULL;
+      }
+    }
+  }
+  {  // yaw_mode
+    PyObject * field = NULL;
+    field = airsim_interfaces__msg__yaw_mode__convert_to_py(&ros_message->yaw_mode);
+    if (!field) {
+      return NULL;
+    }
+    {
+      int rc = PyObject_SetAttrString(_pymessage, "yaw_mode", field);
       Py_DECREF(field);
       if (rc) {
         return NULL;

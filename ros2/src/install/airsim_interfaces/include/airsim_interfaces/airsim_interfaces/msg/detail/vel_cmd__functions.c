@@ -14,6 +14,8 @@
 // Include directives for member types
 // Member `twist`
 #include "geometry_msgs/msg/detail/twist__functions.h"
+// Member `yaw_mode`
+#include "airsim_interfaces/msg/detail/yaw_mode__functions.h"
 
 bool
 airsim_interfaces__msg__VelCmd__init(airsim_interfaces__msg__VelCmd * msg)
@@ -23,6 +25,12 @@ airsim_interfaces__msg__VelCmd__init(airsim_interfaces__msg__VelCmd * msg)
   }
   // twist
   if (!geometry_msgs__msg__Twist__init(&msg->twist)) {
+    airsim_interfaces__msg__VelCmd__fini(msg);
+    return false;
+  }
+  // drivetrain
+  // yaw_mode
+  if (!airsim_interfaces__msg__YawMode__init(&msg->yaw_mode)) {
     airsim_interfaces__msg__VelCmd__fini(msg);
     return false;
   }
@@ -37,6 +45,9 @@ airsim_interfaces__msg__VelCmd__fini(airsim_interfaces__msg__VelCmd * msg)
   }
   // twist
   geometry_msgs__msg__Twist__fini(&msg->twist);
+  // drivetrain
+  // yaw_mode
+  airsim_interfaces__msg__YawMode__fini(&msg->yaw_mode);
 }
 
 bool
@@ -48,6 +59,16 @@ airsim_interfaces__msg__VelCmd__are_equal(const airsim_interfaces__msg__VelCmd *
   // twist
   if (!geometry_msgs__msg__Twist__are_equal(
       &(lhs->twist), &(rhs->twist)))
+  {
+    return false;
+  }
+  // drivetrain
+  if (lhs->drivetrain != rhs->drivetrain) {
+    return false;
+  }
+  // yaw_mode
+  if (!airsim_interfaces__msg__YawMode__are_equal(
+      &(lhs->yaw_mode), &(rhs->yaw_mode)))
   {
     return false;
   }
@@ -65,6 +86,14 @@ airsim_interfaces__msg__VelCmd__copy(
   // twist
   if (!geometry_msgs__msg__Twist__copy(
       &(input->twist), &(output->twist)))
+  {
+    return false;
+  }
+  // drivetrain
+  output->drivetrain = input->drivetrain;
+  // yaw_mode
+  if (!airsim_interfaces__msg__YawMode__copy(
+      &(input->yaw_mode), &(output->yaw_mode)))
   {
     return false;
   }

@@ -10,6 +10,8 @@ module airsim_interfaces {
     };
     struct Takeoff_Response {
       boolean success;
+
+      string message;
     };
   };
 };

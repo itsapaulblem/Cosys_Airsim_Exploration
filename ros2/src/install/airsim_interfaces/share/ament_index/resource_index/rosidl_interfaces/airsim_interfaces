@@ -22,10 +22,18 @@ msg/ObjectTransformsList.idl
 msg/ObjectTransformsList.msg
 msg/StringArray.idl
 msg/StringArray.msg
+msg/TargetDetection.idl
+msg/TargetDetection.msg
 msg/VelCmd.idl
 msg/VelCmd.msg
 msg/VelCmdGroup.idl
 msg/VelCmdGroup.msg
+msg/YawMode.idl
+msg/YawMode.msg
+srv/GpsWaypoint.idl
+srv/GpsWaypoint.srv
+srv/GpsWaypoint_Request.msg
+srv/GpsWaypoint_Response.msg
 srv/Land.idl
 srv/Land.srv
 srv/LandGroup.idl
@@ -50,6 +58,10 @@ srv/Reset.idl
 srv/Reset.srv
 srv/Reset_Request.msg
 srv/Reset_Response.msg
+srv/SearchTarget.idl
+srv/SearchTarget.srv
+srv/SearchTarget_Request.msg
+srv/SearchTarget_Response.msg
 srv/SetGPSPosition.idl
 srv/SetGPSPosition.srv
 srv/SetGPSPosition_Request.msg
@@ -66,3 +78,7 @@ srv/TakeoffGroup_Request.msg
 srv/TakeoffGroup_Response.msg
 srv/Takeoff_Request.msg
 srv/Takeoff_Response.msg
+srv/TrackTarget.idl
+srv/TrackTarget.srv
+srv/TrackTarget_Request.msg
+srv/TrackTarget_Response.msg

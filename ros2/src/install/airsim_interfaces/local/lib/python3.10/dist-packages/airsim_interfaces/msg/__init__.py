@@ -10,5 +10,7 @@ from airsim_interfaces.msg._instance_segmentation_label import InstanceSegmentat
 from airsim_interfaces.msg._instance_segmentation_list import InstanceSegmentationList  # noqa: F401
 from airsim_interfaces.msg._object_transforms_list import ObjectTransformsList  # noqa: F401
 from airsim_interfaces.msg._string_array import StringArray  # noqa: F401
+from airsim_interfaces.msg._target_detection import TargetDetection  # noqa: F401
 from airsim_interfaces.msg._vel_cmd import VelCmd  # noqa: F401
 from airsim_interfaces.msg._vel_cmd_group import VelCmdGroup  # noqa: F401
+from airsim_interfaces.msg._yaw_mode import YawMode  # noqa: F401

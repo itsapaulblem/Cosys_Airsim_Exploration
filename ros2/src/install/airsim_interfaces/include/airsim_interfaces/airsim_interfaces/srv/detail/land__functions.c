@@ -235,6 +235,10 @@ airsim_interfaces__srv__Land_Request__Sequence__copy(
 }
 
 
+// Include directives for member types
+// Member `message`
+#include "rosidl_runtime_c/string_functions.h"
+
 bool
 airsim_interfaces__srv__Land_Response__init(airsim_interfaces__srv__Land_Response * msg)
 {
@@ -242,6 +246,11 @@ airsim_interfaces__srv__Land_Response__init(airsim_interfaces__srv__Land_Respons
     return false;
   }
   // success
+  // message
+  if (!rosidl_runtime_c__String__init(&msg->message)) {
+    airsim_interfaces__srv__Land_Response__fini(msg);
+    return false;
+  }
   return true;
 }
 
@@ -252,6 +261,8 @@ airsim_interfaces__srv__Land_Response__fini(airsim_interfaces__srv__Land_Respons
     return;
   }
   // success
+  // message
+  rosidl_runtime_c__String__fini(&msg->message);
 }
 
 bool
@@ -262,6 +273,12 @@ airsim_interfaces__srv__Land_Response__are_equal(const airsim_interfaces__srv__L
   }
   // success
   if (lhs->success != rhs->success) {
+    return false;
+  }
+  // message
+  if (!rosidl_runtime_c__String__are_equal(
+      &(lhs->message), &(rhs->message)))
+  {
     return false;
   }
   return true;
@@ -277,6 +294,12 @@ airsim_interfaces__srv__Land_Response__copy(
   }
   // success
   output->success = input->success;
+  // message
+  if (!rosidl_runtime_c__String__copy(
+      &(input->message), &(output->message)))
+  {
+    return false;
+  }
   return true;
 }
 

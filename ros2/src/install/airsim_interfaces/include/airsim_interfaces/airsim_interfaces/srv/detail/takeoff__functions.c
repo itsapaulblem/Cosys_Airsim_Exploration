@@ -235,6 +235,10 @@ airsim_interfaces__srv__Takeoff_Request__Sequence__copy(
 }
 
 
+// Include directives for member types
+// Member `message`
+#include "rosidl_runtime_c/string_functions.h"
+
 bool
 airsim_interfaces__srv__Takeoff_Response__init(airsim_interfaces__srv__Takeoff_Response * msg)
 {
@@ -242,6 +246,11 @@ airsim_interfaces__srv__Takeoff_Response__init(airsim_interfaces__srv__Takeoff_R
     return false;
   }
   // success
+  // message
+  if (!rosidl_runtime_c__String__init(&msg->message)) {
+    airsim_interfaces__srv__Takeoff_Response__fini(msg);
+    return false;
+  }
   return true;
 }
 
@@ -252,6 +261,8 @@ airsim_interfaces__srv__Takeoff_Response__fini(airsim_interfaces__srv__Takeoff_R
     return;
   }
   // success
+  // message
+  rosidl_runtime_c__String__fini(&msg->message);
 }
 
 bool
@@ -262,6 +273,12 @@ airsim_interfaces__srv__Takeoff_Response__are_equal(const airsim_interfaces__srv
   }
   // success
   if (lhs->success != rhs->success) {
+    return false;
+  }
+  // message
+  if (!rosidl_runtime_c__String__are_equal(
+      &(lhs->message), &(rhs->message)))
+  {
     return false;
   }
   return true;
@@ -277,6 +294,12 @@ airsim_interfaces__srv__Takeoff_Response__copy(
   }
   // success
   output->success = input->success;
+  // message
+  if (!rosidl_runtime_c__String__copy(
+      &(input->message), &(output->message)))
+  {
+    return false;
+  }
   return true;
 }
 

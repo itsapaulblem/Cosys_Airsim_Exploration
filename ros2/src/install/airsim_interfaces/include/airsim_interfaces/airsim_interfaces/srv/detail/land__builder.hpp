@@ -63,16 +63,32 @@ namespace srv
 namespace builder
 {
 
+class Init_Land_Response_message
+{
+public:
+  explicit Init_Land_Response_message(::airsim_interfaces::srv::Land_Response & msg)
+  : msg_(msg)
+  {}
+  ::airsim_interfaces::srv::Land_Response message(::airsim_interfaces::srv::Land_Response::_message_type arg)
+  {
+    msg_.message = std::move(arg);
+    return std::move(msg_);
+  }
+
+private:
+  ::airsim_interfaces::srv::Land_Response msg_;
+};
+
 class Init_Land_Response_success
 {
 public:
   Init_Land_Response_success()
   : msg_(::rosidl_runtime_cpp::MessageInitialization::SKIP)
   {}
-  ::airsim_interfaces::srv::Land_Response success(::airsim_interfaces::srv::Land_Response::_success_type arg)
+  Init_Land_Response_message success(::airsim_interfaces::srv::Land_Response::_success_type arg)
   {
     msg_.success = std::move(arg);
-    return std::move(msg_);
+    return Init_Land_Response_message(msg_);
   }
 
 private:

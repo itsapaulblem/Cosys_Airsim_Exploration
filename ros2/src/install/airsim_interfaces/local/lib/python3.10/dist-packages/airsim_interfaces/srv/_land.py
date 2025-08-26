@@ -179,14 +179,17 @@ class Land_Response(metaclass=Metaclass_Land_Response):
 
     __slots__ = [
         '_success',
+        '_message',
     ]
 
     _fields_and_field_types = {
         'success': 'boolean',
+        'message': 'string',
     }
 
     SLOT_TYPES = (
         rosidl_parser.definition.BasicType('boolean'),  # noqa: E501
+        rosidl_parser.definition.UnboundedString(),  # noqa: E501
     )
 
     def __init__(self, **kwargs):
@@ -194,6 +197,7 @@ class Land_Response(metaclass=Metaclass_Land_Response):
             'Invalid arguments passed to constructor: %s' % \
             ', '.join(sorted(k for k in kwargs.keys() if '_' + k not in self.__slots__))
         self.success = kwargs.get('success', bool())
+        self.message = kwargs.get('message', str())
 
     def __repr__(self):
         typename = self.__class__.__module__.split('.')
@@ -226,6 +230,8 @@ class Land_Response(metaclass=Metaclass_Land_Response):
             return False
         if self.success != other.success:
             return False
+        if self.message != other.message:
+            return False
         return True
 
     @classmethod
@@ -245,6 +251,19 @@ class Land_Response(metaclass=Metaclass_Land_Response):
                 isinstance(value, bool), \
                 "The 'success' field must be of type 'bool'"
         self._success = value
+
+    @builtins.property
+    def message(self):
+        """Message field 'message'."""
+        return self._message
+
+    @message.setter
+    def message(self, value):
+        if __debug__:
+            assert \
+                isinstance(value, str), \
+                "The 'message' field must be of type 'str'"
+        self._message = value
 
 
 class Metaclass_Land(type):

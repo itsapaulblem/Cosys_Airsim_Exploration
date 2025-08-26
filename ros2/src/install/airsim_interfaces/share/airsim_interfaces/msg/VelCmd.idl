@@ -2,12 +2,27 @@
 // with input from airsim_interfaces/msg/VelCmd.msg
 // generated code does not contain a copyright notice
 
+#include "airsim_interfaces/msg/YawMode.idl"
 #include "geometry_msgs/msg/Twist.idl"
 
 module airsim_interfaces {
   module msg {
+    module VelCmd_Constants {
+      const uint8 DRIVETRAIN_MAX_DEGREE_OF_FREEDOM = 0;
+      const uint8 DRIVETRAIN_FORWARD_ONLY = 1;
+    };
+    @verbatim (language="comment", text=
+      "Velocity command message for multirotor vehicles")
     struct VelCmd {
       geometry_msgs::msg::Twist twist;
+
+      @verbatim (language="comment", text=
+        "Drivetrain type")
+      uint8 drivetrain;
+
+      @verbatim (language="comment", text=
+        "Yaw mode configuration")
+      airsim_interfaces::msg::YawMode yaw_mode;
     };
   };
 };

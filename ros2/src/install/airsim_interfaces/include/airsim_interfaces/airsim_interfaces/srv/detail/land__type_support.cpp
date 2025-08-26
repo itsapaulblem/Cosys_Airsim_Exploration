@@ -156,7 +156,7 @@ void Land_Response_fini_function(void * message_memory)
   typed_message->~Land_Response();
 }
 
-static const ::rosidl_typesupport_introspection_cpp::MessageMember Land_Response_message_member_array[1] = {
+static const ::rosidl_typesupport_introspection_cpp::MessageMember Land_Response_message_member_array[2] = {
   {
     "success",  // name
     ::rosidl_typesupport_introspection_cpp::ROS_TYPE_BOOLEAN,  // type
@@ -173,13 +173,30 @@ static const ::rosidl_typesupport_introspection_cpp::MessageMember Land_Response
     nullptr,  // fetch(index, &value) function pointer
     nullptr,  // assign(index, value) function pointer
     nullptr  // resize(index) function pointer
+  },
+  {
+    "message",  // name
+    ::rosidl_typesupport_introspection_cpp::ROS_TYPE_STRING,  // type
+    0,  // upper bound of string
+    nullptr,  // members of sub message
+    false,  // is array
+    0,  // array size
+    false,  // is upper bound
+    offsetof(airsim_interfaces::srv::Land_Response, message),  // bytes offset in struct
+    nullptr,  // default value
+    nullptr,  // size() function pointer
+    nullptr,  // get_const(index) function pointer
+    nullptr,  // get(index) function pointer
+    nullptr,  // fetch(index, &value) function pointer
+    nullptr,  // assign(index, value) function pointer
+    nullptr  // resize(index) function pointer
   }
 };
 
 static const ::rosidl_typesupport_introspection_cpp::MessageMembers Land_Response_message_members = {
   "airsim_interfaces::srv",  // message namespace
   "Land_Response",  // message name
-  1,  // number of fields
+  2,  // number of fields
   sizeof(airsim_interfaces::srv::Land_Response),
   Land_Response_message_member_array,  // message members
   Land_Response_init_function,  // function to initialize message memory (memory has to be allocated)

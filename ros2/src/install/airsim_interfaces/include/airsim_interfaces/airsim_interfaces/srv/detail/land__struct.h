@@ -36,10 +36,15 @@ typedef struct airsim_interfaces__srv__Land_Request__Sequence
 
 // Constants defined in the message
 
+// Include directives for member types
+// Member 'message'
+#include "rosidl_runtime_c/string.h"
+
 /// Struct defined in srv/Land in the package airsim_interfaces.
 typedef struct airsim_interfaces__srv__Land_Response
 {
   bool success;
+  rosidl_runtime_c__String message;
 } airsim_interfaces__srv__Land_Response;
 
 // Struct for a sequence of airsim_interfaces__srv__Land_Response.

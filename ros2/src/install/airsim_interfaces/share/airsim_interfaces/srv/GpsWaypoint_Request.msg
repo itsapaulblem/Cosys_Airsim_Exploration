@@ -1,0 +1,6 @@
+float64 latitude
+float64 longitude
+float64 altitude
+float64 speed
+float64 tolerance
+bool wait_on_last_task

@@ -1,0 +1,25 @@
+// generated from rosidl_adapter/resource/srv.idl.em
+// with input from airsim_interfaces/srv/SearchTarget.srv
+// generated code does not contain a copyright notice
+
+
+module airsim_interfaces {
+  module srv {
+    struct SearchTarget_Request {
+      uint8 structure_needs_at_least_one_member;
+    };
+    struct SearchTarget_Response {
+      boolean success;
+
+      float target_x;
+
+      float target_y;
+
+      float target_z;
+
+      float confidence;
+
+      string message;
+    };
+  };
+};

@@ -17,6 +17,10 @@
 #include "geometry_msgs/msg/twist.h"
 // Member `twist`
 #include "geometry_msgs/msg/detail/twist__rosidl_typesupport_introspection_c.h"
+// Member `yaw_mode`
+#include "airsim_interfaces/msg/yaw_mode.h"
+// Member `yaw_mode`
+#include "airsim_interfaces/msg/detail/yaw_mode__rosidl_typesupport_introspection_c.h"
 
 #ifdef __cplusplus
 extern "C"
@@ -37,7 +41,7 @@ void airsim_interfaces__msg__VelCmd__rosidl_typesupport_introspection_c__VelCmd_
   airsim_interfaces__msg__VelCmd__fini(message_memory);
 }
 
-static rosidl_typesupport_introspection_c__MessageMember airsim_interfaces__msg__VelCmd__rosidl_typesupport_introspection_c__VelCmd_message_member_array[1] = {
+static rosidl_typesupport_introspection_c__MessageMember airsim_interfaces__msg__VelCmd__rosidl_typesupport_introspection_c__VelCmd_message_member_array[3] = {
   {
     "twist",  // name
     rosidl_typesupport_introspection_c__ROS_TYPE_MESSAGE,  // type
@@ -54,13 +58,47 @@ static rosidl_typesupport_introspection_c__MessageMember airsim_interfaces__msg_
     NULL,  // fetch(index, &value) function pointer
     NULL,  // assign(index, value) function pointer
     NULL  // resize(index) function pointer
+  },
+  {
+    "drivetrain",  // name
+    rosidl_typesupport_introspection_c__ROS_TYPE_UINT8,  // type
+    0,  // upper bound of string
+    NULL,  // members of sub message
+    false,  // is array
+    0,  // array size
+    false,  // is upper bound
+    offsetof(airsim_interfaces__msg__VelCmd, drivetrain),  // bytes offset in struct
+    NULL,  // default value
+    NULL,  // size() function pointer
+    NULL,  // get_const(index) function pointer
+    NULL,  // get(index) function pointer
+    NULL,  // fetch(index, &value) function pointer
+    NULL,  // assign(index, value) function pointer
+    NULL  // resize(index) function pointer
+  },
+  {
+    "yaw_mode",  // name
+    rosidl_typesupport_introspection_c__ROS_TYPE_MESSAGE,  // type
+    0,  // upper bound of string
+    NULL,  // members of sub message (initialized later)
+    false,  // is array
+    0,  // array size
+    false,  // is upper bound
+    offsetof(airsim_interfaces__msg__VelCmd, yaw_mode),  // bytes offset in struct
+    NULL,  // default value
+    NULL,  // size() function pointer
+    NULL,  // get_const(index) function pointer
+    NULL,  // get(index) function pointer
+    NULL,  // fetch(index, &value) function pointer
+    NULL,  // assign(index, value) function pointer
+    NULL  // resize(index) function pointer
   }
 };
 
 static const rosidl_typesupport_introspection_c__MessageMembers airsim_interfaces__msg__VelCmd__rosidl_typesupport_introspection_c__VelCmd_message_members = {
   "airsim_interfaces__msg",  // message namespace
   "VelCmd",  // message name
-  1,  // number of fields
+  3,  // number of fields
   sizeof(airsim_interfaces__msg__VelCmd),
   airsim_interfaces__msg__VelCmd__rosidl_typesupport_introspection_c__VelCmd_message_member_array,  // message members
   airsim_interfaces__msg__VelCmd__rosidl_typesupport_introspection_c__VelCmd_init_function,  // function to initialize message memory (memory has to be allocated)
@@ -80,6 +118,8 @@ const rosidl_message_type_support_t *
 ROSIDL_TYPESUPPORT_INTERFACE__MESSAGE_SYMBOL_NAME(rosidl_typesupport_introspection_c, airsim_interfaces, msg, VelCmd)() {
   airsim_interfaces__msg__VelCmd__rosidl_typesupport_introspection_c__VelCmd_message_member_array[0].members_ =
     ROSIDL_TYPESUPPORT_INTERFACE__MESSAGE_SYMBOL_NAME(rosidl_typesupport_introspection_c, geometry_msgs, msg, Twist)();
+  airsim_interfaces__msg__VelCmd__rosidl_typesupport_introspection_c__VelCmd_message_member_array[2].members_ =
+    ROSIDL_TYPESUPPORT_INTERFACE__MESSAGE_SYMBOL_NAME(rosidl_typesupport_introspection_c, airsim_interfaces, msg, YawMode)();
   if (!airsim_interfaces__msg__VelCmd__rosidl_typesupport_introspection_c__VelCmd_message_type_support_handle.typesupport_identifier) {
     airsim_interfaces__msg__VelCmd__rosidl_typesupport_introspection_c__VelCmd_message_type_support_handle.typesupport_identifier =
       rosidl_typesupport_introspection_c__identifier;

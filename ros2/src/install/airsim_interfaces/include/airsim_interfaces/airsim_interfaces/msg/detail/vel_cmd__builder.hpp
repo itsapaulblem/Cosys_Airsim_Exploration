@@ -21,16 +21,48 @@ namespace msg
 namespace builder
 {
 
+class Init_VelCmd_yaw_mode
+{
+public:
+  explicit Init_VelCmd_yaw_mode(::airsim_interfaces::msg::VelCmd & msg)
+  : msg_(msg)
+  {}
+  ::airsim_interfaces::msg::VelCmd yaw_mode(::airsim_interfaces::msg::VelCmd::_yaw_mode_type arg)
+  {
+    msg_.yaw_mode = std::move(arg);
+    return std::move(msg_);
+  }
+
+private:
+  ::airsim_interfaces::msg::VelCmd msg_;
+};
+
+class Init_VelCmd_drivetrain
+{
+public:
+  explicit Init_VelCmd_drivetrain(::airsim_interfaces::msg::VelCmd & msg)
+  : msg_(msg)
+  {}
+  Init_VelCmd_yaw_mode drivetrain(::airsim_interfaces::msg::VelCmd::_drivetrain_type arg)
+  {
+    msg_.drivetrain = std::move(arg);
+    return Init_VelCmd_yaw_mode(msg_);
+  }
+
+private:
+  ::airsim_interfaces::msg::VelCmd msg_;
+};
+
 class Init_VelCmd_twist
 {
 public:
   Init_VelCmd_twist()
   : msg_(::rosidl_runtime_cpp::MessageInitialization::SKIP)
   {}
-  ::airsim_interfaces::msg::VelCmd twist(::airsim_interfaces::msg::VelCmd::_twist_type arg)
+  Init_VelCmd_drivetrain twist(::airsim_interfaces::msg::VelCmd::_twist_type arg)
   {
     msg_.twist = std::move(arg);
-    return std::move(msg_);
+    return Init_VelCmd_drivetrain(msg_);
   }
 
 private:

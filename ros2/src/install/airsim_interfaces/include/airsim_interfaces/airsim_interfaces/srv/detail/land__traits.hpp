@@ -121,6 +121,13 @@ inline void to_flow_style_yaml(
   {
     out << "success: ";
     rosidl_generator_traits::value_to_yaml(msg.success, out);
+    out << ", ";
+  }
+
+  // member: message
+  {
+    out << "message: ";
+    rosidl_generator_traits::value_to_yaml(msg.message, out);
   }
   out << "}";
 }  // NOLINT(readability/fn_size)
@@ -136,6 +143,16 @@ inline void to_block_style_yaml(
     }
     out << "success: ";
     rosidl_generator_traits::value_to_yaml(msg.success, out);
+    out << "\n";
+  }
+
+  // member: message
+  {
+    if (indentation > 0) {
+      out << std::string(indentation, ' ');
+    }
+    out << "message: ";
+    rosidl_generator_traits::value_to_yaml(msg.message, out);
     out << "\n";
   }
 }  // NOLINT(readability/fn_size)
@@ -186,11 +203,11 @@ inline const char * name<airsim_interfaces::srv::Land_Response>()
 
 template<>
 struct has_fixed_size<airsim_interfaces::srv::Land_Response>
-  : std::integral_constant<bool, true> {};
+  : std::integral_constant<bool, false> {};
 
 template<>
 struct has_bounded_size<airsim_interfaces::srv::Land_Response>
-  : std::integral_constant<bool, true> {};
+  : std::integral_constant<bool, false> {};
 
 template<>
 struct is_message<airsim_interfaces::srv::Land_Response>

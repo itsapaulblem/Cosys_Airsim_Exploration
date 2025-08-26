@@ -20,6 +20,8 @@ class Metaclass_VelCmd(type):
     _TYPE_SUPPORT = None
 
     __constants = {
+        'DRIVETRAIN_MAX_DEGREE_OF_FREEDOM': 0,
+        'DRIVETRAIN_FORWARD_ONLY': 1,
     }
 
     @classmethod
@@ -42,6 +44,10 @@ class Metaclass_VelCmd(type):
             cls._TYPE_SUPPORT = module.type_support_msg__msg__vel_cmd
             cls._DESTROY_ROS_MESSAGE = module.destroy_ros_message_msg__msg__vel_cmd
 
+            from airsim_interfaces.msg import YawMode
+            if YawMode.__class__._TYPE_SUPPORT is None:
+                YawMode.__class__.__import_type_support__()
+
             from geometry_msgs.msg import Twist
             if Twist.__class__._TYPE_SUPPORT is None:
                 Twist.__class__.__import_type_support__()
@@ -52,22 +58,46 @@ class Metaclass_VelCmd(type):
         # the message class under "Data and other attributes defined here:"
         # as well as populate each message instance
         return {
+            'DRIVETRAIN_MAX_DEGREE_OF_FREEDOM': cls.__constants['DRIVETRAIN_MAX_DEGREE_OF_FREEDOM'],
+            'DRIVETRAIN_FORWARD_ONLY': cls.__constants['DRIVETRAIN_FORWARD_ONLY'],
         }
+
+    @property
+    def DRIVETRAIN_MAX_DEGREE_OF_FREEDOM(self):
+        """Message constant 'DRIVETRAIN_MAX_DEGREE_OF_FREEDOM'."""
+        return Metaclass_VelCmd.__constants['DRIVETRAIN_MAX_DEGREE_OF_FREEDOM']
+
+    @property
+    def DRIVETRAIN_FORWARD_ONLY(self):
+        """Message constant 'DRIVETRAIN_FORWARD_ONLY'."""
+        return Metaclass_VelCmd.__constants['DRIVETRAIN_FORWARD_ONLY']
 
 
 class VelCmd(metaclass=Metaclass_VelCmd):
-    """Message class 'VelCmd'."""
+    """
+    Message class 'VelCmd'.
+
+    Constants:
+      DRIVETRAIN_MAX_DEGREE_OF_FREEDOM
+      DRIVETRAIN_FORWARD_ONLY
+    """
 
     __slots__ = [
         '_twist',
+        '_drivetrain',
+        '_yaw_mode',
     ]
 
     _fields_and_field_types = {
         'twist': 'geometry_msgs/Twist',
+        'drivetrain': 'uint8',
+        'yaw_mode': 'airsim_interfaces/YawMode',
     }
 
     SLOT_TYPES = (
         rosidl_parser.definition.NamespacedType(['geometry_msgs', 'msg'], 'Twist'),  # noqa: E501
+        rosidl_parser.definition.BasicType('uint8'),  # noqa: E501
+        rosidl_parser.definition.NamespacedType(['airsim_interfaces', 'msg'], 'YawMode'),  # noqa: E501
     )
 
     def __init__(self, **kwargs):
@@ -76,6 +106,9 @@ class VelCmd(metaclass=Metaclass_VelCmd):
             ', '.join(sorted(k for k in kwargs.keys() if '_' + k not in self.__slots__))
         from geometry_msgs.msg import Twist
         self.twist = kwargs.get('twist', Twist())
+        self.drivetrain = kwargs.get('drivetrain', int())
+        from airsim_interfaces.msg import YawMode
+        self.yaw_mode = kwargs.get('yaw_mode', YawMode())
 
     def __repr__(self):
         typename = self.__class__.__module__.split('.')
@@ -108,6 +141,10 @@ class VelCmd(metaclass=Metaclass_VelCmd):
             return False
         if self.twist != other.twist:
             return False
+        if self.drivetrain != other.drivetrain:
+            return False
+        if self.yaw_mode != other.yaw_mode:
+            return False
         return True
 
     @classmethod
@@ -128,3 +165,32 @@ class VelCmd(metaclass=Metaclass_VelCmd):
                 isinstance(value, Twist), \
                 "The 'twist' field must be a sub message of type 'Twist'"
         self._twist = value
+
+    @builtins.property
+    def drivetrain(self):
+        """Message field 'drivetrain'."""
+        return self._drivetrain
+
+    @drivetrain.setter
+    def drivetrain(self, value):
+        if __debug__:
+            assert \
+                isinstance(value, int), \
+                "The 'drivetrain' field must be of type 'int'"
+            assert value >= 0 and value < 256, \
+                "The 'drivetrain' field must be an unsigned integer in [0, 255]"
+        self._drivetrain = value
+
+    @builtins.property
+    def yaw_mode(self):
+        """Message field 'yaw_mode'."""
+        return self._yaw_mode
+
+    @yaw_mode.setter
+    def yaw_mode(self, value):
+        if __debug__:
+            from airsim_interfaces.msg import YawMode
+            assert \
+                isinstance(value, YawMode), \
+                "The 'yaw_mode' field must be a sub message of type 'YawMode'"
+        self._yaw_mode = value

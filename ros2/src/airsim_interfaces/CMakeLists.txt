@@ -6,6 +6,8 @@ project(airsim_interfaces)
 set(CMAKE_CXX_STANDARD 17)
 if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
   add_compile_options(-Wall -Wextra -Wpedantic)
+  add_compile_options(-Wno-class-memaccess)
+  add_compile_options(-Wno-unused-variable)
 endif()
 
 find_package(ament_cmake REQUIRED)
@@ -30,6 +32,7 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "msg/StringArray.msg"
   "msg/Altimeter.msg"
   "msg/Environment.msg"
+  "msg/TargetDetection.msg"
   "srv/GpsWaypoint.srv"
   "srv/SetGPSPosition.srv"
   "srv/Takeoff.srv"
@@ -40,7 +43,9 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "srv/RefreshInstanceSegmentation.srv"
   "srv/RefreshObjectTransforms.srv"
   "srv/SetLocalPosition.srv"
-  "srv/ListSceneObjectTags.srv" 
+  "srv/ListSceneObjectTags.srv"
+  "srv/SearchTarget.srv"
+  "srv/TrackTarget.srv"
   DEPENDENCIES std_msgs geometry_msgs geographic_msgs
 )
 

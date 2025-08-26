@@ -1,0 +1,29 @@
+// generated from rosidl_adapter/resource/srv.idl.em
+// with input from airsim_interfaces/srv/GpsWaypoint.srv
+// generated code does not contain a copyright notice
+
+
+module airsim_interfaces {
+  module srv {
+    struct GpsWaypoint_Request {
+      double latitude;
+
+      double longitude;
+
+      double altitude;
+
+      double speed;
+
+      double tolerance;
+
+      boolean wait_on_last_task;
+    };
+    struct GpsWaypoint_Response {
+      boolean success;
+
+      string message;
+
+      double final_distance;
+    };
+  };
+};

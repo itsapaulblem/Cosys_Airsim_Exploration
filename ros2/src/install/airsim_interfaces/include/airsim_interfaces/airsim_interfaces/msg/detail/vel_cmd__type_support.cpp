@@ -37,7 +37,7 @@ void VelCmd_fini_function(void * message_memory)
   typed_message->~VelCmd();
 }
 
-static const ::rosidl_typesupport_introspection_cpp::MessageMember VelCmd_message_member_array[1] = {
+static const ::rosidl_typesupport_introspection_cpp::MessageMember VelCmd_message_member_array[3] = {
   {
     "twist",  // name
     ::rosidl_typesupport_introspection_cpp::ROS_TYPE_MESSAGE,  // type
@@ -54,13 +54,47 @@ static const ::rosidl_typesupport_introspection_cpp::MessageMember VelCmd_messag
     nullptr,  // fetch(index, &value) function pointer
     nullptr,  // assign(index, value) function pointer
     nullptr  // resize(index) function pointer
+  },
+  {
+    "drivetrain",  // name
+    ::rosidl_typesupport_introspection_cpp::ROS_TYPE_UINT8,  // type
+    0,  // upper bound of string
+    nullptr,  // members of sub message
+    false,  // is array
+    0,  // array size
+    false,  // is upper bound
+    offsetof(airsim_interfaces::msg::VelCmd, drivetrain),  // bytes offset in struct
+    nullptr,  // default value
+    nullptr,  // size() function pointer
+    nullptr,  // get_const(index) function pointer
+    nullptr,  // get(index) function pointer
+    nullptr,  // fetch(index, &value) function pointer
+    nullptr,  // assign(index, value) function pointer
+    nullptr  // resize(index) function pointer
+  },
+  {
+    "yaw_mode",  // name
+    ::rosidl_typesupport_introspection_cpp::ROS_TYPE_MESSAGE,  // type
+    0,  // upper bound of string
+    ::rosidl_typesupport_introspection_cpp::get_message_type_support_handle<airsim_interfaces::msg::YawMode>(),  // members of sub message
+    false,  // is array
+    0,  // array size
+    false,  // is upper bound
+    offsetof(airsim_interfaces::msg::VelCmd, yaw_mode),  // bytes offset in struct
+    nullptr,  // default value
+    nullptr,  // size() function pointer
+    nullptr,  // get_const(index) function pointer
+    nullptr,  // get(index) function pointer
+    nullptr,  // fetch(index, &value) function pointer
+    nullptr,  // assign(index, value) function pointer
+    nullptr  // resize(index) function pointer
   }
 };
 
 static const ::rosidl_typesupport_introspection_cpp::MessageMembers VelCmd_message_members = {
   "airsim_interfaces::msg",  // message namespace
   "VelCmd",  // message name
-  1,  // number of fields
+  3,  // number of fields
   sizeof(airsim_interfaces::msg::VelCmd),
   VelCmd_message_member_array,  // message members
   VelCmd_init_function,  // function to initialize message memory (memory has to be allocated)

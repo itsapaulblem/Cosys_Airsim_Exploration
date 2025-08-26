@@ -111,6 +111,9 @@ PyObject * airsim_interfaces__srv__takeoff__request__convert_to_py(void * raw_ro
 // already included above
 // #include "airsim_interfaces/srv/detail/takeoff__functions.h"
 
+#include "rosidl_runtime_c/string.h"
+#include "rosidl_runtime_c/string_functions.h"
+
 
 ROSIDL_GENERATOR_C_EXPORT
 bool airsim_interfaces__srv__takeoff__response__convert_from_py(PyObject * _pymsg, void * _ros_message)
@@ -154,6 +157,21 @@ bool airsim_interfaces__srv__takeoff__response__convert_from_py(PyObject * _pyms
     ros_message->success = (Py_True == field);
     Py_DECREF(field);
   }
+  {  // message
+    PyObject * field = PyObject_GetAttrString(_pymsg, "message");
+    if (!field) {
+      return false;
+    }
+    assert(PyUnicode_Check(field));
+    PyObject * encoded_field = PyUnicode_AsUTF8String(field);
+    if (!encoded_field) {
+      Py_DECREF(field);
+      return false;
+    }
+    rosidl_runtime_c__String__assign(&ros_message->message, PyBytes_AS_STRING(encoded_field));
+    Py_DECREF(encoded_field);
+    Py_DECREF(field);
+  }
 
   return true;
 }
@@ -181,6 +199,23 @@ PyObject * airsim_interfaces__srv__takeoff__response__convert_to_py(void * raw_r
     field = PyBool_FromLong(ros_message->success ? 1 : 0);
     {
       int rc = PyObject_SetAttrString(_pymessage, "success", field);
+      Py_DECREF(field);
+      if (rc) {
+        return NULL;
+      }
+    }
+  }
+  {  // message
+    PyObject * field = NULL;
+    field = PyUnicode_DecodeUTF8(
+      ros_message->message.data,
+      strlen(ros_message->message.data),
+      "replace");
+    if (!field) {
+      return NULL;
+    }
+    {
+      int rc = PyObject_SetAttrString(_pymessage, "message", field);
       Py_DECREF(field);
       if (rc) {
         return NULL;
