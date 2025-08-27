@@ -270,9 +270,39 @@ install(TARGETS
   ARCHIVE DESTINATION lib
   LIBRARY DESTINATION lib)
 
+# Install Python scripts
+install(PROGRAMS
+  scripts/motion_detection_node.py
+  DESTINATION lib/${PROJECT_NAME}
+)
+
+# Install Python modules
+install(DIRECTORY
+  scripts/ai_detection/
+  DESTINATION lib/${PROJECT_NAME}/ai_detection
+  PATTERN "__pycache__" EXCLUDE
+  PATTERN "*.pyc" EXCLUDE
+)
+
+# Install car_joy scripts if they exist
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/scripts/car_joy")
+  install(DIRECTORY
+    scripts/car_joy/
+    DESTINATION lib/${PROJECT_NAME}/car_joy
+    PATTERN "__pycache__" EXCLUDE
+    PATTERN "*.pyc" EXCLUDE
+  )
+endif()
+
 # Install additional files
 install(FILES README.md DESTINATION share/${PROJECT_NAME})
 install(DIRECTORY launch rviz DESTINATION share/${PROJECT_NAME})
+
+# Install Python package requirements
+install(FILES 
+  requirements.txt
+  DESTINATION share/${PROJECT_NAME}
+)
 
 #============================================================================
 # EXPORT DEPENDENCIES
@@ -280,6 +310,7 @@ install(DIRECTORY launch rviz DESTINATION share/${PROJECT_NAME})
 
 # Core ROS2 dependencies
 ament_export_dependencies(rclcpp)
+ament_export_dependencies(rclpy)
 ament_export_dependencies(nav_msgs)
 ament_export_dependencies(sensor_msgs)
 ament_export_dependencies(geometry_msgs)

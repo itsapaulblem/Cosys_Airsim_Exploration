@@ -4,6 +4,7 @@
 #include "vehicles/multirotor/api/MultirotorRpcLibClient.hpp"
 
 #include <airsim_interfaces/msg/environment.hpp>
+#include <airsim_interfaces/msg/target_detection.hpp>
 #include <airsim_interfaces/msg/vel_cmd.hpp>
 #include <airsim_interfaces/srv/gps_waypoint.hpp>
 #include <airsim_interfaces/srv/takeoff.hpp>
@@ -11,7 +12,6 @@
 #include <airsim_interfaces/srv/set_local_position.hpp>
 #include <airsim_interfaces/srv/search_target.hpp>
 #include <airsim_interfaces/srv/track_target.hpp>
-#include <airsim_interfaces/msg/target_detection.hpp>
 #include <geometry_msgs/msg/twist.hpp>
 #include <sensor_msgs/msg/image.hpp>
 #include <sensor_msgs/msg/imu.hpp>
@@ -52,8 +52,7 @@ private:
     // Velocity command structure
     struct VelCmd {
         float x, y, z;
-        msr::airlib::DrivetrainType drivetrain;
-        msr::airlib::YawMode yaw_mode;
+        float duration;  // Added duration field to match implementation
     };
 
     // Service callbacks
@@ -64,10 +63,6 @@ private:
     bool land_callback(
         const std::shared_ptr<airsim_interfaces::srv::Land::Request> request,
         std::shared_ptr<airsim_interfaces::srv::Land::Response> response);
-        
-    bool set_local_position_callback(
-        const std::shared_ptr<airsim_interfaces::srv::SetLocalPosition::Request> request,
-        std::shared_ptr<airsim_interfaces::srv::SetLocalPosition::Response> response);
         
     bool gps_waypoint_callback(
         const std::shared_ptr<airsim_interfaces::srv::GpsWaypoint::Request> request,
@@ -85,17 +80,17 @@ private:
     // Subscriber callbacks
     void vel_cmd_body_frame_callback(const airsim_interfaces::msg::VelCmd::SharedPtr msg);
     void vel_cmd_world_frame_callback(const airsim_interfaces::msg::VelCmd::SharedPtr msg);
-    void twist_cmd_callback(const geometry_msgs::msg::Twist::SharedPtr msg);
-
-    // LiDAR processing for target detection
-    void process_lidar_for_targets();
-    bool detect_circular_spline(const std::vector<float>& point_cloud, 
-                               float& center_x, float& center_y, float& radius, float& confidence);
+    void motion_detection_callback(const airsim_interfaces::msg::TargetDetection::SharedPtr msg);
 
     // Sensor publishing methods
     void publish_imu_data();
     void publish_magnetometer_data();
     void publish_barometer_data();
+    void publish_gps_data();
+    void publish_environment_data();
+    void publish_tf_data();
+    void publish_system_status();
+    void publish_static_transforms();
 
     // Utility methods
     void update_vehicle_state();
@@ -108,15 +103,24 @@ private:
     nav_msgs::msg::Odometry get_odom_from_multirotor_state(const msr::airlib::MultirotorState& state);
     void process_gpulidar();
     void process_echo();
-    void publish_gps_data();
-    void publish_environment_data();
-    void publish_tf_data();
-    void publish_system_status();
-    void publish_static_transforms();
+
+    // Motion target structure (replaces old target detection)
+    struct MotionTargetInfo {
+        float x, y, z;
+        float confidence;
+        int track_id;
+        std::chrono::steady_clock::time_point last_seen;
+
+        MotionTargetInfo() : x(0), y(0), z(0), confidence(0), track_id(-1), 
+                            last_seen(std::chrono::steady_clock::now()) {}
+    };
+
+    MotionTargetInfo current_motion_target_;
+    std::mutex motion_target_mutex_;
 
 private:
     // Publishers
-    std::vector<rclcpp::Publisher<sensor_msgs::msg::Image>::SharedPtr> camera_pubs_;
+    std::vector<rclcpp::Publisher<sensor_msgs::msg::Image>::SharedPtr> image_pubs_;  // Changed from camera_pubs_
     std::vector<rclcpp::Publisher<sensor_msgs::msg::CameraInfo>::SharedPtr> camera_info_pubs_;
     std::vector<rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr> lidar_pubs_;
     rclcpp::Publisher<sensor_msgs::msg::Imu>::SharedPtr imu_pub_;
@@ -127,43 +131,35 @@ private:
     rclcpp::Publisher<sensor_msgs::msg::NavSatFix>::SharedPtr gps_pub_;
     rclcpp::Publisher<airsim_interfaces::msg::Environment>::SharedPtr env_pub_;
     rclcpp::Publisher<std_msgs::msg::String>::SharedPtr system_status_pub_;
+    rclcpp::Publisher<airsim_interfaces::msg::TargetDetection>::SharedPtr target_detection_pub_;
+
     std::shared_ptr<tf2_ros::TransformBroadcaster> tf_broadcaster_;
     std::shared_ptr<tf2_ros::StaticTransformBroadcaster> static_tf_broadcaster_;
     bool static_transforms_published_;
 
-    // Target detection publisher
-    rclcpp::Publisher<airsim_interfaces::msg::TargetDetection>::SharedPtr target_detection_pub_;
-
     // Subscribers
     rclcpp::Subscription<airsim_interfaces::msg::VelCmd>::SharedPtr vel_cmd_body_frame_sub_;
     rclcpp::Subscription<airsim_interfaces::msg::VelCmd>::SharedPtr vel_cmd_world_frame_sub_;
-    rclcpp::Subscription<geometry_msgs::msg::Twist>::SharedPtr twist_cmd_sub_;
+    rclcpp::Subscription<airsim_interfaces::msg::TargetDetection>::SharedPtr motion_detection_sub_;
 
-    // Services
-    rclcpp::Service<airsim_interfaces::srv::Takeoff>::SharedPtr takeoff_service_;
-    rclcpp::Service<airsim_interfaces::srv::Land>::SharedPtr land_service_;
-    rclcpp::Service<airsim_interfaces::srv::SetLocalPosition>::SharedPtr set_local_position_service_;
-    rclcpp::Service<airsim_interfaces::srv::GpsWaypoint>::SharedPtr gps_waypoint_service_;
-    
-    // Search and tracking services
-    rclcpp::Service<airsim_interfaces::srv::SearchTarget>::SharedPtr search_target_service_;
-    rclcpp::Service<airsim_interfaces::srv::TrackTarget>::SharedPtr track_target_service_;
+    // Services (updated names to match implementation)
+    rclcpp::Service<airsim_interfaces::srv::Takeoff>::SharedPtr takeoff_srv_;
+    rclcpp::Service<airsim_interfaces::srv::Land>::SharedPtr land_srv_;
+    rclcpp::Service<airsim_interfaces::srv::GpsWaypoint>::SharedPtr gps_waypoint_srv_;
+    rclcpp::Service<airsim_interfaces::srv::SearchTarget>::SharedPtr search_target_srv_;
+    rclcpp::Service<airsim_interfaces::srv::TrackTarget>::SharedPtr track_target_srv_;
 
     // Timer
     rclcpp::TimerBase::SharedPtr timer_;
 
     // State
     rclcpp::Time stamp_;
-    msr::airlib::MultirotorState curr_drone_state_;
-    nav_msgs::msg::Odometry curr_odom_;
-    
-    // Target tracking state
-    struct DetectedTarget {
-        float x = 0.0f, y = 0.0f, z = 0.0f;
-        float radius = 0.0f;
-        float confidence = 0.0f;
-        std::chrono::steady_clock::time_point last_seen;
-    };
-    DetectedTarget current_target_;
-    std::mutex target_mutex_;
+    msr::airlib::MultirotorState vehicle_state_;
+
+    // Velocity command state
+    airsim_interfaces::msg::VelCmd vel_cmd_body_frame_;
+    airsim_interfaces::msg::VelCmd vel_cmd_world_frame_;
+    bool has_new_vel_cmd_body_frame_ = false;
+    bool has_new_vel_cmd_world_frame_ = false;
+    std::mutex vel_cmd_mutex_;
 };
