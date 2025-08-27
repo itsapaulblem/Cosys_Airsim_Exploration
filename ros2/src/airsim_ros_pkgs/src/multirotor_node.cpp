@@ -61,7 +61,7 @@ MultirotorNode::MultirotorNode(const std::string& vehicle_name,
         std::bind(&MultirotorNode::motion_detection_callback, this, std::placeholders::_1));
     
     timer_ = this->create_wall_timer(
-        std::chrono::milliseconds(20),
+        std::chrono::milliseconds(100),
         [this]() {
             stamp_ = this->get_clock()->now();
             
@@ -506,6 +506,10 @@ void MultirotorNode::publish_tf_data()
         transform_stamped.transform.rotation.z = ori.z();
         transform_stamped.transform.rotation.w = ori.w();
         
+        tf2_msgs::msg::TFMessage tf_msg;
+        tf_msg.transforms.push_back(transform_stamped);
+        tf_pub_->publish(tf_msg);
+
         tf_broadcaster_->sendTransform(transform_stamped);
     }
     catch (const std::exception& e) {
@@ -682,54 +686,107 @@ void MultirotorNode::process_images()
 {
     try {
         auto multirotor_client_images = static_cast<msr::airlib::MultirotorRpcLibClient*>(airsim_client_images_.get());
+
+        std::vector<msr::airlib::ImageCaptureBase::ImageRequest> requests;
+
+        // Create requests for all 4 cameras
+        for (int i = 0; i < 4; ++i) {
+            requests.push_back(
+                msr::airlib::ImageCaptureBase::ImageRequest(
+                    std::to_string(i),
+                    msr::airlib::ImageCaptureBase::ImageType::Scene,
+                    false, false
+                )
+            );
+        }
+                
+        auto responses = multirotor_client_images->simGetImages(requests, vehicle_name_);
         
-        // Only use the default camera (camera 0)
-        if (!image_pubs_.empty()) {
-            try {
-                std::vector<msr::airlib::ImageCaptureBase::ImageRequest> requests = {
-                    msr::airlib::ImageCaptureBase::ImageRequest("0", 
-                                                              msr::airlib::ImageCaptureBase::ImageType::Scene, 
-                                                              false, false)
-                };
-                
-                auto responses = multirotor_client_images->simGetImages(requests, vehicle_name_);
-                
-                if (!responses.empty() && responses[0].image_data_uint8.size() > 0) {
+        for (size_t i = 0; i < responses.size() && i < image_pubs_.size(); ++i) {
+            if (responses[i].image_data_uint8.size() > 0) {
+                try {
                     sensor_msgs::msg::Image image_msg;
                     image_msg.header.stamp = stamp_;
-                    image_msg.header.frame_id = vehicle_name_ + "/camera0";
-                    image_msg.height = responses[0].height;
-                    image_msg.width = responses[0].width;
+                    image_msg.header.frame_id = vehicle_name_ + "/camera" + std::to_string(i);
+                    image_msg.height = responses[i].height;
+                    image_msg.width = responses[i].width;
                     image_msg.encoding = "rgb8";
                     image_msg.step = image_msg.width * 3;
-                    image_msg.data = responses[0].image_data_uint8;
-                    
-                    image_pubs_[0]->publish(image_msg);
+                    image_msg.data = responses[i].image_data_uint8;
+
+                    image_pubs_[i]->publish(image_msg);
                     
                     // Publish camera info
-                    sensor_msgs::msg::CameraInfo camera_info;
-                    camera_info.header = image_msg.header;
-                    camera_info.width = image_msg.width;
-                    camera_info.height = image_msg.height;
+                    if (i < camera_info_pubs_.size()) {
+                        sensor_msgs::msg::CameraInfo camera_info;
+                        camera_info.header = image_msg.header;
+                        camera_info.width = image_msg.width;
+                        camera_info.height = image_msg.height;
+                        
+                        // Set basic camera parameters
+                        camera_info.distortion_model = "plumb_bob";
+                        camera_info.d.resize(5, 0.0);
+                        
+                        // Set camera matrix (basic values - adjust based on your camera specs)
+                        camera_info.k.fill(0.0);
+                        camera_info.k[0] = image_msg.width * 0.8;  // fx
+                        camera_info.k[4] = image_msg.height * 0.8; // fy  
+                        camera_info.k[2] = image_msg.width / 2.0;  // cx
+                        camera_info.k[5] = image_msg.height / 2.0; // cy
+                        camera_info.k[8] = 1.0;
+                        
+                        // Set rectification matrix (identity)
+                        camera_info.r.fill(0.0);
+                        camera_info.r[0] = camera_info.r[4] = camera_info.r[8] = 1.0;
+                        
+                        // Set projection matrix
+                        camera_info.p.fill(0.0);
+                        camera_info.p[0] = camera_info.k[0];   // fx
+                        camera_info.p[5] = camera_info.k[4];   // fy
+                        camera_info.p[2] = camera_info.k[2];   // cx
+                        camera_info.p[6] = camera_info.k[5];   // cy
+                        camera_info.p[10] = 1.0;
+                        
+                        camera_info_pubs_[i]->publish(camera_info);
+                    }
                     
-                    camera_info_pubs_[0]->publish(camera_info);
+                    // **DEBUG: Log occasionally for each camera**
+                    static int image_counts[4] = {0, 0, 0, 0};
+                    if (++image_counts[i] % 100 == 0) {
+                        RCLCPP_DEBUG(this->get_logger(), "Published camera%d image %d: %dx%d", 
+                                   static_cast<int>(i), image_counts[i], responses[i].width, responses[i].height);
+                    }
+                    
+                } catch (const std::exception& e) {
+                    RCLCPP_ERROR_THROTTLE(this->get_logger(), *this->get_clock(), 5000,
+                                         "Error processing camera%zu: %s", i, e.what());
                 }
-                
-            } catch (const rpc::rpc_error& e) {
-                RCLCPP_ERROR_THROTTLE(this->get_logger(), *this->get_clock(), 5000,
-                                     "Camera error: %s", e.what());
+            } else {
+                // **Log when a camera has no data (throttled to avoid spam)**
+                RCLCPP_DEBUG_THROTTLE(this->get_logger(), *this->get_clock(), 10000,
+                                     "Camera%zu: No image data received", i);
             }
         }
-    }
-    catch (const std::exception& e) {
+        
+        // **Log if we got fewer responses than expected**
+        if (responses.size() < 4) {
+            RCLCPP_WARN_THROTTLE(this->get_logger(), *this->get_clock(), 10000,
+                                "Expected 4 camera responses, got %zu", responses.size());
+        }
+        
+    } catch (const rpc::rpc_error& e) {
+        RCLCPP_ERROR_THROTTLE(this->get_logger(), *this->get_clock(), 5000,
+                             "Camera RPC error: %s", e.what());
+    } catch (const std::exception& e) {
         RCLCPP_ERROR_THROTTLE(this->get_logger(), *this->get_clock(), 5000,
                              "Error in image processing: %s", e.what());
     }
 }
 
+
 void MultirotorNode::process_lidar()
 {
-    try {
+        try {
         auto multirotor_client = static_cast<msr::airlib::MultirotorRpcLibClient*>(airsim_client_lidar_.get());
         auto lidar_data = multirotor_client->getLidarData("Lidar1", vehicle_name_);
 
@@ -738,30 +795,83 @@ void MultirotorNode::process_lidar()
             lidar_msg.header.stamp = stamp_;
             lidar_msg.header.frame_id = vehicle_name_ + "/lidar";
             
-            lidar_msg.height = 1;
-            lidar_msg.width = lidar_data.point_cloud.size() / 3;
-            lidar_msg.is_bigendian = false;
-            lidar_msg.point_step = 12;
-            lidar_msg.row_step = lidar_msg.point_step * lidar_msg.width;
-            lidar_msg.is_dense = true;
+            // Calculate number of points (AirSim gives XYZ, so 3 floats per point)
+            size_t num_points = lidar_data.point_cloud.size() / 3;
             
+            lidar_msg.height = 1;
+            lidar_msg.width = num_points;
+            lidar_msg.is_bigendian = false;
+            lidar_msg.point_step = 12; // 3 floats × 4 bytes each = 12 bytes per point
+            lidar_msg.row_step = lidar_msg.point_step * lidar_msg.width;
+            lidar_msg.is_dense = false; // Set to false in case of NaN/inf values
+            
+            // Define point fields (XYZ)
             sensor_msgs::msg::PointField field_x, field_y, field_z;
-            field_x.name = "x"; field_x.offset = 0; field_x.datatype = sensor_msgs::msg::PointField::FLOAT32; field_x.count = 1;
-            field_y.name = "y"; field_y.offset = 4; field_y.datatype = sensor_msgs::msg::PointField::FLOAT32; field_y.count = 1;
-            field_z.name = "z"; field_z.offset = 8; field_z.datatype = sensor_msgs::msg::PointField::FLOAT32; field_z.count = 1;
+            field_x.name = "x"; 
+            field_x.offset = 0; 
+            field_x.datatype = sensor_msgs::msg::PointField::FLOAT32; 
+            field_x.count = 1;
+            
+            field_y.name = "y"; 
+            field_y.offset = 4; 
+            field_y.datatype = sensor_msgs::msg::PointField::FLOAT32; 
+            field_y.count = 1;
+            
+            field_z.name = "z"; 
+            field_z.offset = 8; 
+            field_z.datatype = sensor_msgs::msg::PointField::FLOAT32; 
+            field_z.count = 1;
             
             lidar_msg.fields = {field_x, field_y, field_z};
             
+            // **CRITICAL FIX: Properly convert AirSim data to ROS2 format**
             lidar_msg.data.resize(lidar_msg.row_step);
-            std::memcpy(lidar_msg.data.data(), lidar_data.point_cloud.data(), lidar_msg.row_step);
             
-            if (!lidar_pubs_.empty()) {
-                lidar_pubs_[0]->publish(lidar_msg);
+            // Convert point cloud data properly
+            for (size_t i = 0; i < num_points; ++i) {
+                if (i * 3 + 2 < lidar_data.point_cloud.size()) {
+                    // Extract XYZ coordinates from AirSim data
+                    float x = lidar_data.point_cloud[i * 3 + 0];
+                    float y = lidar_data.point_cloud[i * 3 + 1]; 
+                    float z = lidar_data.point_cloud[i * 3 + 2];
+                    
+                    // Skip invalid points
+                    if (std::isnan(x) || std::isnan(y) || std::isnan(z) ||
+                        std::isinf(x) || std::isinf(y) || std::isinf(z)) {
+                        continue;
+                    }
+                    
+                    // Copy coordinates to message data buffer
+                    size_t byte_offset = i * 12; // 12 bytes per point
+                    
+                    std::memcpy(&lidar_msg.data[byte_offset + 0], &x, 4);
+                    std::memcpy(&lidar_msg.data[byte_offset + 4], &y, 4);
+                    std::memcpy(&lidar_msg.data[byte_offset + 8], &z, 4);
+                }
             }
+            
+            if (!lidar_pubs_.empty() && num_points > 0) {
+                lidar_pubs_[0]->publish(lidar_msg);
+                
+                // Debug info - log occasionally
+                static int lidar_count = 0;
+                if (++lidar_count % 50 == 0) {
+                    RCLCPP_DEBUG(this->get_logger(), 
+                               "Published LiDAR data: %zu points from %zu raw values", 
+                               num_points, lidar_data.point_cloud.size());
+                }
+            }
+        } else {
+            RCLCPP_WARN_THROTTLE(this->get_logger(), *this->get_clock(), 5000,
+                                "LiDAR data too small: %zu values", lidar_data.point_cloud.size());
         }
     }
     catch (const rpc::rpc_error& e) {
         handle_rpc_error(e, "lidar processing");
+    }
+    catch (const std::exception& e) {
+        RCLCPP_ERROR_THROTTLE(this->get_logger(), *this->get_clock(), 5000,
+                             "Error in LiDAR processing: %s", e.what());
     }
 }
 
@@ -779,13 +889,13 @@ bool MultirotorNode::search_target_callback(
     const std::shared_ptr<airsim_interfaces::srv::SearchTarget::Request> request,
     std::shared_ptr<airsim_interfaces::srv::SearchTarget::Response> response)
 {
-    RCLCPP_INFO(this->get_logger(), "Motion-based search target request for %s: radius=%.1f, time=%.1f, confidence=%.2f", 
-               vehicle_name_.c_str(), request->search_radius, request->search_time, request->min_confidence);
+    RCLCPP_INFO(this->get_logger(), "Stationary AI search for %s: time=%.1f, confidence=%.2f", 
+               vehicle_name_.c_str(), request->search_time, request->min_confidence);
     
     try {
         auto multirotor_client = static_cast<msr::airlib::MultirotorRpcLibClient*>(airsim_client_.get());
         
-        // Check drone readiness
+        // Check drone state
         auto current_state = multirotor_client->getMultirotorState(vehicle_name_);
         bool api_control_enabled = multirotor_client->isApiControlEnabled(vehicle_name_);
         
@@ -796,7 +906,7 @@ bool MultirotorNode::search_target_callback(
         
         if (current_state.landed_state != msr::airlib::LandedState::Flying) {
             response->success = false;
-            response->message = "Drone " + vehicle_name_ + " must be airborne before searching.";
+            response->message = "Drone " + vehicle_name_ + " must be airborne before searching";
             return true;
         }
         
@@ -822,115 +932,81 @@ bool MultirotorNode::search_target_callback(
             return true;
         }
         
-        // **CRITICAL FIX: Get initial position ONCE and use it for all waypoints**
-        const auto& start_pos = current_state.kinematics_estimated.pose.position;
-        float search_altitude = start_pos.z();
-        if (search_altitude > -0.5f) {
-            search_altitude = -2.0f;
+        RCLCPP_INFO(this->get_logger(), "Starting stationary AI search - hovering and using camera + YOLO detection");
+        
+        // Establish stable hover state
+        try {
+            auto hover_task = multirotor_client->hoverAsync(vehicle_name_);
+            hover_task->waitOnLastTask();
+            RCLCPP_INFO(this->get_logger(), "Drone %s established hover state", vehicle_name_.c_str());
+        } catch (const rpc::rpc_error& e) {
+            RCLCPP_WARN(this->get_logger(), "Failed to establish hover for %s: %s", vehicle_name_.c_str(), e.what());
         }
-        
-        RCLCPP_INFO(this->get_logger(), "Starting motion-based search pattern from position: (%.2f, %.2f, %.2f)",
-                   start_pos.x(), start_pos.y(), start_pos.z());
-        
-        // Much smaller, safer search pattern
-        float actual_radius = std::min(request->search_radius * 0.2f, 10.0f); // Even smaller!
-        std::vector<std::pair<float, float>> search_offsets = {
-            {actual_radius, 0.0f},                                    // East
-            {actual_radius * 0.7f, actual_radius * 0.7f},           // Northeast
-            {0.0f, actual_radius},                                   // North  
-            {-actual_radius * 0.7f, actual_radius * 0.7f},          // Northwest
-            {-actual_radius, 0.0f},                                  // West
-            {-actual_radius * 0.7f, -actual_radius * 0.7f},         // Southwest
-            {0.0f, -actual_radius},                                  // South
-            {actual_radius * 0.7f, -actual_radius * 0.7f}           // Southeast
-        };
         
         auto search_start_time = std::chrono::steady_clock::now();
         bool moving_target_found = false;
         
-        for (size_t i = 0; i < search_offsets.size() && !moving_target_found; ++i) {
-            // Check time limit
-            auto elapsed_time = std::chrono::duration_cast<std::chrono::seconds>(
-                std::chrono::steady_clock::now() - search_start_time);
+        RCLCPP_INFO(this->get_logger(), "Monitoring AI detection system for %.0f seconds...", request->search_time);
+        
+        // Monitor for AI detections while hovering
+        while (std::chrono::duration_cast<std::chrono::seconds>(
+                std::chrono::steady_clock::now() - search_start_time).count() < request->search_time) {
             
-            if (elapsed_time.count() >= request->search_time) {
-                RCLCPP_WARN(this->get_logger(), "Motion search time limit exceeded for %s", vehicle_name_.c_str());
+            // Sleep for a short time to avoid busy waiting
+            std::this_thread::sleep_for(std::chrono::milliseconds(500));
+            
+            // Check if moving target detected by AI system
+            auto detection_time = std::chrono::duration_cast<std::chrono::seconds>(
+                std::chrono::steady_clock::now() - current_motion_target_.last_seen);
+                
+            if (current_motion_target_.confidence >= request->min_confidence && detection_time.count() < 3) {
+                RCLCPP_INFO(this->get_logger(), "Moving target detected by AI during search! Confidence: %.2f", 
+                           current_motion_target_.confidence);
+                moving_target_found = true;
                 break;
             }
             
-            // **CRITICAL FIX: Calculate waypoint from INITIAL position, not current position**
-            float search_x = start_pos.x() + search_offsets[i].first; 
-            float search_y = start_pos.y() + search_offsets[i].second;
-            
-            RCLCPP_INFO(this->get_logger(), "Moving to motion search waypoint %zu: (%.2f, %.2f, %.2f)",
-                       i + 1, search_x, search_y, search_altitude);
-            
-            try {
-                // Don't cancel tasks - this can cause issues
-                // multirotor_client->cancelLastTask(vehicle_name_);
-                
-                auto task = multirotor_client->moveToPositionAsync(
-                    search_x, search_y, search_altitude,
-                    1.5f,   // Reasonable speed
-                    30.0f,  // Shorter timeout
-                    msr::airlib::DrivetrainType::MaxDegreeOfFreedom,
-                    msr::airlib::YawMode(false, 0.0f),
-                    -1, 1, vehicle_name_);
-                
-                task->waitOnLastTask();
-                RCLCPP_INFO(this->get_logger(), "Reached motion search waypoint %zu", i + 1);
-                
-                // Hover at position for motion detection
-                multirotor_client->hoverAsync(vehicle_name_);
-                std::this_thread::sleep_for(std::chrono::milliseconds(2000));
-                
-                // Check if moving target detected
-                auto detection_time = std::chrono::duration_cast<std::chrono::seconds>(
-                    std::chrono::steady_clock::now() - current_motion_target_.last_seen);
-                    
-                if (current_motion_target_.confidence >= request->min_confidence && detection_time.count() < 3) {
-                    RCLCPP_INFO(this->get_logger(), "Moving target detected during search at waypoint %zu", i + 1);
-                    moving_target_found = true;
-                    break;
-                }
-                
-            } catch (const rpc::rpc_error& e) {
-                RCLCPP_ERROR(this->get_logger(), "RPC error at motion search waypoint %zu: %s", i + 1, e.what());
-                try {
-                    multirotor_client->hoverAsync(vehicle_name_)->waitOnLastTask();
-                    RCLCPP_WARN(this->get_logger(), "Recovered to hover after RPC error");
-                } catch (...) {
-                    RCLCPP_ERROR(this->get_logger(), "Failed to recover from RPC error");
-                }
-                continue;
+            // Log progress periodically
+            auto elapsed = std::chrono::duration_cast<std::chrono::seconds>(
+                std::chrono::steady_clock::now() - search_start_time).count();
+            if (elapsed % 10 == 0 && elapsed > 0) {
+                RCLCPP_INFO(this->get_logger(), "AI search in progress... %ld/%0.f seconds", 
+                           elapsed, request->search_time);
             }
         }
         
-        // Final response
-        if (moving_target_found && current_motion_target_.confidence >= request->min_confidence) {
+        // Response
+        if (moving_target_found) {
             response->success = true;
             response->target_x = current_motion_target_.x;
             response->target_y = current_motion_target_.y;
             response->target_z = current_motion_target_.z;
             response->confidence = current_motion_target_.confidence;
-            response->message = "Moving target found by " + vehicle_name_;
+            response->message = "Moving target found via AI vision system";
+            
+            RCLCPP_INFO(this->get_logger(), "AI search successful for %s - Target at (%.2f, %.2f, %.2f) with confidence %.2f",
+                       vehicle_name_.c_str(), 
+                       current_motion_target_.x, current_motion_target_.y, current_motion_target_.z,
+                       current_motion_target_.confidence);
         } else {
             response->success = false;
             response->target_x = 0.0f;
             response->target_y = 0.0f;
             response->target_z = 0.0f;
             response->confidence = 0.0f;
-            response->message = "No moving target found after search pattern by " + vehicle_name_;
+            response->message = "No moving targets detected by AI system";
+            
+            RCLCPP_INFO(this->get_logger(), "AI search completed for %s - No moving targets found", vehicle_name_.c_str());
         }
         
     } catch (const rpc::rpc_error& e) {
         response->success = false;
-        response->message = "Motion search failed: " + std::string(e.what());
-        RCLCPP_ERROR(this->get_logger(), "Motion search RPC error for %s: %s", vehicle_name_.c_str(), e.what());
+        response->message = "AI search failed: " + std::string(e.what());
+        RCLCPP_ERROR(this->get_logger(), "AI search RPC error for %s: %s", vehicle_name_.c_str(), e.what());
     } catch (const std::exception& e) {
         response->success = false;
-        response->message = "Motion search failed: " + std::string(e.what());
-        RCLCPP_ERROR(this->get_logger(), "Motion search error for %s: %s", vehicle_name_.c_str(), e.what());
+        response->message = "AI search failed: " + std::string(e.what());
+        RCLCPP_ERROR(this->get_logger(), "AI search error for %s: %s", vehicle_name_.c_str(), e.what());
     }
     
     return true;

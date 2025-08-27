@@ -32,8 +32,7 @@ def generate_launch_description():
             'vehicle_name': LaunchConfiguration('vehicle_name'),
             'camera_topic': '/drone1/airsim_drone1/camera0/image',
             'confidence_threshold': LaunchConfiguration('confidence_threshold'),
-            'motion_threshold': LaunchConfiguration('motion_threshold'),
-            'target_classes': [0, 1, 2, 3, 5, 7, 9]
+            'motion_threshold': LaunchConfiguration('motion_threshold')
         }],
         output='screen'
     )
