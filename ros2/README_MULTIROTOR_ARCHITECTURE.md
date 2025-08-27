@@ -1,4 +1,4 @@
-# AirSim ROS2 Multi-Vehicle Modular Architecture
+# AirSim ROS2 Multirotor Modular Package with AI Motion Detection (Search and Track Mission)
 
 ## Table of Contents 
 1. Introduction
@@ -15,8 +15,11 @@
 
 ## 1. Introduction 
 
-This documentation describes the **Cosys-AirSim ROS 2 multi-vehicle modular architecture**, designed for robust, scalable, and maintainable multi-drone simulation and control. It replaces the legacy monolithic ROS node with a modern, component-based approach, supporting parallel sensor processing, fault isolation and dynamic vehicle management.
+This documentation describes the **Cosys-AirSim ROS 2 multi-vehicle modular architecture with AI Motion detection**, designed for robust, scalable, and maintainable multi-drone simulation. It replaces the legacy monolithic ROS node with a component-based approach, supporting parallel sensor processing, fault isolation and dynamic vehicle management.
 
+**Key Features:**
+- **Multi-Drone Fleet Management**: Independent vehicle nodes with centralised coordination
+- **AI Powered Motion Detection**: YOLO integration with OpenCV fallback for search and track mission
 ---
 
 ## 2. Startup Instructions (wsl 2.5.10.0 & Windows 10)
@@ -27,8 +30,73 @@ wsl
 cd Cosys-AirSim/PythonClient/multirotor
 python3 generate_settings.py 2
 ```
+
+Example of settings.json
+```json
+{
+  "SettingsVersion": 2,
+  "SimMode": "Multirotor",
+  "ClockType": "SteppableClock",
+  "Vehicles": {
+    "Drone1": {
+      "VehicleType": "PX4Multirotor",
+      "UseSerial": false,
+      "LockStep": true,
+      "UseTcp": true,
+      "RpcEnabled": true,
+      "TcpPort": 4560,
+      "ControlIp": "remote",
+      "ControlPortLocal": 14540,
+      "ControlPortRemote": 14580,
+      "LocalHostIp": "172.22.112.1",
+      "X": -5.0,
+      "Y": 0.0,
+      "Z": 0.5,
+      "Yaw": 0.0,
+      "Sensors": {
+        "Barometer": {
+          "SensorType": 1,
+          "Enabled": true
+        },
+        "Imu": {
+          "SensorType": 2,
+          "Enabled": true
+        },
+        "Gps": {
+          "SensorType": 3,
+          "Enabled": true
+        },
+        "Magnetometer": {
+          "SensorType": 4,
+          "Enabled": true
+        },
+        "Lidar1": {
+          "SensorType": 6,
+          "Enabled": true,
+          "NumberOfChannels": 16,
+          "Range": 100,
+          "PointsPerSecond": 10000,
+          "DrawDebugPoints": true,
+          "X": 0,
+          "Y": 0,
+          "Z": 0,
+          "Roll": 0,
+          "Pitch": 0,
+          "Yaw": 0
+        }
+      }
+    }
+  },
+  "PawnPaths": {
+    "DefaultQuadrotor": {
+      "PawnBP": "Class'/AirSim/Blueprints/BP_MyPawn.BP_MyPawn_C'"
+    }
+  }
+}
+``` 
 ### Step 2: Launch Cosys-AirSim 
 - Start Cosys-AirSim in Unreal Engine 5.5
+- Ensure multi-camera configuration is enabled in settings.json
 
 ### Step 3: Launch PX4 SITL (for multiple drones)
 For each drone, run in separate terminals:
@@ -40,7 +108,7 @@ Example for two drones:
 PX4_SYS_AUTOSTART=10016 PX4_SIM_MODEL=none ./build/px4_sitl_default/bin/px4 -i 0
 PX4_SYS_AUTOSTART=10016 PX4_SIM_MODEL=none ./build/px4_sitl_default/bin/px4 -i 1
 ```
-Or use:
+Or use for single drone:
 ```bash
 make px4_sitl_default none_iris
 ```
@@ -69,6 +137,49 @@ ros2 launch airsim_ros_pkgs single_drone.launch.py
 ros2 launch airsim_pos_pkgs multi_drone.launch.py
 ``` 
 
+- **Launch Single drone with AI motion detection**
+```bash
+# Terminal 1: Launch drone node
+ros2 launch airsim_ros_pkgs single_drone.launch.py
+
+# Terminal 2: Launch AI motion detection 
+ros2 launch airsim_ros_pkgs motion_detection_launch.py vehicle_name:=Drone1
+```
+
+- **Multi-drone with AI motion detection**
+```bash
+# Terminal 1: Launch multi-drone fleet
+ros2 launch airsim_ros_pkgs multi_drone.launch.py
+
+# Terminal 2: Launch motion detection for each drone 
+ros2 launch airsim_ros_pkgs motion_detection_launch.py vehicle_name:=Drone1
+ros2 launch airsim_ros_pkgs motion_detection_launch.py vehicle_name:=Drone2
+```
+
+### Step 6: Test AI Motion Detection 
+
+```bash
+# Takeoff drone
+ros2 service call /drone1/takeoff airsim_interfaces/srv/Takeoff "{}"
+
+# Start AI powered target search (drone hovers and uses vision)
+ros2 service call /drone1/search_target airsim_interfaces/srv/SearchTarget "{
+  search_radius: 10.0,
+  search_time: 30.0,
+  min_confidence: 0.7
+}"
+
+# Monitor AI detections 
+ros2 topic echo /target_detection 
+
+# Track detected target
+ros2 service call /drone1/track_target airsim_interfaces/srv/TrackTarget "{
+  target_x: 5.0,
+  target_y: 3.0,
+  target_z: -2.0
+}"
+```
+
 ---
 
 ## 3. Architecture Overview
@@ -85,8 +196,35 @@ ros2 launch airsim_pos_pkgs multi_drone.launch.py
 
 - **CoordinationNode**: Manages global services (reset all, takeoff all, land all, pause simulation, health check), publishes system status and GPS origin, monitors all vehicles.
 
-#### C. Settings Parser 
+#### C. AI Motion Detection System
+
+- **MotionDetectionNode**: AI-powered computer vision node that processes camera feeds using YOLO object detection with OpenCV motion tracking fallback. Detects and tracks moving objects in real-time.
+- **YOLO Integration**: Uses YOLOv7 for object detection when available
+- **Target Classification**: Only moving objects are published as targets (for now)
+
+#### D. Settings Parser 
 - **VehicleSettingsParser**: Parses AirSim `settings.json` to extract vehicle configurations and global parameters, enabling dynamic node creation. 
+
+### AI Motion Detection Workflow
+
+```
+┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
+│  AirSim Cameras │    │  Motion Detection│    │  Target Tracking│
+│  (4 per drone)  │───►│  AI Node (YOLO)  │───►│  Services       │
+└─────────────────┘    └─────────────────┘    └─────────────────┘
+                              │
+                              ▼
+                    ┌─────────────────┐
+                    │  ROS2 Topics    │
+                    │  /target_detection
+                    └─────────────────┘
+                              │
+                              ▼
+                    ┌─────────────────┐
+                    │  Multirotor     │
+                    │  Control Node   │
+                    └─────────────────┘
+```
 
 --- 
 
@@ -100,11 +238,21 @@ ros2 launch airsim_pos_pkgs multi_drone.launch.py
 | `/droneX/gps`             | `sensor_msgs/msg/NavSatFix`        | GPS data (lat, lon, alt)                         |
 | `/droneX/imu`             | `sensor_msgs/msg/Imu`              | IMU data (orientation, angular/linear accel)     |
 | `/droneX/environment`     | `airsim_interfaces/msg/Environment`| AirSim environment state (pressure, temp, etc.)  |
-| `/droneX/cameraY/image`   | `sensor_msgs/msg/Image`            | Camera image (Y = camera index/name)             |
-| `/droneX/cameraY/camera_info` | `sensor_msgs/msg/CameraInfo`   | Camera calibration info                          |
+| `/droneX/camera0/image`   | `sensor_msgs/msg/Image`            | Front camera image (640x480)                     |
+| `/droneX/camera1/image`   | `sensor_msgs/msg/Image`            | Right camera image (640x480)                     |
+| `/droneX/camera2/image`   | `sensor_msgs/msg/Image`            | Back camera image (640x480)                      |
+| `/droneX/camera3/image`   | `sensor_msgs/msg/Image`            | Left camera image (640x480)                      |
+| `/droneX/camera{0-3}/camera_info` | `sensor_msgs/msg/CameraInfo`   | Camera calibration info                          |
 | `/droneX/lidarZ/points`   | `sensor_msgs/msg/PointCloud2`      | Lidar point cloud (Z = lidar index/name)         |
 | `/droneX/mag`             | `sensor_msgs/msg/MagneticField`    | Magnetometer data                                |
 | `/droneX/baro`            | `sensor_msgs/msg/Range`            | Barometer/altimeter data                         |
+
+### AI Motion Detection Topics
+
+| Topic Name                | Message Type                       | Description                                      |
+|---------------------------|------------------------------------|--------------------------------------------------|
+| `/target_detection`       | `airsim_interfaces/msg/TargetDetection` | AI-detected moving targets with confidence   |
+| `/target_tracking`        | `airsim_interfaces/msg/TargetTracking`  | Multi-object tracking status                |
 
 ### Topics Published by Coordination Node 
 
@@ -122,7 +270,8 @@ ros2 launch airsim_pos_pkgs multi_drone.launch.py
 | `/droneX/land`            | `airsim_interfaces/srv/Land`       | Land command for this vehicle                    |
 | `/droneX/reset`           | `airsim_interfaces/srv/Reset`      | Reset this vehicle in AirSim                     |
 | `/droneX/gps_waypoint`    | `airsim_interfaces/srv/GpsWaypoint`| Move to GPS waypoint                             |
-| `/droneX/track_object`    | `airsim_interfaces/srv/TrackObject`| Search and track a named object (NEW)            |
+| `/droneX/search_target`   | `airsim_interfaces/srv/SearchTarget`| AI-powered moving target search (hover + detect)|
+| `/droneX/track_target`    | `airsim_interfaces/srv/TrackTarget`| Move to and track specific target coordinates    |
 
 ### Global Services (Coordination Node)
 
@@ -132,7 +281,9 @@ ros2 launch airsim_pos_pkgs multi_drone.launch.py
 | `/takeoff_all`            | `airsim_interfaces/srv/Takeoff`    | Takeoff all vehicles                             |
 | `/land_all`               | `airsim_interfaces/srv/Land`       | Land all vehicles                                |
 | `/pause_simulation`       | `std_srvs/srv/SetBool`             | Pause/unpause AirSim simulation                  |
-| `/health_check`           | `airsim_interfaces/srv/ListSceneObjectTags` | Check health/status of all vehicles     |
+| `/armed_check`           | `airsim_interfaces/srv/ListSceneObjectTags` | Check armed/disarmed status of all vehicles     |
+| `/search_target_all`       | `airsim_interfaces/srv/SearchTarget | Fleet-wide AI target search coordination        |
+| `/track_target_all`       | `airsim_interfaces/srv/TrackTarget | Fleet-wide formation tracking around target      |
 
 ### Command Topics (Subscribers)
 
@@ -142,6 +293,45 @@ ros2 launch airsim_pos_pkgs multi_drone.launch.py
 | `/droneX/vel_cmd_world_frame`| `airsim_interfaces/msg/VelCmd`  | Velocity command in world frame                  |
 
 ---
+
+### Example: AI Search Target Service
+
+The new `/droneX/search_target` service allows a drone to hover in place and use AI vision to detect moving targets.
+
+**Service definition (`airsim_interfaces/srv/SearchTarget.srv`):**
+```plaintext
+float64 search_radius     # Not used in AI mode (drone hovers)
+float64 search_time       # Time to search in seconds
+float64 min_confidence    # Minimum detection confidence (0.0-1.0)
+---
+bool success
+float64 target_x          # Target world coordinates
+float64 target_y
+float64 target_z
+float64 confidence        # Detection confidence
+string message
+```
+
+**Example usage:**
+```bash
+ros2 service call /Drone1/search_target airsim_interfaces/srv/SearchTarget "{
+  search_radius: 0.0,
+  search_time: 30.0,
+  min_confidence: 0.7
+}"
+```
+
+**AI Detection Response:**
+```json
+{
+  "success": true,
+  "target_x": 15.2,
+  "target_y": -8.7,
+  "target_z": -2.0,
+  "confidence": 0.85,
+  "message": "Moving target found via AI vision system"
+}
+```
 
 ## Example: Track Object Service
 
@@ -239,6 +429,20 @@ This documentation describes the modular, multi-node ROS2 architecture for Cosys
 - **Coordination Node:** Centralizes global services (reset, takeoff, land, pause, health check) and system status monitoring.
 - **Legacy Compatibility:** Old files (`airsim_ros_wrapper.*`, `airsim_node.cpp`) are retained for reference and backward compatibility, but are not recommended for new deployments.
 
+### AI Motion Detection Decisions
+- **YOLO Primary + OpenCV Fallback:** YOLO provides superior object detection when available, with OpenCV motion detection as reliable fallback
+- **Multi-Object Tracking:** Assign unique IDs to detected objects for persistent tracking across frames
+- **Motion Threshold:** Only objects moving beyond configurable pixel threshold are classified as targets
+- **Real-time Processing:** Separate AI node per vehicle enables parallel computer vision processing
+- **Confidence Scoring:** All detections include confidence values for reliability assessment
+- **4-Camera Array:** 360° vision coverage eliminates blind spots for comprehensive target detection
+
+### Performance Optimization Decisions
+- **Sequential Camera Processing:** Process cameras one-at-a-time to reduce RPC load and prevent timeouts
+- **Reduced Timer Frequency:** Lower sensor update rates to prevent AirSim overload
+- **Selective Sensor Processing:** Can disable unnecessary sensors (LiDAR, etc.) for vision-focused missions
+- **Throttled Logging:** Error messages are throttled to prevent log spam while debugging
+
 ---
 
 ## 8. Troubleshooting & FAQ
@@ -256,6 +460,10 @@ This documentation describes the modular, multi-node ROS2 architecture for Cosys
 - [AirSim Documentation](https://microsoft.github.io/AirSim/)
 - [ROS2 Tutorials](https://docs.ros.org/en/rolling/Tutorials.html)
 
+### AI/Computer Vision References
+- [YOLOv7 Paper](https://arxiv.org/abs/2207.02696)
+- [OpenCV Motion Detection](https://opencv.org/)
+- [PyTorch Installation](https://pytorch.org/get-started/locally/)
 ---
 
 - **List nodes:**
@@ -290,5 +498,5 @@ This documentation describes the modular, multi-node ROS2 architecture for Cosys
   ```bash
   ros2 service call /drone1/track_object airsim_interfaces/srv/TrackObject "{object_name: 'TargetCar', search_radius: 50.0, track_duration: 30.0}"
   ```
-Last update on 20 Aug 2025
+Last update on 27 Aug 2025
 ---
