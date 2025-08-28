@@ -1,5 +1,7 @@
 # AirSim ROS2 Multirotor Modular Package with AI Motion Detection (Search and Track Mission)
 
+This project represents a architectural change of AirSim ROS 2 integration, evolving from a monolithic single-node approach to a modular, scalable, AI-enhanced multi-drone system. The new architecture enables robust fleet operations with computer vision capabilities for autonomous search and rescue missions.
+
 ## Table of Contents 
 1. Introduction
 2. Startup Instructions
@@ -31,69 +33,6 @@ cd Cosys-AirSim/PythonClient/multirotor
 python3 generate_settings.py 2
 ```
 
-Example of settings.json
-```json
-{
-  "SettingsVersion": 2,
-  "SimMode": "Multirotor",
-  "ClockType": "SteppableClock",
-  "Vehicles": {
-    "Drone1": {
-      "VehicleType": "PX4Multirotor",
-      "UseSerial": false,
-      "LockStep": true,
-      "UseTcp": true,
-      "RpcEnabled": true,
-      "TcpPort": 4560,
-      "ControlIp": "remote",
-      "ControlPortLocal": 14540,
-      "ControlPortRemote": 14580,
-      "LocalHostIp": "172.22.112.1",
-      "X": -5.0,
-      "Y": 0.0,
-      "Z": 0.5,
-      "Yaw": 0.0,
-      "Sensors": {
-        "Barometer": {
-          "SensorType": 1,
-          "Enabled": true
-        },
-        "Imu": {
-          "SensorType": 2,
-          "Enabled": true
-        },
-        "Gps": {
-          "SensorType": 3,
-          "Enabled": true
-        },
-        "Magnetometer": {
-          "SensorType": 4,
-          "Enabled": true
-        },
-        "Lidar1": {
-          "SensorType": 6,
-          "Enabled": true,
-          "NumberOfChannels": 16,
-          "Range": 100,
-          "PointsPerSecond": 10000,
-          "DrawDebugPoints": true,
-          "X": 0,
-          "Y": 0,
-          "Z": 0,
-          "Roll": 0,
-          "Pitch": 0,
-          "Yaw": 0
-        }
-      }
-    }
-  },
-  "PawnPaths": {
-    "DefaultQuadrotor": {
-      "PawnBP": "Class'/AirSim/Blueprints/BP_MyPawn.BP_MyPawn_C'"
-    }
-  }
-}
-``` 
 ### Step 2: Launch Cosys-AirSim 
 - Start Cosys-AirSim in Unreal Engine 5.5
 - Ensure multi-camera configuration is enabled in settings.json
@@ -122,7 +61,7 @@ source install/setup.bash
 
 ### Step 5: Launch ROS2 Nodes
 
-- **Single drone for testing (simple):** 
+- **Single drone for testing ONLY (simple):** 
 ```bash
 ros2 launch airsim_ros_pkgs simple_single_drone.launch.py
 ```
@@ -169,7 +108,7 @@ ros2 service call /drone1/search_target airsim_interfaces/srv/SearchTarget "{
   min_confidence: 0.7
 }"
 
-# Monitor AI detections 
+# Monitor AI detections (#TODO)
 ros2 topic echo /target_detection 
 
 # Track detected target
@@ -179,7 +118,6 @@ ros2 service call /drone1/track_target airsim_interfaces/srv/TrackTarget "{
   target_z: -2.0
 }"
 ```
-
 ---
 
 ## 3. Architecture Overview
@@ -189,41 +127,80 @@ ros2 service call /drone1/track_target airsim_interfaces/srv/TrackTarget "{
 #### A. Vehicle Nodes
 
 - **VehicleNodeBase**: Abstract base for all vehicle types. Handles parameter management, AirSim connections, publishers/services/timers and callback groups for parallel sensor processing. 
+  - **Role**: Abstract foundation for all vehicle types
+  - **Features**: Parameter management, AirSim connections, parallel sensor processing
+  - **Benefits**: Code reuse, consistent interfaces, extensible design
+
 - **MultirotorNode**: Inherits from VehicleNodeBase. Implements drone-specific publishers (odom, GPS, IMU, environment, camera, lidar), services (takeoff, land, gps_waypoint, track_object), velocity command subscribers, and sensor data processing. 
-- **SimpleMultirotorNode**: Minimal node for single-drone testing/debugging. No inheritance, direct AirSim connection.
+  - **Role**: Drone-specific control and operations
+  - **Inherits**: VehicleNodeBase
+  - **Publishers**: Odometry, GPS, IMU, cameras, LiDAR
+  - **Services**: Takeoff, land, waypoint navigation, target tracking
+
+
+- **SimpleMultirotorNode**: FOR TESTING ONLY. Minimal node for single-drone testing/debugging. No inheritance, direct AirSim connection.
 
 #### B. Coordination Node
 
 - **CoordinationNode**: Manages global services (reset all, takeoff all, land all, pause simulation, health check), publishes system status and GPS origin, monitors all vehicles.
+  - **Role**: Fleet-wide command and control
+  - **Features**: Global services, system monitoring, armed checks
+  - **Services**: `/takeoff_all`, `/land_all`, `/reset_all`
 
-#### C. AI Motion Detection System
+#### C. AI Motion Detection System (#TODO)
 
 - **MotionDetectionNode**: AI-powered computer vision node that processes camera feeds using YOLO object detection with OpenCV motion tracking fallback. Detects and tracks moving objects in real-time.
-- **YOLO Integration**: Uses YOLOv7 for object detection when available
-- **Target Classification**: Only moving objects are published as targets (for now)
+  - **Role**: AI-powered computer vision
+  - **AI Models**: YOLOv7 primary, OpenCV fallback
+  - **Output**: Real-time target detection with confidence scores
+  - **YOLO Integration**: Uses YOLOv7 for object detection when available
+  - **Target Classification**: Only moving objects are published as targets (for now)
 
 #### D. Settings Parser 
 - **VehicleSettingsParser**: Parses AirSim `settings.json` to extract vehicle configurations and global parameters, enabling dynamic node creation. 
 
 ### AI Motion Detection Workflow
 
+### **System Architecture Diagram**
+
 ```
-┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
-│  AirSim Cameras │    │  Motion Detection│    │  Target Tracking│
-│  (4 per drone)  │───►│  AI Node (YOLO)  │───►│  Services       │
-└─────────────────┘    └─────────────────┘    └─────────────────┘
-                              │
-                              ▼
-                    ┌─────────────────┐
-                    │  ROS2 Topics    │
-                    │  /target_detection
-                    └─────────────────┘
-                              │
-                              ▼
-                    ┌─────────────────┐
-                    │  Multirotor     │
-                    │  Control Node   │
-                    └─────────────────┘
+                    ┌─────────────────────────────────────────┐
+                    │         COORDINATION NODE               │
+                    │    (Fleet Command & Control)           │
+                    │  • Global Services (/takeoff_all)      │
+                    │  • System Monitoring                   │  
+                    │  • Mission Coordination                │
+                    └─────────────┬───────────────────────────┘
+                                  │
+                ┌─────────────────┼─────────────────┐
+                │                 │                 │
+                ▼                 ▼                 ▼
+    ┌─────────────────┐ ┌─────────────────┐ ┌─────────────────┐
+    │  MULTIROTOR     │ │  MULTIROTOR     │ │  MULTIROTOR     │
+    │  NODE - Drone1  │ │  NODE - Drone2  │ │  NODE - DroneN  │
+    │                 │ │                 │ │                 │
+    │ • Individual    │ │ • Individual    │ │ • Individual    │
+    │   Control       │ │   Control       │ │   Control       │
+    │ • Sensor Data   │ │ • Sensor Data   │ │ • Sensor Data   │
+    │ • AI Vision     │ │ • AI Vision     │ │ • AI Vision     │
+    └─────────┬───────┘ └─────────┬───────┘ └─────────┬───────┘
+              │                   │                   │
+              ▼                   ▼                   ▼
+    ┌─────────────────┐ ┌─────────────────┐ ┌─────────────────┐
+    │   AI MOTION     │ │   AI MOTION     │ │   AI MOTION     │
+    │ DETECTION NODE  │ │ DETECTION NODE  │ │ DETECTION NODE  │
+    │                 │ │                 │ │                 │
+    │ • YOLO Object   │ │ • YOLO Object   │ │ • YOLO Object   │
+    │   Detection     │ │   Detection     │ │   Detection     │
+    │ • Motion Track  │ │ • Motion Track  │ │ • Motion Track  │
+    │ • Target Class  │ │ • Target Class  │ │ • Target Class  │
+    └─────────────────┘ └─────────────────┘ └─────────────────┘
+              │                   │                   │
+              ▼                   ▼                   ▼
+        ┌─────────────────────────────────────────────────┐
+        │              AIRSIM SIMULATION                  │
+        │         (Unreal Engine 5.5 + Physics)          │
+        └─────────────────────────────────────────────────┘
 ```
 
 --- 
@@ -406,19 +383,6 @@ ros2 service call /drone1/track_object airsim_interfaces/srv/TrackObject "{objec
 **Summary:**  
 The new architecture is modular, robust, and scalable. Each vehicle runs in its own node and namespace, with isolated connections and timers. The coordination node manages global services and monitoring. This design enables parallel sensor processing, fault isolation, and dynamic vehicle management, making it ideal for large-scale multi-vehicle simulation.
 
----
-
-## Overview
-
-This documentation describes the modular, multi-node ROS2 architecture for Cosys-AirSim, supporting robust multi-drone simulation and control. It covers:
-
-- The new architecture and its components
-- How the system works
-- How to launch and use it
-- Error checking and troubleshooting
-- Differences from the legacy (monolithic) architecture
-
----
 
 ## 7. Design Decisions
 
@@ -428,22 +392,6 @@ This documentation describes the modular, multi-node ROS2 architecture for Cosys
 - **Dynamic Launch:** VehicleSettingsParser enables dynamic node creation based on `settings.json`, so you can add/remove vehicles without changing code.
 - **Coordination Node:** Centralizes global services (reset, takeoff, land, pause, health check) and system status monitoring.
 - **Legacy Compatibility:** Old files (`airsim_ros_wrapper.*`, `airsim_node.cpp`) are retained for reference and backward compatibility, but are not recommended for new deployments.
-
-### AI Motion Detection Decisions
-- **YOLO Primary + OpenCV Fallback:** YOLO provides superior object detection when available, with OpenCV motion detection as reliable fallback
-- **Multi-Object Tracking:** Assign unique IDs to detected objects for persistent tracking across frames
-- **Motion Threshold:** Only objects moving beyond configurable pixel threshold are classified as targets
-- **Real-time Processing:** Separate AI node per vehicle enables parallel computer vision processing
-- **Confidence Scoring:** All detections include confidence values for reliability assessment
-- **4-Camera Array:** 360° vision coverage eliminates blind spots for comprehensive target detection
-
-### Performance Optimization Decisions
-- **Sequential Camera Processing:** Process cameras one-at-a-time to reduce RPC load and prevent timeouts
-- **Reduced Timer Frequency:** Lower sensor update rates to prevent AirSim overload
-- **Selective Sensor Processing:** Can disable unnecessary sensors (LiDAR, etc.) for vision-focused missions
-- **Throttled Logging:** Error messages are throttled to prevent log spam while debugging
-
----
 
 ## 8. Troubleshooting & FAQ
 
@@ -498,5 +446,69 @@ This documentation describes the modular, multi-node ROS2 architecture for Cosys
   ```bash
   ros2 service call /drone1/track_object airsim_interfaces/srv/TrackObject "{object_name: 'TargetCar', search_radius: 50.0, track_duration: 30.0}"
   ```
-Last update on 27 Aug 2025
+
+  Example of settings.json
+```json
+{
+  "SettingsVersion": 2,
+  "SimMode": "Multirotor",
+  "ClockType": "SteppableClock",
+  "Vehicles": {
+    "Drone1": {
+      "VehicleType": "PX4Multirotor",
+      "UseSerial": false,
+      "LockStep": true,
+      "UseTcp": true,
+      "RpcEnabled": true,
+      "TcpPort": 4560,
+      "ControlIp": "remote",
+      "ControlPortLocal": 14540,
+      "ControlPortRemote": 14580,
+      "LocalHostIp": "172.22.112.1",
+      "X": -5.0,
+      "Y": 0.0,
+      "Z": 0.5,
+      "Yaw": 0.0,
+      "Sensors": {
+        "Barometer": {
+          "SensorType": 1,
+          "Enabled": true
+        },
+        "Imu": {
+          "SensorType": 2,
+          "Enabled": true
+        },
+        "Gps": {
+          "SensorType": 3,
+          "Enabled": true
+        },
+        "Magnetometer": {
+          "SensorType": 4,
+          "Enabled": true
+        },
+        "Lidar1": {
+          "SensorType": 6,
+          "Enabled": true,
+          "NumberOfChannels": 16,
+          "Range": 100,
+          "PointsPerSecond": 10000,
+          "DrawDebugPoints": true,
+          "X": 0,
+          "Y": 0,
+          "Z": 0,
+          "Roll": 0,
+          "Pitch": 0,
+          "Yaw": 0
+        }
+      }
+    }
+  },
+  "PawnPaths": {
+    "DefaultQuadrotor": {
+      "PawnBP": "Class'/AirSim/Blueprints/BP_MyPawn.BP_MyPawn_C'"
+    }
+  }
+}
+``` 
+*Last update on 27 Aug 2025*
 ---

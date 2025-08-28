@@ -1,34 +1,52 @@
+/* LEGACY_PURPOSE
+* This file represents the original monolithic approach to AirSim ROS 2 integration, 
+* where a single node managed ALL vehicles in the simulation simultaneously. 
+* It is maintained for backward compatibility and reference purposes only.
+*
+* WHY DEPRECATED
+* The old ROS 2 wrapper uses a single monolithic node that manages ALL vehicles
+* in the simulation, which creates several critical limitations and bottlenecks:
+*
+* Current limitations & bottlenecks
+* 1) Single point of failure 
+*     - One vehicle issue (RPC timeout, exception) affects ALL vehicles
+*     - Node crash brings down entire multi vehicle operation 
+*     - No isolation between vehicle processing
+
+* 2) Performance bottlenecks
+* - Shared processing: All vehicles processed sequentially in timer callbacks
+* - Resource contention: high frequency sensors compete for CPU time
+* - Memory sharing: Large point clouds from multiple vehicles in same process
+* - RPC queuing: single connection handles all vehicle requests
+
+* 3) Scalability issues
+* - Linear performance degradation: Processing time increases with time count
+* - Timer synchronisation: All vehicles must complete processing within timer period
+* - Memory growth: Unbounded growth with additional vehicles/sensors
+
+* 4) Development & Debugging Challenges
+* - Mixed logs: All vehicle logs intermixed in single node output
+* - Complex state: Hard to isolate issues to specific vehicles
+* - Restart impact: Restarting node affects all vehicles simultaneously
+
+* 5) Resource management
+* - CPU binding: All processing on single core/thread
+* - Memory pooling: No per vehicle memory limits
+* - Network sharing: Single TCP connection for all vehicles
+
+ * MIGRATION_PATH
+ * To migrate from legacy to modern architecture:
+ * 1. Replace airsim_node.launch.py with single_drone.launch.py or multi_drone.launch.py
+ * 2. Update topic names to include vehicle namespaces (/drone1/, /drone2/, etc.)
+ * 3. Use coordination_node services for fleet operations (/takeoff_all, /land_all)
+ * 4. Leverage per-vehicle fault isolation and debugging capabilities
+ *
+ * @warning This file should not be used for new deployments. Use the modular
+ *          architecture (multirotor_node + coordination_node) instead.
+*/
+
 #include <rclcpp/rclcpp.hpp>
 #include "airsim_ros_wrapper.h"
-// The old ROS 2 wrapper uses a single monolithic node that manages ALL vehicles in the simulation 
-
-// Current limitations & bottlenecks
-// 1) Single point of failure 
-//     - One vehicle issue (RPC timeout, exception) affects ALL vehicles
-//     - Node crash brings down entire multi vehicle operation 
-//     - No isolation between vehicle processing
-
-// 2) Performance bottkenecks
-// - Shared processing: All vehicles processed sequentially in timer callbacks
-// - Resource contention: high frequnecy sensors compete for CPU time
-// - Memory sharing: Large point clouds from multiple vehicles in same process
-// - RPC queuing: single connection handles all vehicle requests
-
-// 3) Scalability issues
-// - Linear perfomance degration: processing time increases with time count 
-// - Timer synchronisation: all vehicles must complete processing wihtin timer period
-// - Memory growth: unbounded growth with additional vehicles/sensors
-
-// 4) Development & Debugging Challenges
-// - Mixed logs: all vehicle logs intermixed in single node output
-// - Complex state: hard to isolate issues to specific vehicles 
-// - Restart impact: restarting node affects all vehicles simultaneously 
-
-// 5) Resource management
-// - CPU binding: all processing on single core/thread
-// - Memory pooling: no per vehicle memory limits
-// - Network sharing: isngle tcp connection for all vehicles
-
 
 int main(int argc, char** argv)
 {

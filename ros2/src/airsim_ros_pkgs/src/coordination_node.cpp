@@ -1,20 +1,49 @@
 /*
 * AirSim Coordination Node
 *
-* PURPOSE: Centralised control hub for managing multiple drones in AirSim simulation
+* PURPOSE:
+* This node serves as the central command and control hub for managing multiple
+* drones in AirSim simulation. It provides fleet-level operations, system monitoring,
+* and coordinated mission management across all vehicles in the simulation.
 *
 * MAIN FUNCTIONALITY:
 * - Fleet Management: Control multiple drones simultaneously instead of individually
 * - Coordinated Operations: Mass takeoff, landing, reset operations for entire fleet
 * - System Monitoring: Health checks and status monitoring across all vehicles
 * - Simulation Control: Pause/resume simulation, manage timing and synchronisation
+* - Mission Coordination: Fleet wide search patterns and formation control 
+* - Resource Management: Global parameter distribution and configuration 
 *
 * WHY THIS NODE:
 * Without coordination: ros2 service call /drone1/takeoff, /drone2/takeoff, /drone3/takeoff ...
 * With coordination: ros2 service call /takeoff_all (all drones launch simultaneously)
 *
 * Transforms individual drone control into scalable fleet-level management.
-*/
+*
+* COORDINATION_SERVICES
+* Global Services Provided
+* - /reset_all: Reset entire fleet to initial state
+* - /takeoff_all: Simultaneous takeoff coordination 
+* - /land_all: Coordinated fleet landing sequence
+* - /pause_simulation: Global simulation pause/resume
+* - /armed_check: Fleet-wide armed status verification
+* - /search_target_all: Coordinated search pattern execution
+* - /track_target_all: Formation tracking around detected targets
+*
+* MONITORING_CAPABILITIES  
+ * - Real-time fleet status monitoring
+ * - Vehicle health and connectivity checks
+ * - Global GPS origin management
+ * - System-wide error reporting and recovery
+ * - Performance metrics and resource utilization
+ *
+ * ARCHITECTURE_BENEFITS
+ * - Centralized Command: Single point for fleet operations
+ * - Scalable Design: Supports unlimited number of vehicles  
+ * - Fault Monitoring: Detects and reports individual vehicle issues
+ * - Mission Planning: High-level mission decomposition to vehicle tasks
+ * - Resource Optimization: Global resource allocation and scheduling
+ */
 
 #include "coordination_node.hpp"
 #include <rclcpp/rclcpp.hpp>
@@ -25,7 +54,7 @@
 CoordinationNode::CoordinationNode()
     : Node("airsim_coordination")
     , host_ip_("localhost")
-    , host_port_(41451)
+    , host_port_(41451) // Standard AirSim RPC port
     , world_frame_id_("world_ned")
 {
     // Declare parameters with defaults

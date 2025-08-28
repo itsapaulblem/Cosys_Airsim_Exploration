@@ -1,16 +1,21 @@
 /*
 * AirSim Multirotor Node
 * 
-* PURPOSE: Individual drone control and sensor data interface for single multirotor vehicle
+* PURPOSE
+* This node provides control and sensor data interface for a single
+* multirotor vehicle in the AirSim simulation environment. It serves as the primary interface
+* between ROS 2 applications and individual drone instances.
 *
 * MAIN FUNCTIONALITY:
 * - Individual Vehicle Control: Handles commands for a specific drone (takeoff, land, velocity)
 * - Sensor Data Publishing: Streams camera, LiDAR, IMU, GPS, magnetometer, barometer data
 * - State Management: Publishes odometry, pose and vehicle status information
 * - Real-time Communication: Maintains continuous connection with AirSim for one vehicle
-* - Motion-based Target Detection: Uses AI vision to detect moving objects as targets
+* - Motion-based Target Detection: Integrates with AI vision system for target detection
+* - Waypoint Navigation: GPS based autonomous waypoint navigation
+* - Object Tracking: Advanced object tracking with search capabilities
 *
-*
+* ARCHITECTURE_ROLE
 * DIFFERENCE FROM COORDINATION NODE:
 * - Coordination Node: Controls MULTIPLE drones simultaneously (fleet management)
 * - Multirotor Node: Controls ONE specific drone (individual vehicle interface)
@@ -19,6 +24,7 @@
 * - One Multirotor Node per drone in the simulation
 * - Each node manages its own sensors, commands and state publishing
 * - Coordination Node can command all Multirotor Nodes simultaneously
+* - Isolated namespaces prevent topic/service conflicts
 *
 * ROS INTERFACES
 * Publishers: camera images, lidar points, imu data, gps, odometry, environment

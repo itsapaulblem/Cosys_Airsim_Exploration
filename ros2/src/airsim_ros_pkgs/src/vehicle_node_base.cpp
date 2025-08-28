@@ -1,3 +1,46 @@
+/**
+ * PURPOSE
+ * This file implements the foundational base class for all vehicle nodes in the
+ * AirSim ROS 2 ecosystem. It provides common functionality shared across different
+ * vehicle types (multirotor, car, computer vision) while enabling specialised
+ * implementations through inheritance. 
+ * 
+ * DESIGN PHILOSOPHY 
+ *  - Abstract Base: Common functionality without vehicles-specific implementation
+ *  - Inheritance Ready: Virtual methods for vehicle-specific customisation
+ *  - Resource Management: Efficient memory and CPU utilisation patterns
+ *  - ROS 2 Best Practices: Modern node lifecycle and callback group patterns
+ *  - Fault Isolation: Independent vehicle operation per vehicle instance 
+ * 
+ * CORE FUNCTIONALITY
+ *  - Parameter Management: Dynamic configuration with validation
+ *  - AirSim Connection: Robust RPC connection with retry logic
+ *  - Publisher Setup: Common sensor and state publishers
+ *  - Timer Management: Independent, parallel sensor processing timers
+ *  - Callback Groups: Isolated execution contexts for performance
+ *  - Transform Broadcasting: TF2 integration for coordinate systems
+ *  - Error Handling: Comprehensive RPC and network error management
+ * 
+ * INHERITANCE_PATTERN
+ * VehicleNodeBase (abstract)
+ * ├── MultirotorNode (drone-specific implementation)
+ * ├── CarNode (ground vehicle implementation) 
+ * └── ComputerVisionNode (camera-only implementation)
+ *
+ * PERFORMANCE_FEATURES
+ * Phase 2.1: Independent Timer Management
+ * - Isolated callback groups prevent sensor blocking
+ * - Parallel processing of cameras, lidar, IMU, GPS
+ * - Configurable update frequencies per sensor type
+ * - Memory-efficient sensor data handling
+ *
+ * Phase 2.2: Resource Optimization
+ * - Per-vehicle memory limits and CPU affinity
+ * - Intelligent sensor activation based on mission needs
+ * - Dynamic frequency adjustment based on system load
+ * - Connection pooling for AirSim RPC efficiency
+ */
+
 #include "vehicle_node_base.hpp"
 #include <tf2/LinearMath/Quaternion.h>
 #include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>

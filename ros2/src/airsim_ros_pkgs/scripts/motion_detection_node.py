@@ -1,5 +1,41 @@
 #!/usr/bin/env python3
-# filepath: \\wsl.localhost\Ubuntu-22.04\home\paulc\Cosys-AirSim\ros2\src\airsim_ros_pkgs\scripts\motion_detection_node.py
+#TODO 
+"""
+Motion Detection Node for AirSim ROS2 Integration
+
+PURPOSE: 
+-------
+This node implements advanced computer vision capabilities for autonomous drone systems,
+providing real-time detection and tracking of moving objects in the AirSim simulation
+environment. It serves as the AI brain for search-and rescue, surveillance and
+autonomous target tracking missions.
+
+MAIN FUNCTIONALITY:
+------------------
+- Real-time Object Detection: Uses YOLOv7 neural network for object recognition
+- Motion Analysis: OpenCV-based motion detection as reliable fallback system
+- Multi-Object Tracking: Assign unique IDs to detected objects for persistent tracking
+- Target Classification: Filters stationary objects, publishing only moving targets
+- 360 degree Vision Coverage: Processes 4 camera array for comprehensive situational awaremess
+- ROS2 Integration: Publishes detection data via standard ROS 2 topics and services
+
+AI DETECTION WORKFLOW:
+---------------------
+1. Camera Image Reception --> 2. YOLO Object Detection --> 3. Motion Analysis --> 4. Object Tracking --> 5. Target Classification --> 6. ROS 2 Message Publishing --> 7. Multirotor Control Integration
+
+ROS 2 INTERFACES:
+----------------
+Subscribers: /droneX/camera0/image (sensor_msgs/Image)
+Publishers: /target_detection (airsim_interfaces/TargetDetection)
+Parameters: confidence_threshold, motion_threshold, vehicle_name
+
+USAGE IN MISSIONS:
+-----------------
+- Search Missions: Drone hovers and scans for moving targets
+- Track Missions: Drone follows detected target autonomously
+- Surveillance Missions: Continuous monitoring with target alerts
+- Fleet Coordination: Multiple detection nodes for comprehensive coverage
+"""
 
 import rclpy
 from rclpy.node import Node
@@ -14,7 +50,7 @@ from collections import deque
 from pathlib import Path
 import sys
 
-# **Add YOLO imports and setup**
+# YOLOv7 Integration Setup
 YOLO_PATH = Path(__file__).parent / 'ai_detection' / 'yolov7'
 sys.path.insert(0, str(YOLO_PATH))
 
@@ -30,8 +66,8 @@ except ImportError as e:
 class MotionDetectionNode(Node):
     def __init__(self):
         super().__init__('motion_detection_node')
-        
-        # Parameters
+
+        # ROS 2 Parameters Declaration and Retrieval
         self.declare_parameter('vehicle_name', 'Drone1')
         self.declare_parameter('camera_topic', '/drone1/airsim_drone1/camera0/image')
         self.declare_parameter('confidence_threshold', 0.5)
@@ -43,8 +79,8 @@ class MotionDetectionNode(Node):
         self.motion_threshold = float(self.get_parameter('motion_threshold').value)
 
         self.bridge = CvBridge()
-        
-        # Initialize detection method
+
+        # AI Detection System Initialization
         if YOLO_AVAILABLE:
             self.device = select_device('')
             self.model = self.load_yolo_model()
@@ -62,7 +98,7 @@ class MotionDetectionNode(Node):
         self.track_id_counter = 0
         self.max_history_length = 10
         
-        # ROS2 interfaces
+        # ROS2 communication interfaces
         self.image_sub = self.create_subscription(
             Image, self.camera_topic, self.image_callback, 10)
         
