@@ -1,114 +1,527 @@
-# Cosys-AirSim
+# Paulsys-AirSim
 
-Cosys-AirSim is a simulator for drones, cars and more, with extensive API support, built on [Unreal Engine](https://www.unrealengine.com/). It is open-source, cross platform, and supports hardware-in-loop with popular flight controllers such as PX4 for physically and visually realistic simulations. It is developed as an Unreal plugin that can simply be dropped into any Unreal environment. 
+Paulsys-AirSim is a simulator for multirotor drones, with extensive API support, built on [Unreal Engine](https://www.unrealengine.com/). It is open-source, cross platform, and supports hardware-in-loop with popular flight controllers such as PX4 for physically and visually realistic simulations. It is developed as an Unreal plugin that can simply be dropped into any Unreal environment. 
 
-This fork is based on last public AirSim release from Microsoft's GitHub.
-Cosys-Lab made extensive modifications to the AirSim platform to support multiple projects and research goals. 
-Please contact a Cosys-Lab researcher to get more in depth information on our work or if you wish to collaborate. 
-The [original AirSim MIT license](https://github.com/Cosys-Lab/Cosys-AirSim/blob/main/LICENSE) applies to all native AirSim source files. 
-Please note that we use that same [MIT license](https://github.com/Cosys-Lab/Cosys-AirSim/blob/main/LICENSE) as which applies to all changes made by Cosys-Lab in case you plan to do anything within this repository.
-Do note that this repository is provided as is, will not be actively updated and comes without warranty or support. 
-Please contact a Cosys-Lab researcher to get more in depth information on which branch or version is best for your work.
+This fork is based on last public Cosys-AirSim release from Microsoft's GitHub.
+Paulsys-Lab made extensive modifications to the Cosys-AirSim platform to support multiple projects and research goals. 
 
 This [main branch](https://github.com/Cosys-Lab/Cosys-AirSim/tree/main) is for the latest supported Unreal Version v5.5, maintained for support, and is available for builds in the [releases](https://github.com/Cosys-Lab/Cosys-AirSim/releases).
 Unreal [5.2.1](https://github.com/Cosys-Lab/Cosys-AirSim/tree/5.2.1) is also available for long term support builds.
 
-## Associated publications
+# AirSim ROS2 Multirotor Modular Package with AI Motion Detection (Search and Track Mission)
 
-- [Cosys-AirSim: A Real-Time Simulation Framework Expanded for Complex Industrial Applications](https://arxiv.org/abs/2303.13381)
+This project represents a architectural change of AirSim ROS 2 integration, evolving from a monolithic single-node approach to a modular, scalable, AI-enhanced multi-drone system. The new architecture enables robust fleet operations with computer vision capabilities for autonomous search and rescue missions.
+
+## Table of Contents 
+1. Introduction
+2. Startup Instructions
+3. Architecture Overview
+4. ROS Topics and Services
+5. File by File Explanation
+6. Detailed Comparisons: Old vs New Architecture
+7. Design Decisions
+8. Troubleshooting & FAQ
+9. References 
+
+--- 
+
+## 1. Introduction 
+
+This documentation describes the **Cosys-AirSim ROS 2 multi-vehicle modular architecture with AI Motion detection**, designed for robust, scalable, and maintainable multi-drone simulation. It replaces the legacy monolithic ROS node with a component-based approach, supporting parallel sensor processing, fault isolation and dynamic vehicle management.
+
+**Key Features:**
+- **Multi-Drone Fleet Management**: Independent vehicle nodes with centralised coordination
+- **AI Powered Motion Detection**: YOLO integration with OpenCV fallback for search and track mission
+---
+
+## 2. Startup Instructions (wsl 2.5.10.0 & Windows 10)
+
+### Step 1: Run the Python generate settings.py file to determine the number of drones
+```bash
+wsl
+cd Cosys-AirSim/PythonClient/multirotor
+python3 generate_settings.py 2
 ```
-@inproceedings{cosysairsim2023jansen,
-  author={Jansen, Wouter and Verreycken, Erik and Schenck, Anthony and Blanquart, Jean-Edouard and Verhulst, Connor and Huebel, Nico and Steckel, Jan},
-  booktitle={2023 Annual Modeling and Simulation Conference (ANNSIM)}, 
-  title={COSYS-AIRSIM: A Real-Time Simulation Framework Expanded for Complex Industrial Applications}, 
-  year={2023},
-  volume={},
-  number={},
-  pages={37-48},
-  doi={}}
+
+### Step 2: Launch Cosys-AirSim 
+- Start Cosys-AirSim in Unreal Engine 5.5
+- Ensure multi-camera configuration is enabled in settings.json
+
+### Step 3: Launch PX4 SITL (for multiple drones)
+For each drone, run in separate terminals:
+```bash
+PX4_SYS_AUTOSTART=10016 PX4_SIM_MODEL=none ./build/px4_sitl_default/bin/px4 -i <instance_id>
+```
+Example for two drones:
+```bash
+PX4_SYS_AUTOSTART=10016 PX4_SIM_MODEL=none ./build/px4_sitl_default/bin/px4 -i 0
+PX4_SYS_AUTOSTART=10016 PX4_SIM_MODEL=none ./build/px4_sitl_default/bin/px4 -i 1
+```
+Or use for single drone:
+```bash
+make px4_sitl_default none_iris
 ```
 
-You can also find the presentation of the live tutorial of Cosys-AirSim at ANNSIM '23 conference [here](https://github.com/Cosys-Lab/Cosys-AirSim/tree/main/docs/annsim23_tutorial) together with the associated videos.
+### Step 4: Build and Source ROS 2 Workspace
 
-
-- [Physical LiDAR Simulation in Real-Time Engine](https://arxiv.org/abs/2208.10295)
+```bash
+colcon build
+source install/setup.bash 
 ```
-@inproceedings{lidarsim2022jansen,
-  author={Jansen, Wouter and Huebel, Nico and Steckel, Jan},
-  booktitle={2022 IEEE Sensors}, 
-  title={Physical LiDAR Simulation in Real-Time Engine}, 
-  year={2022},
-  volume={},
-  number={},
-  pages={1-4},
-  doi={10.1109/SENSORS52175.2022.9967197}}
+
+### Step 5: Launch ROS2 Nodes
+
+- **Single drone for testing ONLY (simple):** 
+```bash
+ros2 launch airsim_ros_pkgs simple_single_drone.launch.py
+```
+
+- **Single drone** 
+```bash
+ros2 launch airsim_ros_pkgs single_drone.launch.py
+```
+
+- **Multi-drone**
+```bash
+ros2 launch airsim_pos_pkgs multi_drone.launch.py
+``` 
+
+- **Launch Single drone with AI motion detection**
+```bash
+# Terminal 1: Launch drone node
+ros2 launch airsim_ros_pkgs single_drone.launch.py
+
+# Terminal 2: Launch AI motion detection 
+ros2 launch airsim_ros_pkgs motion_detection_launch.py vehicle_name:=Drone1
+```
+
+- **Multi-drone with AI motion detection**
+```bash
+# Terminal 1: Launch multi-drone fleet
+ros2 launch airsim_ros_pkgs multi_drone.launch.py
+
+# Terminal 2: Launch motion detection for each drone 
+ros2 launch airsim_ros_pkgs motion_detection_launch.py vehicle_name:=Drone1
+ros2 launch airsim_ros_pkgs motion_detection_launch.py vehicle_name:=Drone2
+```
+
+### Step 6: Test AI Motion Detection 
+
+```bash
+# Takeoff drone
+ros2 service call /drone1/takeoff airsim_interfaces/srv/Takeoff "{}"
+
+# Start AI powered target search (drone hovers and uses vision)
+ros2 service call /drone1/search_target airsim_interfaces/srv/SearchTarget "{
+  search_radius: 10.0,
+  search_time: 30.0,
+  min_confidence: 0.7
+}"
+
+# Monitor AI detections (#TODO)
+ros2 topic echo /target_detection 
+
+# Track detected target
+ros2 service call /drone1/track_target airsim_interfaces/srv/TrackTarget "{
+  target_x: 5.0,
+  target_y: 3.0,
+  target_z: -2.0
+}"
+```
+---
+
+## 3. Architecture Overview
+
+### Key Components
+
+#### A. Vehicle Nodes
+
+- **VehicleNodeBase**: Abstract base for all vehicle types. Handles parameter management, AirSim connections, publishers/services/timers and callback groups for parallel sensor processing. 
+  - **Role**: Abstract foundation for all vehicle types
+  - **Features**: Parameter management, AirSim connections, parallel sensor processing
+  - **Benefits**: Code reuse, consistent interfaces, extensible design
+
+- **MultirotorNode**: Inherits from VehicleNodeBase. Implements drone-specific publishers (odom, GPS, IMU, environment, camera, lidar), services (takeoff, land, gps_waypoint, track_object), velocity command subscribers, and sensor data processing. 
+  - **Role**: Drone-specific control and operations
+  - **Inherits**: VehicleNodeBase
+  - **Publishers**: Odometry, GPS, IMU, cameras, LiDAR
+  - **Services**: Takeoff, land, waypoint navigation, target tracking
+
+
+- **SimpleMultirotorNode**: FOR TESTING ONLY. Minimal node for single-drone testing/debugging. No inheritance, direct AirSim connection.
+
+#### B. Coordination Node
+
+- **CoordinationNode**: Manages global services (reset all, takeoff all, land all, pause simulation, health check), publishes system status and GPS origin, monitors all vehicles.
+  - **Role**: Fleet-wide command and control
+  - **Features**: Global services, system monitoring, armed checks
+  - **Services**: `/takeoff_all`, `/land_all`, `/reset_all`
+
+#### C. AI Motion Detection System (#TODO)
+
+- **MotionDetectionNode**: AI-powered computer vision node that processes camera feeds using YOLO object detection with OpenCV motion tracking fallback. Detects and tracks moving objects in real-time.
+  - **Role**: AI-powered computer vision
+  - **AI Models**: YOLOv7 primary, OpenCV fallback
+  - **Output**: Real-time target detection with confidence scores
+  - **YOLO Integration**: Uses YOLOv7 for object detection when available
+  - **Target Classification**: Only moving objects are published as targets (for now)
+
+#### D. Settings Parser 
+- **VehicleSettingsParser**: Parses AirSim `settings.json` to extract vehicle configurations and global parameters, enabling dynamic node creation. 
+
+### AI Motion Detection Workflow
+
+### **System Architecture Diagram**
+
+```
+                    ┌─────────────────────────────────────────┐
+                    │         COORDINATION NODE               │
+                    │    (Fleet Command & Control)           │
+                    │  • Global Services (/takeoff_all)      │
+                    │  • System Monitoring                   │  
+                    │  • Mission Coordination                │
+                    └─────────────┬───────────────────────────┘
+                                  │
+                ┌─────────────────┼─────────────────┐
+                │                 │                 │
+                ▼                 ▼                 ▼
+    ┌─────────────────┐ ┌─────────────────┐ ┌─────────────────┐
+    │  MULTIROTOR     │ │  MULTIROTOR     │ │  MULTIROTOR     │
+    │  NODE - Drone1  │ │  NODE - Drone2  │ │  NODE - DroneN  │
+    │                 │ │                 │ │                 │
+    │ • Individual    │ │ • Individual    │ │ • Individual    │
+    │   Control       │ │   Control       │ │   Control       │
+    │ • Sensor Data   │ │ • Sensor Data   │ │ • Sensor Data   │
+    │ • AI Vision     │ │ • AI Vision     │ │ • AI Vision     │
+    └─────────┬───────┘ └─────────┬───────┘ └─────────┬───────┘
+              │                   │                   │
+              ▼                   ▼                   ▼
+    ┌─────────────────┐ ┌─────────────────┐ ┌─────────────────┐
+    │   AI MOTION     │ │   AI MOTION     │ │   AI MOTION     │
+    │ DETECTION NODE  │ │ DETECTION NODE  │ │ DETECTION NODE  │
+    │                 │ │                 │ │                 │
+    │ • YOLO Object   │ │ • YOLO Object   │ │ • YOLO Object   │
+    │   Detection     │ │   Detection     │ │   Detection     │
+    │ • Motion Track  │ │ • Motion Track  │ │ • Motion Track  │
+    │ • Target Class  │ │ • Target Class  │ │ • Target Class  │
+    └─────────────────┘ └─────────────────┘ └─────────────────┘
+              │                   │                   │
+              ▼                   ▼                   ▼
+        ┌─────────────────────────────────────────────────┐
+        │              AIRSIM SIMULATION                  │
+        │         (Unreal Engine 5.5 + Physics)          │
+        └─────────────────────────────────────────────────┘
+```
+
+--- 
+
+## 4. ROS Topics and Services
+
+### Topics Published Per Vehicle 
+
+| Topic Name                | Message Type                       | Description                                      |
+|---------------------------|------------------------------------|--------------------------------------------------|
+| `/droneX/odom`            | `nav_msgs/msg/Odometry`            | Vehicle odometry (position, orientation, velocity)|
+| `/droneX/gps`             | `sensor_msgs/msg/NavSatFix`        | GPS data (lat, lon, alt)                         |
+| `/droneX/imu`             | `sensor_msgs/msg/Imu`              | IMU data (orientation, angular/linear accel)     |
+| `/droneX/environment`     | `airsim_interfaces/msg/Environment`| AirSim environment state (pressure, temp, etc.)  |
+| `/droneX/camera0/image`   | `sensor_msgs/msg/Image`            | Front camera image (640x480)                     |
+| `/droneX/camera1/image`   | `sensor_msgs/msg/Image`            | Right camera image (640x480)                     |
+| `/droneX/camera2/image`   | `sensor_msgs/msg/Image`            | Back camera image (640x480)                      |
+| `/droneX/camera3/image`   | `sensor_msgs/msg/Image`            | Left camera image (640x480)                      |
+| `/droneX/camera{0-3}/camera_info` | `sensor_msgs/msg/CameraInfo`   | Camera calibration info                          |
+| `/droneX/lidarZ/points`   | `sensor_msgs/msg/PointCloud2`      | Lidar point cloud (Z = lidar index/name)         |
+| `/droneX/mag`             | `sensor_msgs/msg/MagneticField`    | Magnetometer data                                |
+| `/droneX/baro`            | `sensor_msgs/msg/Range`            | Barometer/altimeter data                         |
+
+### AI Motion Detection Topics
+
+| Topic Name                | Message Type                       | Description                                      |
+|---------------------------|------------------------------------|--------------------------------------------------|
+| `/target_detection`       | `airsim_interfaces/msg/TargetDetection` | AI-detected moving targets with confidence   |
+| `/target_tracking`        | `airsim_interfaces/msg/TargetTracking`  | Multi-object tracking status                |
+
+### Topics Published by Coordination Node 
+
+| Topic Name                | Message Type                       | Description                                      |
+|---------------------------|------------------------------------|--------------------------------------------------|
+| `/origin_geo_point`       | `airsim_interfaces/msg/GPSYaw`     | Global GPS origin for all vehicles               |
+| `/system_status`          | `airsim_interfaces/msg/StringArray`| Status of all vehicles (READY/ERROR)             |
+| `/clock`                  | `rosgraph_msgs/msg/Clock`          | Simulation time                                  |
+
+### Services Per Vehicle
+
+| Service Name              | Service Type                       | Functionality                                    |
+|---------------------------|------------------------------------|--------------------------------------------------|
+| `/droneX/takeoff`         | `airsim_interfaces/srv/Takeoff`    | Takeoff command for this vehicle                 |
+| `/droneX/land`            | `airsim_interfaces/srv/Land`       | Land command for this vehicle                    |
+| `/droneX/reset`           | `airsim_interfaces/srv/Reset`      | Reset this vehicle in AirSim                     |
+| `/droneX/gps_waypoint`    | `airsim_interfaces/srv/GpsWaypoint`| Move to GPS waypoint                             |
+| `/droneX/search_target`   | `airsim_interfaces/srv/SearchTarget`| AI-powered moving target search (hover + detect)|
+| `/droneX/track_target`    | `airsim_interfaces/srv/TrackTarget`| Move to and track specific target coordinates    |
+
+### Global Services (Coordination Node)
+
+| Service Name              | Service Type                       | Functionality                                    |
+|---------------------------|------------------------------------|--------------------------------------------------|
+| `/reset_all`              | `airsim_interfaces/srv/Reset`      | Reset all vehicles                               |
+| `/takeoff_all`            | `airsim_interfaces/srv/Takeoff`    | Takeoff all vehicles                             |
+| `/land_all`               | `airsim_interfaces/srv/Land`       | Land all vehicles                                |
+| `/pause_simulation`       | `std_srvs/srv/SetBool`             | Pause/unpause AirSim simulation                  |
+| `/armed_check`           | `airsim_interfaces/srv/ListSceneObjectTags` | Check armed/disarmed status of all vehicles     |
+| `/search_target_all`       | `airsim_interfaces/srv/SearchTarget | Fleet-wide AI target search coordination        |
+| `/track_target_all`       | `airsim_interfaces/srv/TrackTarget | Fleet-wide formation tracking around target      |
+
+### Command Topics (Subscribers)
+
+| Topic Name                | Message Type                       | Functionality                                    |
+|---------------------------|------------------------------------|--------------------------------------------------|
+| `/droneX/vel_cmd_body_frame` | `airsim_interfaces/msg/VelCmd`  | Velocity command in body frame                   |
+| `/droneX/vel_cmd_world_frame`| `airsim_interfaces/msg/VelCmd`  | Velocity command in world frame                  |
+
+---
+
+### Example: AI Search Target Service
+
+The new `/droneX/search_target` service allows a drone to hover in place and use AI vision to detect moving targets.
+
+**Service definition (`airsim_interfaces/srv/SearchTarget.srv`):**
+```plaintext
+float64 search_radius     # Not used in AI mode (drone hovers)
+float64 search_time       # Time to search in seconds
+float64 min_confidence    # Minimum detection confidence (0.0-1.0)
+---
+bool success
+float64 target_x          # Target world coordinates
+float64 target_y
+float64 target_z
+float64 confidence        # Detection confidence
+string message
+```
+
+**Example usage:**
+```bash
+ros2 service call /Drone1/search_target airsim_interfaces/srv/SearchTarget "{
+  search_radius: 0.0,
+  search_time: 30.0,
+  min_confidence: 0.7
+}"
+```
+
+**AI Detection Response:**
+```json
+{
+  "success": true,
+  "target_x": 15.2,
+  "target_y": -8.7,
+  "target_z": -2.0,
+  "confidence": 0.85,
+  "message": "Moving target found via AI vision system"
 }
 ```
-- [Simulation of Pulse-Echo Radar for Vehicle Control and SLAM](https://www.mdpi.com/1424-8220/21/2/523)
+
+## Example: Track Object Service
+
+The new `/droneX/track_object` service allows a drone to search for and track a named object in the simulation.
+
+**Service definition (`airsim_interfaces/srv/TrackObject.srv`):**
+```plaintext
+string object_name
+float64 search_radius
+float64 track_duration
+---
+bool success
+string message
 ```
-@Article{echosim2021schouten,
-  author={Schouten, Girmi and Jansen, Wouter and Steckel, Jan},
-  title={Simulation of Pulse-Echo Radar for Vehicle Control and SLAM},
-  JOURNAL={Sensors},
-  volume={21},
-  year={2021},
-  number={2},
-  article-number={523},
-  doi={10.3390/s21020523}
+
+**Example usage:**
+```bash
+ros2 service call /drone1/track_object airsim_interfaces/srv/TrackObject "{object_name: 'TargetCar', search_radius: 50.0, track_duration: 30.0}"
+```
+
+---
+
+## 5. File-by-File Explanation 
+
+### New Modular Architecture Files
+
+| File Name                        | Purpose / Contribution                                                                                   |
+|-----------------------------------|--------------------------------------------------------------------------------------------------------|
+| `vehicle_node_base.hpp/cpp`       | Abstract base for all vehicle nodes. Handles parameters, connections, publishers, timers, callback groups.|
+| `multirotor_node.hpp/cpp`         | Implements drone-specific logic: sensor publishers, command subscribers, takeoff/land/gps_waypoint/track_object services.         |
+| `simple_multirotor_node.cpp`      | Minimal node for single-drone testing/debugging. Direct AirSim connection, basic publishers/services.   |
+| `coordination_node.hpp/cpp`       | Global node for system-wide services, status monitoring, GPS origin publishing, health checks.          |
+| `vehicle_settings_parser.hpp/cpp` | Parses AirSim `settings.json` for dynamic vehicle configuration. Used by launch files for node creation.|
+| `multirotor_main.cpp`             | Main entry for launching a multirotor node (per vehicle).                                              |
+| `coordination_main.cpp`           | Main entry for launching the coordination node.                                                        |
+
+### Launch Files
+
+| File Name                        | Purpose / Contribution                                                                                   |
+|-----------------------------------|--------------------------------------------------------------------------------------------------------|
+| `simple_single_drone.launch.py`   | Launches a single `simple_multirotor_node` in `/drone1` namespace. For quick testing/debugging.         |
+| `single_drone.launch.py`          | Launches two `multirotor_node` instances and the coordination node.                                     |
+| `multi_drone.launch.py`           | Dynamically launches nodes for all vehicles in `settings.json`, plus the coordination node.             |
+| `airsim_node.launch.py`           | Legacy: launches the old monolithic node.                                                               |
+
+### Legacy (Old Architecture) Files
+
+| File Name                        | Purpose / Contribution                                                                                   |
+|-----------------------------------|--------------------------------------------------------------------------------------------------------|
+| `airsim_ros_wrapper.h/cpp`        | Monolithic node managing all vehicles in one process. Single point of failure, sequential processing.   |
+| `airsim_node.cpp`                 | Main for launching the old monolithic node.                                                             |
+
+---
+
+## 6. Detailed Comparison: Old vs. New Architecture
+
+| Aspect                | Old (Monolithic)                      | New (Modular, Multi-Node)                | Why New is Better                        |
+|-----------------------|---------------------------------------|------------------------------------------|------------------------------------------|
+| Node Structure        | Single node for all vehicles          | One node per vehicle, plus coordination  | Fault isolation, parallelism             |
+| Extensibility         | Hard to add new vehicle types         | Easy to add new vehicle types/classes    | Clean inheritance, modular files         |
+| Fault Isolation       | Failure in one vehicle affects all    | Each vehicle node is independent         | One crash doesn't affect others          |
+| Performance           | Single-threaded, bottlenecked         | Multi-threaded, scalable                 | Parallel sensor processing               |
+| Launch Flexibility    | Static, hardcoded                     | Dynamic, based on settings.json          | Add/remove vehicles without code change  |
+| Coordination          | Ad-hoc, limited                       | Dedicated coordination node              | Centralized global services              |
+| Testing/Debugging     | Hard to isolate issues                | Can launch/test nodes individually       | Per-vehicle logs, easier debugging       |
+| Code Organization     | Large, monolithic classes             | Clean, separated by vehicle type         | Easier maintenance, less code coupling   |
+| ROS2 Best Practices   | Not followed                          | Follows ROS2 node/component patterns     | Modern, maintainable, scalable           |
+| Resource Management   | All processing on single core/thread  | Per-node threading, callback groups      | Better CPU utilization                   |
+| RPC Connections       | Shared for all vehicles               | Independent per vehicle                  | No RPC contention, isolated failures     |
+| Sensor Timers         | Shared, sequential                    | Per-vehicle, parallel                    | No sensor bottlenecks                    |
+
+**Summary:**  
+The new architecture is modular, robust, and scalable. Each vehicle runs in its own node and namespace, with isolated connections and timers. The coordination node manages global services and monitoring. This design enables parallel sensor processing, fault isolation, and dynamic vehicle management, making it ideal for large-scale multi-vehicle simulation.
+
+
+## 7. Design Decisions
+
+- **Modularity:** Each vehicle type gets its own node class, making it easy to extend for new vehicle types (cars, drones, etc.).
+- **Isolation:** Per-vehicle nodes mean a crash or RPC error in one vehicle does not affect others.
+- **Parallelism:** Isolated callback groups and timers allow sensors to be processed in parallel, improving performance.
+- **Dynamic Launch:** VehicleSettingsParser enables dynamic node creation based on `settings.json`, so you can add/remove vehicles without changing code.
+- **Coordination Node:** Centralizes global services (reset, takeoff, land, pause, health check) and system status monitoring.
+- **Legacy Compatibility:** Old files (`airsim_ros_wrapper.*`, `airsim_node.cpp`) are retained for reference and backward compatibility, but are not recommended for new deployments.
+
+## 8. Troubleshooting & FAQ
+
+- **bad_weak_ptr errors:** Ensure you have rebuilt your workspace and are not running old binaries.
+- **Nodes not connecting:** Check that AirSim is running and vehicle names match those in `settings.json`.
+- **Adding vehicles:** Update `settings.json` and use `multi_drone.launch.py`—nodes will be created automatically.
+- **PX4 SITL:** Each drone instance needs its own PX4 SITL process.
+- **Logs:** Each vehicle node logs independently; use `ros2 node list` and `ros2 topic list` to inspect running nodes and topics.
+
+---
+
+## 9. References
+
+- [AirSim Documentation](https://microsoft.github.io/AirSim/)
+- [ROS2 Tutorials](https://docs.ros.org/en/rolling/Tutorials.html)
+
+### AI/Computer Vision References
+- [YOLOv7 Paper](https://arxiv.org/abs/2207.02696)
+- [OpenCV Motion Detection](https://opencv.org/)
+- [PyTorch Installation](https://pytorch.org/get-started/locally/)
+---
+
+- **List nodes:**
+  ```bash
+  ros2 node list
+  ```
+- **List topics:**
+  ```bash
+  ros2 topic list
+  ```
+- **Echo odometry:**
+  ```bash
+  ros2 topic echo /drone1/odom
+  ```
+- **Takeoff:**
+  ```bash
+  ros2 service call /drone1/takeoff airsim_interfaces/srv/Takeoff "{wait_on_last_task: true}"
+  ```
+- **Land:**
+  ```bash
+  ros2 service call /drone1/land airsim_interfaces/srv/Land "{wait_on_last_task: true}"
+  ```
+- **Global takeoff:**
+  ```bash
+  ros2 service call /takeoff_all airsim_interfaces/srv/Takeoff "{wait_on_last_task: true}"
+  ```
+- **Move to GPS waypoint:**
+  ```bash
+  ros2 service call /drone1/gps_waypoint airsim_interfaces/srv/GpsWaypoint "{latitude: 47.641468, longitude: -122.140165, altitude: 10.0, speed: 5.0, tolerance: 1.0, wait_on_last_task: true}"
+  ```
+- **Track object (TODO):**
+  ```bash
+  ros2 service call /drone1/track_object airsim_interfaces/srv/TrackObject "{object_name: 'TargetCar', search_radius: 50.0, track_duration: 30.0}"
+  ```
+
+  Example of settings.json
+```json
+{
+  "SettingsVersion": 2,
+  "SimMode": "Multirotor",
+  "ClockType": "SteppableClock",
+  "Vehicles": {
+    "Drone1": {
+      "VehicleType": "PX4Multirotor",
+      "UseSerial": false,
+      "LockStep": true,
+      "UseTcp": true,
+      "RpcEnabled": true,
+      "TcpPort": 4560,
+      "ControlIp": "remote",
+      "ControlPortLocal": 14540,
+      "ControlPortRemote": 14580,
+      "LocalHostIp": "172.22.112.1",
+      "X": -5.0,
+      "Y": 0.0,
+      "Z": 0.5,
+      "Yaw": 0.0,
+      "Sensors": {
+        "Barometer": {
+          "SensorType": 1,
+          "Enabled": true
+        },
+        "Imu": {
+          "SensorType": 2,
+          "Enabled": true
+        },
+        "Gps": {
+          "SensorType": 3,
+          "Enabled": true
+        },
+        "Magnetometer": {
+          "SensorType": 4,
+          "Enabled": true
+        },
+        "Lidar1": {
+          "SensorType": 6,
+          "Enabled": true,
+          "NumberOfChannels": 16,
+          "Range": 100,
+          "PointsPerSecond": 10000,
+          "DrawDebugPoints": true,
+          "X": 0,
+          "Y": 0,
+          "Z": 0,
+          "Roll": 0,
+          "Pitch": 0,
+          "Yaw": 0
+        }
+      }
+    }
+  },
+  "PawnPaths": {
+    "DefaultQuadrotor": {
+      "PawnBP": "Class'/AirSim/Blueprints/BP_MyPawn.BP_MyPawn_C'"
+    }
+  }
 }
-```
-
-## Cosys-Lab Modifications
-* Updated for Unreal 5.
-* Added [multi-layer annotation](https://cosys-lab.github.io/Cosys-AirSim/annotation) for groundtruth label generation with RGB, greyscale and texture options. Extensive API integration and available for camera and GPU-LiDAR sensors.
-* Added [Instance Segmentation](https://cosys-lab.github.io/Cosys-AirSim/instance_segmentation). 
-* Added [Echo sensor type](https://cosys-lab.github.io/Cosys-AirSim/echo) for simulation of sensors like sonar and radar.
-* Added [GPU LIDAR sensor type](https://cosys-lab.github.io/Cosys-AirSim/gpulidar): Uses GPU acceleration to simulate a LiDAR sensor. Can support much higher point density then normal LiDAR and behaves more authentic and has realistic intensity generation.
-* Added [skid steering SimMode and vehicle type](https://cosys-lab.github.io/Cosys-AirSim/skid_steer_vehicle). ClearPath Husky and Pioneer P3DX implemented as vehicle types using this new vehicle model. 
-* Added [Matlab API Client](https://cosys-lab.github.io/Cosys-AirSim/matlab) implementation as an easy to install Matlab toolbox.
-* Added various [random but deterministic dynamic object types and world configuration options](https://cosys-lab.github.io/Cosys-AirSim/dynamic_objects).
-* Added [Artificial Lights](https://cosys-lab.github.io/Cosys-AirSim/lights). 
-* Added BoxCar vehicle model to the Car SimMode to have a smaller vehicle to use in indoor spaces.
-* Added a new image type called [Lighting](https://cosys-lab.github.io/Cosys-AirSim/image_apis) which only shows the light information and no materials.
-* Updated [ComputerVision mode](https://cosys-lab.github.io/Cosys-AirSim/image_apis#computer-vision-mode-1): Now has full API and Simulation just like other vehicle types. It mostly means it can now have sensors attached (outside of IMU). Improved handling and camera operation.
-* Updated [LIDAR sensor type](https://cosys-lab.github.io/Cosys-AirSim/lidar): Fixed not tracing correctly, added ground truth (point labels) generation, added range-noise generation. Improved API pointcloud delivery to be full scan instead of being frame-rate dependent and partial.
-* Updated the camera, Echo and (GPU-)LiDAR sensors to be uncoupled from the vehicle and be placed as external world sensors.
-* Updated sensors like cameras, Echo sensor and GPU-LiDAR to ignore certain objects with the _MarkedIgnore_ Unreal tag and enabling the "IgnoreMarked" setting in [the settings file](https://cosys-lab.github.io/Cosys-AirSim/settings).
-* Updated cameras sensor with more distortion features such as chromatic aberration, motion blur and lens distortion. 
-* Updated Python [ROS implementation](https://cosys-lab.github.io/Cosys-AirSim/ros_python) with completely new implementation and feature set.
-* Updated C++ [ROS2 implementation](https://cosys-lab.github.io/Cosys-AirSim/ros_cplusplus) to support custom Cosys-AirSim features.
-* Dropped support for Unity Environments.
-
-Some more details on our changes can be found in the [changelog](https://github.com/Cosys-Lab/Cosys-AirSim/blob/main/CHANGELOG.md).
-
-## How to Get It
-#### Download and run from packaged binary - Windows/Linux
-* [Download and run it](https://cosys-lab.github.io/Cosys-AirSim/run_packaged)
-#### Download and install from precompiled plugin - Windows/Linux
-* [Download and install it](https://cosys-lab.github.io/Cosys-AirSim/install_precompiled)
-#### Install and use from source - Windows
-* [Install/Build it](https://cosys-lab.github.io/Cosys-AirSim/install_windows)
-#### Install and use from source - Linux
-* [Install/Build it](https://cosys-lab.github.io/Cosys-AirSim/install_linux)
-
-## How to Use It
-
-### Documentation
-
-View our [detailed documentation](https://cosys-lab.github.io/Cosys-AirSim/) on all aspects of Cosys-AirSim.
-
-## Original AirSim Paper
-
-More technical details are available in [AirSim paper (FSR 2017 Conference)](https://arxiv.org/abs/1705.05065). Please cite this as:
-```
-@inproceedings{airsim2017fsr,
-  author = {Shital Shah and Debadeepta Dey and Chris Lovett and Ashish Kapoor},
-  title = {AirSim: High-Fidelity Visual and Physical Simulation for Autonomous Vehicles},
-  year = {2017},
-  booktitle = {Field and Service Robotics},
-  eprint = {arXiv:1705.05065},
-  url = {https://arxiv.org/abs/1705.05065}
-}
+``` 
+*Last update on 27 Aug 2025*
+---
 ```
 
 ## License
