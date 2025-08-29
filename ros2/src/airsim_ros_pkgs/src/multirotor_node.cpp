@@ -44,6 +44,17 @@
 
 using namespace msr::airlib;
 
+void fixPointCloud(std::vector<float>& data, int offset, std::vector<int> flip_indexes) {
+    for (size_t i = 1; i < data.size(); i += offset) {
+        data[i] = - data[i];
+        for (int flip_index : flip_indexes) {
+            if (i + flip_index < data.size()) {
+                data[i + flip_index] = -data[i + flip_index];
+            }
+        }
+    }
+}
+
 MultirotorNode::MultirotorNode(const std::string& vehicle_name, 
                              const std::string& host_ip, 
                              uint16_t host_port)
@@ -330,6 +341,43 @@ void MultirotorNode::publish_static_transforms()
         transform_stamped.transform.rotation.w = 1.0;
         
         static_tf_broadcaster_->sendTransform(transform_stamped);
+
+        // Transform from vehicle base frame to LiDAR sensor frame
+        auto lidar_transform = geometry_msgs::msg::TransformStamped();
+        lidar_transform.header.stamp = stamp_;
+        lidar_transform.header.frame_id = vehicle_name_;
+        lidar_transform.child_frame_id = vehicle_name_ + "/Lidar1";
+        
+        // LiDAR sensor position relative to vehicle (adjust these values based on your setup)
+        lidar_transform.transform.translation.x = 0.0;  // Forward offset
+        lidar_transform.transform.translation.y = 0.0;  // Right offset  
+        lidar_transform.transform.translation.z = 0.0;  // Down offset
+        lidar_transform.transform.rotation.x = 0.0;
+        lidar_transform.transform.rotation.y = 0.0;
+        lidar_transform.transform.rotation.z = 0.0;
+        lidar_transform.transform.rotation.w = 1.0;
+        
+        static_tf_broadcaster_->sendTransform(lidar_transform);
+        
+        // Optional: Add other sensor frames (cameras, IMU, etc.)
+        for (int i = 0; i < 4; ++i) {
+            auto camera_transform = geometry_msgs::msg::TransformStamped();
+            camera_transform.header.stamp = stamp_;
+            camera_transform.header.frame_id = vehicle_name_;
+            camera_transform.child_frame_id = vehicle_name_ + "/camera" + std::to_string(i);
+            
+            // Camera position relative to vehicle (adjust based on your setup)
+            camera_transform.transform.translation.x = 0.0;
+            camera_transform.transform.translation.y = 0.0;
+            camera_transform.transform.translation.z = 0.0;
+            camera_transform.transform.rotation.x = 0.0;
+            camera_transform.transform.rotation.y = 0.0;
+            camera_transform.transform.rotation.z = 0.0;
+            camera_transform.transform.rotation.w = 1.0;
+            
+            static_tf_broadcaster_->sendTransform(camera_transform);
+        }
+        RCLCPP_INFO(this->get_logger(), "Published static transforms for %s", vehicle_name_.c_str());
     }
     catch (const std::exception& e) {
         RCLCPP_ERROR(this->get_logger(), "Error publishing static transforms: %s", e.what());
@@ -798,73 +846,46 @@ void MultirotorNode::process_lidar()
 
         if (lidar_data.point_cloud.size() > 3) {
             sensor_msgs::msg::PointCloud2 lidar_msg;
-            lidar_msg.header.stamp = stamp_;
-            lidar_msg.header.frame_id = vehicle_name_ + "/lidar";
-            
-            // Calculate number of points (AirSim gives XYZ, so 3 floats per point)
-            size_t num_points = lidar_data.point_cloud.size() / 3;
+            lidar_msg.header.stamp = rclcpp::Time(lidar_data.time_stamp);
+            lidar_msg.header.frame_id = vehicle_name_ + "/Lidar1";
             
             lidar_msg.height = 1;
-            lidar_msg.width = num_points;
-            lidar_msg.is_bigendian = false;
-            lidar_msg.point_step = 12; // 3 floats × 4 bytes each = 12 bytes per point
-            lidar_msg.row_step = lidar_msg.point_step * lidar_msg.width;
-            lidar_msg.is_dense = false; // Set to false in case of NaN/inf values
-            
-            // Define point fields (XYZ)
-            sensor_msgs::msg::PointField field_x, field_y, field_z;
-            field_x.name = "x"; 
-            field_x.offset = 0; 
-            field_x.datatype = sensor_msgs::msg::PointField::FLOAT32; 
-            field_x.count = 1;
-            
-            field_y.name = "y"; 
-            field_y.offset = 4; 
-            field_y.datatype = sensor_msgs::msg::PointField::FLOAT32; 
-            field_y.count = 1;
-            
-            field_z.name = "z"; 
-            field_z.offset = 8; 
-            field_z.datatype = sensor_msgs::msg::PointField::FLOAT32; 
-            field_z.count = 1;
-            
-            lidar_msg.fields = {field_x, field_y, field_z};
-            
-            // **CRITICAL FIX: Properly convert AirSim data to ROS2 format**
-            lidar_msg.data.resize(lidar_msg.row_step);
-            
-            // Convert point cloud data properly
-            for (size_t i = 0; i < num_points; ++i) {
-                if (i * 3 + 2 < lidar_data.point_cloud.size()) {
-                    // Extract XYZ coordinates from AirSim data
-                    float x = lidar_data.point_cloud[i * 3 + 0];
-                    float y = lidar_data.point_cloud[i * 3 + 1]; 
-                    float z = lidar_data.point_cloud[i * 3 + 2];
-                    
-                    // Skip invalid points
-                    if (std::isnan(x) || std::isnan(y) || std::isnan(z) ||
-                        std::isinf(x) || std::isinf(y) || std::isinf(z)) {
-                        continue;
-                    }
-                    
-                    // Copy coordinates to message data buffer
-                    size_t byte_offset = i * 12; // 12 bytes per point
-                    
-                    std::memcpy(&lidar_msg.data[byte_offset + 0], &x, 4);
-                    std::memcpy(&lidar_msg.data[byte_offset + 4], &y, 4);
-                    std::memcpy(&lidar_msg.data[byte_offset + 8], &z, 4);
-                }
+            lidar_msg.width = lidar_data.point_cloud.size() / 3;
+            lidar_msg.fields.resize(3);
+            lidar_msg.fields[0].name = "x";
+            lidar_msg.fields[1].name = "y";
+            lidar_msg.fields[2].name = "z";
+
+            int offset = 0;
+            for (size_t d = 0; d < lidar_msg.fields.size(); ++d, offset += 4) {
+                lidar_msg.fields[d].offset = offset;
+                lidar_msg.fields[d].datatype = sensor_msgs::msg::PointField::FLOAT32;
+                lidar_msg.fields[d].count = 1;
             }
-            
-            if (!lidar_pubs_.empty() && num_points > 0) {
+
+            lidar_msg.is_bigendian = false;
+            lidar_msg.point_step = offset; // 4 * num fields = 12 bytes
+            lidar_msg.row_step = lidar_msg.point_step * lidar_msg.width;
+            lidar_msg.is_dense = true;
+
+            // Apply coordinate frame transformation (this is critical!)
+            std::vector<float> data_std = lidar_data.point_cloud;
+            fixPointCloud(data_std, 3, {1}); // Flip Y coordinate
+
+            // Convert to byte array
+            const unsigned char* bytes = reinterpret_cast<const unsigned char*>(data_std.data());
+            std::vector<unsigned char> lidar_msg_data(bytes, bytes + sizeof(float) * data_std.size());
+            lidar_msg.data = std::move(lidar_msg_data);
+
+            if (!lidar_pubs_.empty()) {
                 lidar_pubs_[0]->publish(lidar_msg);
                 
                 // Debug info - log occasionally
                 static int lidar_count = 0;
                 if (++lidar_count % 50 == 0) {
-                    RCLCPP_DEBUG(this->get_logger(), 
-                               "Published LiDAR data: %zu points from %zu raw values", 
-                               num_points, lidar_data.point_cloud.size());
+                    RCLCPP_INFO(this->get_logger(),
+                               "Published LiDAR data: %u points from %zu raw values",
+                               lidar_msg.width, lidar_data.point_cloud.size());
                 }
             }
         } else {

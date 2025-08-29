@@ -52,7 +52,7 @@ private:
     // Velocity command structure
     struct VelCmd {
         float x, y, z;
-        float duration;  // Added duration field to match implementation
+        float duration;
     };
 
     // Service callbacks
@@ -120,7 +120,7 @@ private:
 
 private:
     // Publishers
-    std::vector<rclcpp::Publisher<sensor_msgs::msg::Image>::SharedPtr> image_pubs_;  // Changed from camera_pubs_
+    std::vector<rclcpp::Publisher<sensor_msgs::msg::Image>::SharedPtr> image_pubs_;
     std::vector<rclcpp::Publisher<sensor_msgs::msg::CameraInfo>::SharedPtr> camera_info_pubs_;
     std::vector<rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr> lidar_pubs_;
     rclcpp::Publisher<sensor_msgs::msg::Imu>::SharedPtr imu_pub_;
@@ -142,7 +142,7 @@ private:
     rclcpp::Subscription<airsim_interfaces::msg::VelCmd>::SharedPtr vel_cmd_world_frame_sub_;
     rclcpp::Subscription<airsim_interfaces::msg::TargetDetection>::SharedPtr motion_detection_sub_;
 
-    // Services (updated names to match implementation)
+    // Services
     rclcpp::Service<airsim_interfaces::srv::Takeoff>::SharedPtr takeoff_srv_;
     rclcpp::Service<airsim_interfaces::srv::Land>::SharedPtr land_srv_;
     rclcpp::Service<airsim_interfaces::srv::GpsWaypoint>::SharedPtr gps_waypoint_srv_;
