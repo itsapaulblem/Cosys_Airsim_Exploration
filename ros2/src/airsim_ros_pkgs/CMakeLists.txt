@@ -45,7 +45,8 @@ add_subdirectory("${AIRSIM_ROOT}/cmake/AirLib" AirLib)
 add_subdirectory("${AIRSIM_ROOT}/cmake/MavLinkCom" MavLinkCom)
 
 # Compiler settings
-set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD 14)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_FLAGS "-O3 -Wall -Wextra -Wnoexcept -Wstrict-null-sentinel -fPIC -fPIE")
 
 set(CXX_EXP_LIB "-nostdinc++ -I/usr/include/c++/8 -I/usr/include/x86_64-linux-gnu/c++/8 -nodefaultlibs 
@@ -276,13 +277,16 @@ install(PROGRAMS
   DESTINATION lib/${PROJECT_NAME}
 )
 
-# Install Python modules
-install(DIRECTORY
-  scripts/ai_detection/
-  DESTINATION lib/${PROJECT_NAME}/ai_detection
-  PATTERN "__pycache__" EXCLUDE
-  PATTERN "*.pyc" EXCLUDE
-)
+# Install YOLOv7-DeepSORT directory if it exists
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/scripts/YOLOv7-DeepSORT-Object-Tracking")
+  install(DIRECTORY
+    scripts/YOLOv7-DeepSORT-Object-Tracking/
+    DESTINATION lib/${PROJECT_NAME}/YOLOv7-DeepSORT-Object-Tracking
+    PATTERN "__pycache__" EXCLUDE
+    PATTERN "*.pyc" EXCLUDE
+    PATTERN "*.git*" EXCLUDE
+  )
+endif()
 
 # Install car_joy scripts if they exist
 if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/scripts/car_joy")
@@ -299,10 +303,12 @@ install(FILES README.md DESTINATION share/${PROJECT_NAME})
 install(DIRECTORY launch rviz DESTINATION share/${PROJECT_NAME})
 
 # Install Python package requirements
-install(FILES 
-  requirements.txt
-  DESTINATION share/${PROJECT_NAME}
-)
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/requirements.txt")
+  install(FILES 
+    requirements.txt
+    DESTINATION share/${PROJECT_NAME}
+  )
+endif()
 
 #============================================================================
 # EXPORT DEPENDENCIES

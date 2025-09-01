@@ -30,10 +30,13 @@ def generate_launch_description():
         name='motion_detection_node',
         parameters=[{
             'vehicle_name': LaunchConfiguration('vehicle_name'),
-            'camera_topic': '/drone1/airsim_drone1/camera0/image',
+            'camera_topic': '/drone1/camera0/image',
             'confidence_threshold': LaunchConfiguration('confidence_threshold'),
             'motion_threshold': LaunchConfiguration('motion_threshold')
         }],
+        remappings=[
+            ('target_detection', '/drone1/target_detection'),
+        ],  
         output='screen'
     )
 
