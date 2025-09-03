@@ -8,7 +8,7 @@ Paulsys-Lab made extensive modifications to the Cosys-AirSim platform to support
 This [main branch](https://github.com/Cosys-Lab/Cosys-AirSim/tree/main) is for the latest supported Unreal Version v5.5, maintained for support, and is available for builds in the [releases](https://github.com/Cosys-Lab/Cosys-AirSim/releases).
 Unreal [5.2.1](https://github.com/Cosys-Lab/Cosys-AirSim/tree/5.2.1) is also available for long term support builds.
 
-# AirSim ROS2 Multirotor Modular Package with AI Motion Detection (Search and Track Mission)
+# PaulSys-AirSim ROS2 Multirotor Modular Package with AI Motion Detection (Search and Track Mission)
 
 This project represents a architectural change of AirSim ROS 2 integration, evolving from a monolithic single-node approach to a modular, scalable, AI-enhanced multi-drone system. The new architecture enables robust fleet operations with computer vision capabilities for autonomous search and rescue missions.
 
