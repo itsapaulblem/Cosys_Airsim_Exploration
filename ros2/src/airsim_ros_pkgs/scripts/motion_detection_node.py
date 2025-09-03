@@ -181,8 +181,8 @@ class MultiCameraMotionDetectionNode(Node):
         self.get_logger().info(f' Primary camera: {self.primary_camera} ({self.camera_orientations[self.primary_camera]["name"]})')
         self.get_logger().info(f' Confidence threshold: {self.conf_threshold}')
         self.get_logger().info(f' Motion threshold: {self.motion_threshold} pixels')
-        self.get_logger().info(f" Person following: {'✓' if self.enable_following else '✗'}")
-        self.get_logger().info(f' YOLOv7+DeepSORT: {"✓" if self.use_yolo_deepsort else "✗"}')
+        self.get_logger().info(f" Person following: {'enabled' if self.enable_following else 'disabled'}")
+        self.get_logger().info(f' YOLOv7+DeepSORT: {"enabled" if self.use_yolo_deepsort else "disabled"}')
 
     def setup_multi_camera_interfaces(self):
         """Setup subscriptions and publishers for all 4 cameras"""
@@ -210,7 +210,7 @@ class MultiCameraMotionDetectionNode(Node):
                 self.vis_pubs[cam_id] = self.create_publisher(Image, vis_topic, 10)
                 
             cam_name = self.camera_orientations[cam_id]['name']
-            self.get_logger().info(f'📷 Camera {cam_id} ({cam_name}): {self.camera_topics[cam_id]} -> {vis_topic if self.enable_vis else "no viz"}')
+            self.get_logger().info(f'Camera {cam_id} ({cam_name}): {self.camera_topics[cam_id]} -> {vis_topic if self.enable_vis else "no viz"}')
         
         # Global detection publisher
         self.detection_pub = self.create_publisher(TargetDetection, 'target_detection', 10)
@@ -551,7 +551,7 @@ class MultiCameraMotionDetectionNode(Node):
                                      f'target_center=[{center[0]:.0f},{center[1]:.0f}], '
                                      f'image_center=[{image_center[0]:.0f},{image_center[1]:.0f}], '
                                      f'dist={estimated_distance:.1f}m (target: {self.follow_distance}m), '
-                                     f'yaw_err={math.degrees(world_yaw_angle):.1f}°, '
+                                     f'yaw_err={math.degrees(world_yaw_angle):.1f}deg, '
                                      f'dist_err={distance_error:.1f}m, '
                                      f'cmd=[fwd:{forward_cmd:.2f}, side:{side_cmd:.2f}, '
                                      f'up:{height_cmd:.2f}, yaw:{yaw_cmd:.2f}]')
@@ -639,7 +639,7 @@ class MultiCameraMotionDetectionNode(Node):
                         
                         self.use_yolo_deepsort = True
                         self.use_yolo_only = False
-                        self.get_logger().info('[DEBUG] ✓ YOLOv7 + DeepSORT initialized successfully')
+                        self.get_logger().info('[DEBUG] YOLOv7 + DeepSORT initialized successfully')
                         self.warmup_model()
                         
                     else:
@@ -678,7 +678,7 @@ class MultiCameraMotionDetectionNode(Node):
         """Setup OpenCV motion detection fallback"""
         self.background_subtractor = cv2.createBackgroundSubtractorMOG2(detectShadows=True, varThreshold=50)
         self.kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3))
-        self.get_logger().info("[DEBUG] ✓ OpenCV motion detection initialized")
+        self.get_logger().info("[DEBUG] OpenCV motion detection initialized")
 
     def xyxy_to_xywh(self, *xyxy):
         """Convert bounding box format"""
@@ -985,7 +985,7 @@ class MultiCameraMotionDetectionNode(Node):
                     self.publish_camera_visualization(vis_image, camera_id, msg.header)
                     
         except Exception as e:
-            self.get_logger().error(f'❌ Camera {camera_id} processing error: {e}')
+            self.get_logger().error(f'Camera {camera_id} processing error: {e}')
 
     def publish_target_detection(self, target, header):
         """Publish individual target detection"""
