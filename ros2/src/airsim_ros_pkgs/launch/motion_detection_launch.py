@@ -19,11 +19,37 @@ def generate_launch_description():
     )
 
     motion_threshold_arg = DeclareLaunchArgument(
-        'motion_threshold', default_value='15.0',
+        'motion_threshold', 
+        default_value='15.0',
         description='Minimum movement in pixels to be considered moving'
     )
 
-    # Motion Detection Node
+    # Person following parameters
+    enable_following_arg = DeclareLaunchArgument(
+        'enable_following',
+        default_value='true',
+        description='Enable person following behavior'
+    )
+
+    follow_distance_arg = DeclareLaunchArgument(
+        'follow_distance',
+        default_value='5.0',
+        description='Desired following distance in meters'
+    )
+
+    max_follow_speed_arg = DeclareLaunchArgument(
+        'max_follow_speed',
+        default_value='2.0',
+        description='Maximum following speed in m/s'
+    )
+
+    follow_height_arg = DeclareLaunchArgument(
+        'follow_height',
+        default_value='3.0',
+        description='Following height in meters'
+    )
+
+    # Motion Detection Node with Person Following
     motion_detection_node = Node(
         package='airsim_ros_pkgs',
         executable='motion_detection_node.py',
@@ -32,10 +58,17 @@ def generate_launch_description():
             'vehicle_name': LaunchConfiguration('vehicle_name'),
             'camera_topic': '/drone1/camera0/image',
             'confidence_threshold': LaunchConfiguration('confidence_threshold'),
-            'motion_threshold': LaunchConfiguration('motion_threshold')
+            'motion_threshold': LaunchConfiguration('motion_threshold'),
+            'enable_following': LaunchConfiguration('enable_following'),
+            'follow_distance': LaunchConfiguration('follow_distance'),
+            'max_follow_speed': LaunchConfiguration('max_follow_speed'),
+            'follow_height': LaunchConfiguration('follow_height'),
+            'image_width': 640,
+            'image_height': 480
         }],
         remappings=[
             ('target_detection', '/drone1/target_detection'),
+            ('detection_visualization', '/drone1/detection_visualization'),
         ],  
         output='screen'
     )
@@ -43,6 +76,10 @@ def generate_launch_description():
     return LaunchDescription([
         vehicle_name_arg,
         confidence_threshold_arg,
-        motion_threshold_arg, 
+        motion_threshold_arg,
+        enable_following_arg,
+        follow_distance_arg,
+        max_follow_speed_arg,
+        follow_height_arg,
         motion_detection_node
     ])
