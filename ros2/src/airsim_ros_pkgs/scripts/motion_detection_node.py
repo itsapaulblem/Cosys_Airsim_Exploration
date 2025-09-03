@@ -474,7 +474,7 @@ class MultiCameraMotionDetectionNode(Node):
         return output
 
     def control_loop(self):
-        """FIXED: Control loop adapted for multi-camera target following"""
+        """Control loop adapted for multi-camera target following"""
         dt = 0.1
         
         if self.drone_state == 'TAKING_OFF' and not self.takeoff_complete:
@@ -496,16 +496,16 @@ class MultiCameraMotionDetectionNode(Node):
             yaw_angle, pitch_angle = self.pixel_to_world_direction(center, image_center)
             estimated_distance = self.estimate_person_distance(bbox)
             
-            # FIXED: Apply camera orientation transformation BEFORE control calculations
+            # Apply camera orientation transformation BEFORE control calculations
             cam_yaw_offset = math.radians(self.camera_orientations[target_camera]['yaw'])
             world_yaw_angle = yaw_angle + cam_yaw_offset
             
-            # FIXED: Correct control error calculations
+            # Correct control error calculations
             yaw_error = world_yaw_angle  # For centering: if person is to the right, turn right
-            distance_error = estimated_distance - self.follow_distance  # If too far, move forward
+            distance_error = (estimated_distance - self.follow_distance)  # If too far, move forward
             height_error = pitch_angle * 0.5  # If person is above center, move up
-            
-            # FIXED: Side movement should be based on raw yaw angle (camera-relative)
+
+            # Side movement should be based on raw yaw angle (camera-relative)
             side_error = yaw_angle * 0.3  # Reduced gain to prevent oscillation
             
             # PID control outputs
@@ -514,7 +514,7 @@ class MultiCameraMotionDetectionNode(Node):
             height_cmd = self.pid_control(self.pid_z, height_error, dt)
             side_cmd = self.pid_control(self.pid_y, side_error, dt)
             
-            # FIXED: Reduced command limits to prevent aggressive movements
+            # Reduced command limits to prevent aggressive movements
             yaw_cmd = max(-1.5, min(yaw_cmd, 1.5))
             forward_cmd = max(-3.0, min(forward_cmd, 3.0))
             height_cmd = max(-1.0, min(height_cmd, 1.0))
