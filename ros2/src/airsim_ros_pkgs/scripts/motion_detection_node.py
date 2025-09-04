@@ -416,7 +416,7 @@ class MultiCameraMotionDetectionNode(Node):
             vel_cmd = VelCmd()
             vel_cmd.twist.linear.x = 0.0
             vel_cmd.twist.linear.y = 0.0
-            vel_cmd.twist.linear.z = 0.0
+            vel_cmd.twist.linear.z = 0.05
             vel_cmd.twist.angular.x = 0.0
             vel_cmd.twist.angular.y = 0.0
             vel_cmd.twist.angular.z = 0.0
@@ -738,15 +738,18 @@ class MultiCameraMotionDetectionNode(Node):
         return img
 
     def UI_box(self, x, img, color=None, label=None, line_thickness=None):
-        """Draw UI box"""
+        """Draw simple rectangle box"""
         tl = line_thickness or round(0.002 * (img.shape[0] + img.shape[1]) / 2) + 1
         color = color or [np.random.randint(0, 255) for _ in range(3)]
         c1, c2 = (int(x[0]), int(x[1])), (int(x[2]), int(x[3]))
+        # Draw rectangle
+        cv2.rectangle(img, c1, c2, color, tl)
+        # Draw label
         if label:
             tf = max(tl - 1, 1)
             t_size = cv2.getTextSize(label, 0, fontScale=tl / 3, thickness=tf)[0]
-            img = self.draw_border(img, (c1[0], c1[1] - t_size[1] - 3), (c1[0] + t_size[0], c1[1] + 3), color, 1, 8, 2)
-            cv2.putText(img, label, (c1[0], c1[1] - 2), 0, tl / 3, [225, 255, 255], thickness=tf, lineType=cv2.LINE_AA)
+            cv2.rectangle(img, (c1[0], c1[1] - t_size[1] - 3), (c1[0] + t_size[0], c1[1]), color, -1)
+            cv2.putText(img, label, (c1[0], c1[1] - 2), 0, tl / 3, (255, 255, 255), thickness=tf, lineType=cv2.LINE_AA)
 
     def draw_boxes(self, img, bbox, object_id, identities=None, offset=(0, 0), camera_id=0):
         """Draw tracking boxes with trails - camera-specific version"""
@@ -1014,22 +1017,22 @@ class MultiCameraMotionDetectionNode(Node):
             }.get(self.drone_state, (255, 255, 255))
             
             cv2.putText(vis_image, f"CAMERA: {cam_name.upper()}", (10, 30), 
-                       cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
+                       cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
             cv2.putText(vis_image, f"STATE: {self.drone_state}", (10, 60), 
-                       cv2.FONT_HERSHEY_SIMPLEX, 0.7, state_color, 2)
-            
+                       cv2.FONT_HERSHEY_SIMPLEX, 0.6, state_color, 2)
+    
             # Target following status
             if self.following_active and self.target_camera_id == camera_id:
                 cv2.putText(vis_image, f"FOLLOWING TARGET ID: {self.target_person_id}", (10, 90), 
-                           cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
+                           cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
             elif self.enable_following:
                 status = "PRIMARY CAMERA" if camera_id == self.primary_camera else "SECONDARY VIEW"
-                cv2.putText(vis_image, status, (10, 90), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 0), 2)
-            
+                cv2.putText(vis_image, status, (10, 90), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 0), 2)
+
             # Frame count and crosshair
             frame_count = self.camera_frame_counts.get(camera_id, 0)
             cv2.putText(vis_image, f"FRAME: {frame_count}", (10, 120), 
-                       cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
+                       cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 1)
             
             # Draw crosshair at image center for reference
             center_x, center_y = self.image_width // 2, self.image_height // 2

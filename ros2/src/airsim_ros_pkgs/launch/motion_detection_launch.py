@@ -63,8 +63,8 @@ def generate_launch_description():
             'follow_distance': LaunchConfiguration('follow_distance'),
             'max_follow_speed': LaunchConfiguration('max_follow_speed'),
             'follow_height': LaunchConfiguration('follow_height'),
-            'image_width': 640,
-            'image_height': 480
+            'image_width': 1280,
+            'image_height': 720
         }],
         remappings=[
             ('target_detection', '/drone1/target_detection'),
