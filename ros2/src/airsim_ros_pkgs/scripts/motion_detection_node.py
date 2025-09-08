@@ -50,7 +50,7 @@ class MultiCameraMotionDetectionNode(Node):
 
         # ROS 2 Parameters Declaration and Retrieval
         self.declare_parameter('vehicle_name', 'Drone1')
-        self.declare_parameter('confidence_threshold', 0.5)
+        self.declare_parameter('confidence_threshold', 0.4)
         self.declare_parameter('iou_threshold', 0.45)  # (intersection over union) a predefined cutoff value used in object detection to determine if a predicted bounding box is true positive or false positive
         self.declare_parameter('motion_threshold', 15.0)
         self.declare_parameter('enable_visualization', True)
@@ -58,8 +58,8 @@ class MultiCameraMotionDetectionNode(Node):
         
         # Person following parameters
         self.declare_parameter('enable_following', True)
-        self.declare_parameter('follow_distance', 10.0)
-        self.declare_parameter('max_follow_speed', 5.0)
+        self.declare_parameter('follow_distance', 8.0)
+        self.declare_parameter('max_follow_speed', 3.0)
         self.declare_parameter('follow_height', 3.0)
         self.declare_parameter('takeoff_height', 3.0)
         self.declare_parameter('image_width', 640)
@@ -116,15 +116,14 @@ class MultiCameraMotionDetectionNode(Node):
 
         # Person following variables
         self.target_person_id = None
-        self.target_camera_id = None  # Which camera detected the target
+        self.target_camera_id = None
         self.last_person_detection_time = 0.0
-        self.person_lost_timeout = 8.0
+        self.person_lost_timeout = 5.0 # Reduced timeout for faster response
         self.following_active = False
         self.camera_fov_horizontal = 90.0
         self.camera_fov_vertical = 60.0
         
         # Camera orientations (relative to drone body frame)
-        # Assuming: 0=front, 1=right, 2=back, 3=left
         self.camera_orientations = {
             0: {'yaw': 0.0, 'name': 'front'},      # Front camera
             1: {'yaw': -90.0, 'name': 'right'},    # Right camera  
@@ -134,8 +133,22 @@ class MultiCameraMotionDetectionNode(Node):
         
         # Target persistence variables
         self.target_person_position = None
-        self.target_search_radius = 150.0
-        
+        self.target_search_radius = 100.0
+        self.target_locked = False
+        self.target_lock_confidence = 0.0
+        self.target_lock_threshold = 0.7
+        self.target_history = deque(maxlen=10) # Store last 10 positions of the target
+        self.lost_target_search_pattern = 0 # For systematic search when target is lost
+
+        self.velocity_smoother = {
+            'x': deque(maxlen=5),
+            'y': deque(maxlen=5),
+            'z': deque(maxlen=5),
+            'yaw': deque(maxlen=5)
+        }
+        self.last_target_center = None
+        self.target_prediction = None
+
         # Drone state management
         self.drone_state = 'IDLE'
         self.takeoff_initiated = False
@@ -144,10 +157,16 @@ class MultiCameraMotionDetectionNode(Node):
         self.takeoff_start_time = None
 
         # Conservative PID parameters to prevent oscillation
-        self.pid_x = {'kp': 1.5, 'ki': 0.05, 'kd': 0.3, 'prev_error': 0.0, 'integral': 0.0}
-        self.pid_y = {'kp': 1.2, 'ki': 0.03, 'kd': 0.2, 'prev_error': 0.0, 'integral': 0.0}
-        self.pid_z = {'kp': 1.0, 'ki': 0.02, 'kd': 0.1, 'prev_error': 0.0, 'integral': 0.0}
-        self.pid_yaw = {'kp': 2.0, 'ki': 0.05, 'kd': 0.4, 'prev_error': 0.0, 'integral': 0.0}
+        self.pid_x = {'kp': 0.8, 'ki': 0.02, 'kd': 0.15, 'prev_error': 0.0, 'integral': 0.0}
+        self.pid_y = {'kp': 0.6, 'ki': 0.015, 'kd': 0.12, 'prev_error': 0.0, 'integral': 0.0}
+        self.pid_z = {'kp': 0.5, 'ki': 0.01, 'kd': 0.08, 'prev_error': 0.0, 'integral': 0.0}
+        self.pid_yaw = {'kp': 1.2, 'ki': 0.03, 'kd': 0.25, 'prev_error': 0.0, 'integral': 0.0}
+
+        # Movement deadband zones to reduce jitter
+        self.deadband_x = 0.3
+        self.deadband_y = 0.3
+        self.deadband_z = 0.2
+        self.deadband_yaw = 0.1
 
         # Initialize detection systems
         self.initialize_detection_systems()
@@ -174,7 +193,7 @@ class MultiCameraMotionDetectionNode(Node):
         
         # Person following control timer
         if self.enable_following:
-            self.control_timer = self.create_timer(0.1, self.control_loop)
+            self.control_timer = self.create_timer(0.05, self.control_loop)
         
         self.get_logger().info(f' Multi-Camera Motion Detection node initialized for {self.vehicle_name}')
         self.get_logger().info(f' Using {self.num_cameras} cameras: {", ".join(self.camera_topics)}')
@@ -282,56 +301,89 @@ class MultiCameraMotionDetectionNode(Node):
             return None, None
             
         # If already following someone, try to find them in any camera
-        if self.target_person_id is not None and self.target_camera_id is not None:
+        if self.target_locked and self.target_camera_id is not None:
             # First try to find in the same camera
             for person in persons:
                 if (person.get('camera_id') == self.target_camera_id and 
                     person.get('track_id') == self.target_person_id):
+                    self.target_lock_confidence = self.calculate_target_confidence(person, self.target_camera_id)
                     return person, self.target_camera_id
             
             # If not found in same camera, look in other cameras based on position
             if self.target_person_position is not None:
-                closest_person = None
-                closest_camera = None
-                min_distance = float('inf')
+                best_match = None
+                best_camera = None
+                best_confidence = 0.0
                 
                 for person in persons:
                     # Compare in world coordinates
                     distance = np.sqrt((person['world_x'] - self.target_person_position[0])**2 + 
                                      (person['world_y'] - self.target_person_position[1])**2)
                     
-                    if distance < min_distance:
-                        min_distance = distance
-                        closest_person = person
-                        closest_camera = person.get('camera_id')
-                
-                if closest_person and min_distance < 2.0:  # 2 meter threshold in world coords
-                    old_cam = self.target_camera_id
-                    old_id = self.target_person_id
-                    new_cam = closest_camera
-                    new_id = closest_person.get('track_id')
-                    
-                    self.get_logger().info(f'Target switched from {self.camera_orientations[old_cam]["name"]}:ID{old_id} '
-                                         f'to {self.camera_orientations[new_cam]["name"]}:ID{new_id} '
-                                         f'(distance: {min_distance:.1f}m)')
-                    
-                    return closest_person, new_cam
-        
-        # Select person from primary camera first, then any camera
-        primary_persons = [p for p in persons if p.get('camera_id') == self.primary_camera]
-        
-        if primary_persons:
-            # Select largest person from primary camera
-            best_person = max(primary_persons, key=lambda p: p.get('bbox', [0, 0, 0, 0])[2] * p.get('bbox', [0, 0, 0, 0])[3])
-            return best_person, self.primary_camera
-        
-        # If no person in primary camera, select from any camera
-        if persons:
-            best_person = max(persons, key=lambda p: p.get('bbox', [0, 0, 0, 0])[2] * p.get('bbox', [0, 0, 0, 0])[3])
-            return best_person, best_person.get('camera_id')
-        
-        return None, None
+                    if distance < 3.0:
+                        confidence = self.calculate_target_confidence(person, person.get('camera_id'))
+                        if confidence > best_confidence:
+                            best_confidence = confidence
+                            best_match = person
+                            best_camera = person.get('camera_id')
 
+                if best_match and best_confidence > 0.5:  # 0.5 confidence threshold
+                    self.get_logger().info(f'Target re-acquired in {self.camera_orientations[best_camera]["name"]} camera')
+                    self.target_person_id = best_match.get('track_id')
+                    self.target_camera_id = best_camera
+                    self.target_lock_confidence = best_confidence
+                    return best_match, best_camera
+        # Select best target based on confidence scoring
+        best_person = None
+        best_camera = None
+        best_confidence = 0.0
+        
+        for person in persons:
+            camera_id = person.get('camera_id')
+            confidence = self.calculate_target_confidence(person, camera_id)
+            
+            if confidence > best_confidence:
+                best_confidence = confidence
+                best_person = person
+                best_camera = camera_id
+        
+        # Lock onto target if confidence is high enough
+        if best_person and best_confidence > self.target_lock_threshold:
+            if not self.target_locked:
+                self.get_logger().info(f'Target LOCKED: ID {best_person.get("track_id")} in {self.camera_orientations[best_camera]["name"]} camera (confidence: {best_confidence:.2f})')
+                self.target_locked = True
+            
+            self.target_lock_confidence = best_confidence
+            return best_person, best_camera
+        
+        # If no high-confidence target, return best available but don't lock
+        if best_person:
+            self.target_locked = False
+            self.target_lock_confidence = best_confidence
+            return best_person, best_camera
+        
+        return None, None                        
+
+    def smooth_velocity_command(self, cmd_type, new_value):
+        """Apply smoothing to velocity commands"""
+        self.velocity_smoother[cmd_type].append(new_value)
+        
+        if len(self.velocity_smoother[cmd_type]) > 1:
+            # Use weighted average with more weight on recent values
+            weights = np.array([0.1, 0.2, 0.3, 0.4])[-len(self.velocity_smoother[cmd_type]):]
+            weights = weights / weights.sum()
+            
+            smoothed = np.average(list(self.velocity_smoother[cmd_type]), weights=weights)
+            return smoothed
+        
+        return new_value
+
+    def apply_deadband(self, value, deadband):
+        """Apply deadband to reduce jitter around zero"""
+        if abs(value) < deadband:
+            return 0.0
+        return value
+    
     def update_person_following_multi_camera(self, merged_targets):
         """Update person following logic with multi-camera support"""
         current_time = time.time()
@@ -343,36 +395,86 @@ class MultiCameraMotionDetectionNode(Node):
             # Person detected
             if not self.takeoff_initiated and self.drone_state == 'IDLE':
                 self.initiate_takeoff()
-                
+            
+            old_id = self.target_person_id
             self.target_person_id = target_person.get('track_id')
             self.target_camera_id = target_camera
             self.last_person_detection_time = current_time
             
             # Store position for tracking continuity
             self.target_person_position = [target_person['world_x'], target_person['world_y']]
+            current_center = target_person.get('center')
+
+            if current_center:
+                self.target_prediction = self.predict_target_position(current_center)
+                self.last_target_center = current_center
             
+            # Add to history for trend analysis
+            self.target_history.append({
+                'time': current_time,
+                'position': self.target_person_position,
+                'center': current_center,
+                'confidence': target_person.get('confidence', 0.5),
+                'camera_id': target_camera
+            })
+
             if self.takeoff_complete:
                 self.following_active = True
                 self.drone_state = 'FOLLOWING'
                 self.target_person_data = target_person
                 
-                if self.camera_frame_counts.get(target_camera, 0) % 30 == 0:
+                self.lost_target_search_pattern = 0
+
+                if old_id != self.target_person_id and self.camera_frame_counts.get(target_camera, 0) % 30 == 0:
                     cam_name = self.camera_orientations[target_camera]['name']
                     self.get_logger().info(f'Following person ID: {self.target_person_id} '
                                          f'from {cam_name} camera, confidence: {target_person.get("confidence", 0.5):.2f}')
         else:
             # No person detected
-            if self.following_active and (current_time - self.last_person_detection_time) > self.person_lost_timeout:
-                self.get_logger().warn(f'Lost person ID: {self.target_person_id} from all cameras - hovering')
+            time_since_last = current_time - self.last_person_detection_time
+            if self.following_active and time_since_last > self.person_lost_timeout:
+                self.get_logger().warn(f'Lost person ID: {self.target_person_id} from all cameras - initiating search pattern')
                 self.following_active = False
-                self.target_person_id = None
-                self.target_camera_id = None
-                self.target_person_position = None
-                self.drone_state = 'HOVERING'
-                self.hover_drone()
+                self.target_locked = False
+                self.target_lock_confidence = 0.0
+                self.drone_state = 'SEARCHING'
+                self.initiate_search_pattern()
+            elif self.following_active and time_since_last > 1.0:
+                self.drone_state = 'SEARCHING'
+                self.search_for_lost_target()
             elif self.takeoff_complete and not self.following_active:
                 self.drone_state = 'HOVERING'
                 self.hover_drone()
+
+    def initiate_search_pattern(self):
+        """Initiate systematic search when target is completely lost"""
+        self.lost_target_search_pattern = (self.lost_target_search_pattern + 1) % 8
+        
+        # Slow rotation search pattern
+        vel_cmd = VelCmd()
+        vel_cmd.twist.linear.x = 0.0
+        vel_cmd.twist.linear.y = 0.0
+        vel_cmd.twist.linear.z = 0.0
+        vel_cmd.twist.angular.z = 0.3 if self.lost_target_search_pattern < 4 else -0.3
+        vel_cmd.twist.angular.x = 0.0
+        vel_cmd.twist.angular.y = 0.0
+        
+        if self.enable_following:
+            self.cmd_vel_pub.publish(vel_cmd)
+
+    def search_for_lost_target(self):
+        """Search behavior when target is temporarily lost"""
+        # Gentle hover with slight movements to help reacquisition
+        vel_cmd = VelCmd()
+        vel_cmd.twist.linear.x = 0.0
+        vel_cmd.twist.linear.y = 0.0
+        vel_cmd.twist.linear.z = 0.05  # Slight upward bias
+        vel_cmd.twist.angular.z = 0.1  # Very slow rotation
+        vel_cmd.twist.angular.x = 0.0
+        vel_cmd.twist.angular.y = 0.0
+        
+        if self.enable_following:
+            self.cmd_vel_pub.publish(vel_cmd)
 
     def initiate_takeoff(self):
         """Initiate drone takeoff sequence using RPC service"""
@@ -438,7 +540,6 @@ class MultiCameraMotionDetectionNode(Node):
         return yaw_angle, pitch_angle
 
     def estimate_person_distance(self, bbox):
-        """Improve distance estimation"""
         bbox_height = bbox[3]
         
         if bbox_height > 0:
@@ -460,11 +561,19 @@ class MultiCameraMotionDetectionNode(Node):
         if dt <= 0:
             return 0.0
             
-        # Integral windup protection
-        max_integral = 10.0
-        pid_params['integral'] = max(-max_integral, min(pid_params['integral'] + error * dt, max_integral))
+        if abs(error) < 0.05:  # Small deadband
+            error = 0.0
+            
+        # Integral windup protection with conditional integration
+        max_integral = 5.0  # Reduced max integral
+        if abs(error) < 0.5:  # Only integrate for small errors
+            pid_params['integral'] = max(-max_integral, min(pid_params['integral'] + error * dt, max_integral))
         
         derivative = (error - pid_params['prev_error']) / dt if pid_params['prev_error'] is not None else 0.0
+        
+        # Apply derivative filtering to reduce noise
+        if abs(derivative) > 10.0:  # Limit derivative spikes
+            derivative = 10.0 if derivative > 0 else -10.0
         
         output = (pid_params['kp'] * error + 
                  pid_params['ki'] * pid_params['integral'] + 
@@ -475,11 +584,14 @@ class MultiCameraMotionDetectionNode(Node):
 
     def control_loop(self):
         """Control loop adapted for multi-camera target following"""
-        dt = 0.1
+        dt = 0.05
         
         if self.drone_state == 'TAKING_OFF' and not self.takeoff_complete:
             return
-            
+        
+        if self.drone_state == 'SEARCHING':
+            return
+        
         if not self.following_active or not hasattr(self, 'target_person_data'):
             return
             
@@ -490,6 +602,10 @@ class MultiCameraMotionDetectionNode(Node):
             bbox = person.get('bbox', [0, 0, 100, 100])
             center = person.get('center', [bbox[0] + bbox[2]/2, bbox[1] + bbox[3]/2])
             
+            # Use predicted position if available for smoother tracking
+            if self.target_prediction:
+                center = self.target_prediction
+
             image_center = [self.image_width / 2, self.image_height / 2]
             
             # Get raw angles from pixel coordinates
@@ -502,11 +618,10 @@ class MultiCameraMotionDetectionNode(Node):
             
             # Correct control error calculations
             yaw_error = world_yaw_angle  # For centering: if person is to the right, turn right
-            distance_error = (estimated_distance - self.follow_distance)  # If too far, move forward
-            height_error = pitch_angle * 0.5  # If person is above center, move up
-
+            distance_error = (estimated_distance - self.follow_distance) * 0.6  # If too far, move forward
+            height_error = pitch_angle * 0.3  # If person is above center, move up
             # Side movement should be based on raw yaw angle (camera-relative)
-            side_error = yaw_angle * 0.3  # Reduced gain to prevent oscillation
+            side_error = yaw_angle * 0.2  # Reduced gain to prevent oscillation
             
             # PID control outputs
             yaw_cmd = self.pid_control(self.pid_yaw, yaw_error, dt)
@@ -514,12 +629,18 @@ class MultiCameraMotionDetectionNode(Node):
             height_cmd = self.pid_control(self.pid_z, height_error, dt)
             side_cmd = self.pid_control(self.pid_y, side_error, dt)
             
+            # Apply deadbands to reduce jitter
+            yaw_cmd = self.apply_deadband(yaw_cmd, self.deadband_yaw)
+            forward_cmd = self.apply_deadband(forward_cmd, self.deadband_x)
+            height_cmd = self.apply_deadband(height_cmd, self.deadband_z)
+            side_cmd = self.apply_deadband(side_cmd, self.deadband_y)
+
             # Reduced command limits to prevent aggressive movements
-            yaw_cmd = max(-1.5, min(yaw_cmd, 1.5))
-            forward_cmd = max(-3.0, min(forward_cmd, 3.0))
-            height_cmd = max(-1.0, min(height_cmd, 1.0))
-            side_cmd = max(-1.5, min(side_cmd, 1.5))
-            
+            yaw_cmd = max(-0.8, min(yaw_cmd, 0.8))
+            forward_cmd = max(-2.0, min(forward_cmd, 2.0))
+            height_cmd = max(-0.6, min(height_cmd, 0.6))
+            side_cmd = max(-1.0, min(side_cmd, 1.0))
+
             # Apply coordinate transformation for non-primary cameras
             if target_camera != self.primary_camera:
                 # Transform commands based on camera orientation
@@ -545,19 +666,17 @@ class MultiCameraMotionDetectionNode(Node):
             self.cmd_vel_pub.publish(vel_cmd)
             
             # Enhanced logging with debug info
-            if sum(self.camera_frame_counts.values()) % 20 == 0:
+            if sum(self.camera_frame_counts.values()) % 40 == 0:  # Less frequent logging
                 cam_name = self.camera_orientations[target_camera]['name']
-                self.get_logger().info(f'Following from {cam_name}: '
-                                     f'target_center=[{center[0]:.0f},{center[1]:.0f}], '
-                                     f'image_center=[{image_center[0]:.0f},{image_center[1]:.0f}], '
-                                     f'dist={estimated_distance:.1f}m (target: {self.follow_distance}m), '
-                                     f'yaw_err={math.degrees(world_yaw_angle):.1f}deg, '
-                                     f'dist_err={distance_error:.1f}m, '
-                                     f'cmd=[fwd:{forward_cmd:.2f}, side:{side_cmd:.2f}, '
-                                     f'up:{height_cmd:.2f}, yaw:{yaw_cmd:.2f}]')
+                lock_status = "LOCKED" if self.target_locked else "TRACKING"
+                self.get_logger().info(f'{lock_status} from {cam_name}: '
+                                     f'dist={estimated_distance:.1f}m->target:{self.follow_distance}m, '
+                                     f'conf={self.target_lock_confidence:.2f}, '
+                                     f'err=[y:{math.degrees(world_yaw_angle):.1f}°, d:{distance_error:.1f}m], '
+                                     f'cmd=[f:{forward_cmd:.2f}, s:{side_cmd:.2f}, u:{height_cmd:.2f}, y:{yaw_cmd:.2f}]')
                                      
         except Exception as e:
-            self.get_logger().error(f'Multi-camera control loop error: {e}')
+            self.get_logger().error(f'Enhanced control loop error: {e}')
             self.hover_drone()
 
     def initialize_detection_systems(self):
@@ -1017,22 +1136,22 @@ class MultiCameraMotionDetectionNode(Node):
             }.get(self.drone_state, (255, 255, 255))
             
             cv2.putText(vis_image, f"CAMERA: {cam_name.upper()}", (10, 30), 
-                       cv2.FONT_HERSHEY_SIMPLEX, 0.3, (255, 255, 255), 2)
+                       cv2.FONT_HERSHEY_SIMPLEX, 0.4, (255, 255, 255), 2)
             cv2.putText(vis_image, f"STATE: {self.drone_state}", (10, 60), 
-                       cv2.FONT_HERSHEY_SIMPLEX, 0.3, state_color, 2)
+                       cv2.FONT_HERSHEY_SIMPLEX, 0.4, state_color, 2)
     
             # Target following status
             if self.following_active and self.target_camera_id == camera_id:
                 cv2.putText(vis_image, f"FOLLOWING TARGET ID: {self.target_person_id}", (10, 90), 
-                           cv2.FONT_HERSHEY_SIMPLEX, 0.3, (0, 255, 0), 2)
+                           cv2.FONT_HERSHEY_SIMPLEX, 0.4, (0, 255, 0), 2)
             elif self.enable_following:
                 status = "PRIMARY CAMERA" if camera_id == self.primary_camera else "SECONDARY VIEW"
-                cv2.putText(vis_image, status, (10, 90), cv2.FONT_HERSHEY_SIMPLEX, 0.3, (255, 255, 0), 2)
+                cv2.putText(vis_image, status, (10, 90), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (255, 255, 0), 2)
 
             # Frame count and crosshair
             frame_count = self.camera_frame_counts.get(camera_id, 0)
             cv2.putText(vis_image, f"FRAME: {frame_count}", (10, 120), 
-                       cv2.FONT_HERSHEY_SIMPLEX, 0.3, (255, 255, 255), 1)
+                       cv2.FONT_HERSHEY_SIMPLEX, 0.4, (255, 255, 255), 1)
 
             # Draw crosshair at image center for reference
             center_x, center_y = self.image_width // 2, self.image_height // 2
@@ -1047,6 +1166,48 @@ class MultiCameraMotionDetectionNode(Node):
         except Exception as e:
             self.get_logger().error(f'Camera {camera_id} visualization error: {e}')
 
+    def predict_target_position(self, current_center):
+        if self.last_target_center is None or current_center is None:
+            return current_center
+        
+        dx = current_center[0] - self.last_target_center[0]
+        dy = current_center[1] - self.last_target_center[1]
+        
+        prediction_frames = 2
+        predicted_x = current_center[0] + dx * prediction_frames
+        predicted_y = current_center[1] + dy * prediction_frames
+
+        # Clamp to image bounds
+        predicted_x = max(0, min(predicted_x, self.image_width))
+        predicted_y = max(0, min(predicted_y, self.image_height))
+
+        return [predicted_x, predicted_y]
+    
+    def calculate_target_confidence(self, target, camera_id):
+        if not target:
+            return 0.0
+        
+        confidence = target.get('confidence', 0.5)
+        bbox = target.get('bbox', [0, 0, 1, 1])
+
+
+        # Size factor - larger targets are more reliable
+        bbox_area = bbox[2] * bbox[3]
+        size_factor = min(bbox_area / (self.image_width * self.image_height * 0.1), 1.0)
+
+        center = target.get('center', [self.image_width / 2, self.image_height / 2])
+        center_distance = np.sqrt((center[0] - self.image_width / 2) ** 2 + (center[1] - self.image_height / 2) ** 2)
+        max_distance = np.sqrt((self.image_width / 2) ** 2 + (self.image_height / 2) ** 2)
+        center_factor = 1.0 - (center_distance / max_distance)
+
+        consistency_factor = 0.8 if target.get('track_id') in self.camera_data_deques.get(camera_id, {}) else 0.5
+
+        camera_factor = 1.2 if camera_id == self.primary_camera else 1.0
+
+        total_confidence = confidence * size_factor * center_factor * consistency_factor * camera_factor
+        return min(total_confidence, 1.0)
+    
+    
 def main(args=None):
     rclpy.init(args=args)
     node = MultiCameraMotionDetectionNode()
