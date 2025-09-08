@@ -393,7 +393,68 @@ The new architecture is modular, robust, and scalable. Each vehicle runs in its 
 - **Coordination Node:** Centralizes global services (reset, takeoff, land, pause, health check) and system status monitoring.
 - **Legacy Compatibility:** Old files (`airsim_ros_wrapper.*`, `airsim_node.cpp`) are retained for reference and backward compatibility, but are not recommended for new deployments.
 
-## 8. Troubleshooting & FAQ
+
+## 8. YOLOv7 + DeepSORT Integration: Detailed Explanation
+
+### Overview
+
+The AI Motion Detection Node integrates **YOLOv7** (You Only Look Once, version 7) for real-time object detection and **DeepSORT** for multi-object tracking. This enables the drone to detect, classify, and follow moving targets (primarily people) using its onboard cameras in the AirSim simulation.
+
+### How YOLOv7 Works in This System
+
+- **YOLOv7** is a state-of-the-art deep learning model for object detection. It processes images from the drone's cameras and outputs bounding boxes, class labels (e.g., person, car), and confidence scores for detected objects.
+- The model is loaded at node startup (see `motion_detection_node.py`), using pre-trained weights (`yolov7.pt`).
+- Each camera image is resized and padded ("letterboxed") to fit the model's input size (typically 640x640 pixels).
+- The image is converted to a PyTorch tensor, normalized, and passed through the YOLOv7 model.
+- YOLOv7 outputs a set of detections, each with coordinates, class, and confidence. Non-Maximum Suppression (NMS) is applied to filter overlapping boxes.
+
+### DeepSORT Tracking
+
+- **DeepSORT** (Deep Simple Online and Realtime Tracking) is used to assign persistent IDs to detected objects across frames, enabling multi-object tracking.
+- After YOLOv7 detects objects, their bounding boxes and features are passed to DeepSORT, which maintains a set of tracks (object IDs) and predicts their movement.
+- This allows the system to follow a specific person even if they move between camera views or are temporarily occluded.
+
+### Multi-Camera Integration
+
+- The node subscribes to four camera topics (front, right, back, left) for each drone.
+- Each camera image is processed independently for detection and tracking.
+- Detected targets from all cameras are merged into a global coordinate system, using camera orientation metadata.
+- The system selects the best target to follow based on confidence, position, and tracking consistency.
+
+### Person Following Logic
+
+- The node identifies "person" class objects (COCO class 0) and tracks their position and movement.
+- If a person is detected and tracked, the node computes control commands (velocity, yaw, altitude) to keep the drone at a desired distance and orientation relative to the target.
+- PID controllers are used to smooth the drone's movement and avoid oscillations.
+- If the target is lost, the node initiates a search pattern (rotating or hovering) to reacquire the person.
+
+### ROS Integration
+
+- Detected targets are published on the `/target_detection` topic as `airsim_interfaces/msg/TargetDetection` messages, including position and confidence.
+- Visualization images (with bounding boxes and tracking info) are published for each camera.
+- The node can command the drone to take off, land, hover, or follow a target using ROS services and velocity command topics.
+
+### Fallback: OpenCV Motion Detection
+
+- If YOLOv7 or DeepSORT are not available, the node falls back to OpenCV-based motion detection using background subtraction.
+- This enables basic moving object detection even without deep learning models.
+
+### Configuration
+
+- YOLOv7 weights and DeepSORT checkpoints must be placed in the `YOLOv7-DeepSORT-Object-Tracking` directory.
+- Parameters such as confidence threshold, motion threshold, and following distance are configurable via ROS 2 launch files and parameters.
+
+### Example Workflow
+
+1. **Startup**: Node loads YOLOv7 and DeepSORT models, initializes camera subscriptions.
+2. **Detection**: Each camera image is processed for object detection and tracking.
+3. **Target Selection**: The system merges detections, selects the best person to follow.
+4. **Control**: PID controllers generate velocity commands to follow the target.
+5. **ROS Communication**: Detections and control commands are published to ROS topics/services.
+6. **Fallback**: If deep learning models are unavailable, OpenCV motion detection is used.
+
+
+## 9. Troubleshooting & FAQ
 
 - **bad_weak_ptr errors:** Ensure you have rebuilt your workspace and are not running old binaries.
 - **Nodes not connecting:** Check that AirSim is running and vehicle names match those in `settings.json`.
@@ -403,7 +464,7 @@ The new architecture is modular, robust, and scalable. Each vehicle runs in its 
 
 ---
 
-## 9. References
+## 10. References
 
 - [AirSim Documentation](https://microsoft.github.io/AirSim/)
 - [ROS2 Tutorials](https://docs.ros.org/en/rolling/Tutorials.html)
@@ -412,8 +473,16 @@ The new architecture is modular, robust, and scalable. Each vehicle runs in its 
 - [YOLOv7 Paper](https://arxiv.org/abs/2207.02696)
 - [OpenCV Motion Detection](https://opencv.org/)
 - [PyTorch Installation](https://pytorch.org/get-started/locally/)
+- [YOLOv7 Paper](https://arxiv.org/abs/2207.02696)
+- [DeepSORT Paper](https://arxiv.org/abs/1703.07402)
+- [YOLOv7 GitHub](https://github.com/WongKinYiu/yolov7)
+- [DeepSORT GitHub](https://github.com/ZQPei/deep_sort_pytorch)
 ---
-
+- **Launch rviz:**
+  ```bash
+  export LIBGL_ALWAYS_INDIRECT=0
+  rviz2
+  ```
 - **List nodes:**
   ```bash
   ros2 node list
@@ -442,10 +511,16 @@ The new architecture is modular, robust, and scalable. Each vehicle runs in its 
   ```bash
   ros2 service call /drone1/gps_waypoint airsim_interfaces/srv/GpsWaypoint "{latitude: 47.641468, longitude: -122.140165, altitude: 10.0, speed: 5.0, tolerance: 1.0, wait_on_last_task: true}"
   ```
-- **Track object (TODO):**
+
+- **Launch motion detection node**
   ```bash
-  ros2 service call /drone1/track_object airsim_interfaces/srv/TrackObject "{object_name: 'TargetCar', search_radius: 50.0, track_duration: 30.0}"
+   ros2 launch airsim_ros_pkgs motion_detection_launch.py vehicle_name:=Drone1
   ```
+
+- **Launch rqt_image_view**
+```bash
+  export PATH=$PATH:/opt/ros/humblebin:/opt/ros/humble/lib/rqt_image_view
+```
 
   Example of settings.json
 ```json
@@ -510,5 +585,5 @@ The new architecture is modular, robust, and scalable. Each vehicle runs in its 
   }
 }
 ``` 
-*Last update on 27 Aug 2025*
+*Last update on 8 Sep 2025*
 ---
