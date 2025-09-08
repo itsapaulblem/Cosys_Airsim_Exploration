@@ -51,14 +51,14 @@ class MultiCameraMotionDetectionNode(Node):
         # ROS 2 Parameters Declaration and Retrieval
         self.declare_parameter('vehicle_name', 'Drone1')
         self.declare_parameter('confidence_threshold', 0.5)
-        self.declare_parameter('iou_threshold', 0.45)
+        self.declare_parameter('iou_threshold', 0.45)  # (intersection over union) a predefined cutoff value used in object detection to determine if a predicted bounding box is true positive or false positive
         self.declare_parameter('motion_threshold', 15.0)
         self.declare_parameter('enable_visualization', True)
         self.declare_parameter('trail_length', 30)
         
         # Person following parameters
         self.declare_parameter('enable_following', True)
-        self.declare_parameter('follow_distance', 5.0)
+        self.declare_parameter('follow_distance', 10.0)
         self.declare_parameter('max_follow_speed', 5.0)
         self.declare_parameter('follow_height', 3.0)
         self.declare_parameter('takeoff_height', 3.0)
@@ -269,7 +269,7 @@ class MultiCameraMotionDetectionNode(Node):
                 transformed_target['world_x'] = world_x
                 transformed_target['world_y'] = world_y
                 transformed_target['global_track_id'] = f"cam{cam_id}_id{target['track_id']}"
-                
+
                 merged_targets.append(transformed_target)
         
         return merged_targets
@@ -423,7 +423,7 @@ class MultiCameraMotionDetectionNode(Node):
             self.cmd_vel_pub.publish(vel_cmd)
 
     def pixel_to_world_direction(self, pixel_center, image_center):
-        """FIXED: Convert pixel coordinates to world direction angles"""
+        """Convert pixel coordinates to world direction angles"""
         dx = pixel_center[0] - image_center[0]
         dy = pixel_center[1] - image_center[1]
         
@@ -438,7 +438,7 @@ class MultiCameraMotionDetectionNode(Node):
         return yaw_angle, pitch_angle
 
     def estimate_person_distance(self, bbox):
-        """FIXED: Improved distance estimation"""
+        """Improve distance estimation"""
         bbox_height = bbox[3]
         
         if bbox_height > 0:
@@ -456,7 +456,7 @@ class MultiCameraMotionDetectionNode(Node):
         return self.follow_distance
 
     def pid_control(self, pid_params, error, dt):
-        """FIXED: PID controller with integral windup protection"""
+        """PID controller with integral windup protection"""
         if dt <= 0:
             return 0.0
             
@@ -520,7 +520,7 @@ class MultiCameraMotionDetectionNode(Node):
             height_cmd = max(-1.0, min(height_cmd, 1.0))
             side_cmd = max(-1.5, min(side_cmd, 1.5))
             
-            # FIXED: Apply coordinate transformation for non-primary cameras
+            # Apply coordinate transformation for non-primary cameras
             if target_camera != self.primary_camera:
                 # Transform commands based on camera orientation
                 cos_offset = math.cos(cam_yaw_offset)
@@ -1017,23 +1017,23 @@ class MultiCameraMotionDetectionNode(Node):
             }.get(self.drone_state, (255, 255, 255))
             
             cv2.putText(vis_image, f"CAMERA: {cam_name.upper()}", (10, 30), 
-                       cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
+                       cv2.FONT_HERSHEY_SIMPLEX, 0.3, (255, 255, 255), 2)
             cv2.putText(vis_image, f"STATE: {self.drone_state}", (10, 60), 
-                       cv2.FONT_HERSHEY_SIMPLEX, 0.6, state_color, 2)
+                       cv2.FONT_HERSHEY_SIMPLEX, 0.3, state_color, 2)
     
             # Target following status
             if self.following_active and self.target_camera_id == camera_id:
                 cv2.putText(vis_image, f"FOLLOWING TARGET ID: {self.target_person_id}", (10, 90), 
-                           cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
+                           cv2.FONT_HERSHEY_SIMPLEX, 0.3, (0, 255, 0), 2)
             elif self.enable_following:
                 status = "PRIMARY CAMERA" if camera_id == self.primary_camera else "SECONDARY VIEW"
-                cv2.putText(vis_image, status, (10, 90), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 0), 2)
+                cv2.putText(vis_image, status, (10, 90), cv2.FONT_HERSHEY_SIMPLEX, 0.3, (255, 255, 0), 2)
 
             # Frame count and crosshair
             frame_count = self.camera_frame_counts.get(camera_id, 0)
             cv2.putText(vis_image, f"FRAME: {frame_count}", (10, 120), 
-                       cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 1)
-            
+                       cv2.FONT_HERSHEY_SIMPLEX, 0.3, (255, 255, 255), 1)
+
             # Draw crosshair at image center for reference
             center_x, center_y = self.image_width // 2, self.image_height // 2
             cv2.line(vis_image, (center_x - 20, center_y), (center_x + 20, center_y), (0, 255, 0), 2)
