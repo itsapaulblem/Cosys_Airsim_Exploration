@@ -299,7 +299,6 @@ if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/scripts/car_joy")
 endif()
 
 # Install additional files
-install(FILES README.md DESTINATION share/${PROJECT_NAME})
 install(DIRECTORY launch rviz DESTINATION share/${PROJECT_NAME})
 
 # Install Python package requirements
