@@ -64,6 +64,8 @@ class MultiCameraMotionDetectionNode(Node):
         self.declare_parameter('takeoff_height', 3.0)
         self.declare_parameter('image_width', 640)
         self.declare_parameter('image_height', 480)
+        self.declare_parameter('image_quality', 95)
+        self.declare_parameter('enable_image_resize', True)
 
         self.vehicle_name = self.get_parameter('vehicle_name').value
         self.conf_threshold = float(self.get_parameter('confidence_threshold').value)
@@ -80,6 +82,8 @@ class MultiCameraMotionDetectionNode(Node):
         self.takeoff_height = float(self.get_parameter('takeoff_height').value)
         self.image_width = int(self.get_parameter('image_width').value)
         self.image_height = int(self.get_parameter('image_height').value)
+        self.image_quality = int(self.get_parameter('image_quality').value)
+        self.enable_image_resize = self.get_parameter('enable_image_resize').value
 
         # Fixed 4-camera configuration
         self.num_cameras = 4
@@ -1069,45 +1073,124 @@ class MultiCameraMotionDetectionNode(Node):
         world_y = (center_y - 240) * 0.01
         return [world_x, world_y]
 
+    def enhance_image_brightness(self, image):
+        img_float = image.astype(np.float32)
+
+        brightened = img_float * 1.5 + 30.0
+
+        lab = cv2.cvtColor(image, cv2.COLOR_BGR2LAB)
+        l, a, b = cv2.split(lab)
+
+        clahe = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(8, 8))
+        l = clahe.apply(l)
+
+        enhanced_lab = cv2.merge((l, a, b))
+        enhanced = cv2.cvtColor(enhanced_lab, cv2.COLOR_LAB2B)
+
+        final = cv2.addWeighted(enhanced, 0.7, brightened.astype(np.uint8), 0.3, 0)
+
+        final = np.clip(final, 0, 255).astype(np.uint8)
+
+        return final
+
     def image_callback(self, msg, camera_id):
-        """Multi-camera image processing callback"""
+        """Enhanced image processing with improved resolution handling"""
         try:
             with self.camera_locks[camera_id]:
                 self.camera_frame_counts[camera_id] += 1
-                
-                cv_image = self.bridge.imgmsg_to_cv2(msg, 'bgr8')
-                self.camera_last_images[camera_id] = cv_image
-                
-                # Process with detection system
-                if self.use_yolo_deepsort:
+            
+                # Log incoming image details for debugging (first frame only)
+            if self.camera_frame_counts[camera_id] == 1:
+                self.get_logger().info(f'Camera {camera_id} input: {msg.width}x{msg.height}, '
+                                     f'encoding: {msg.encoding}, step: {msg.step}, '
+                                     f'data_size: {len(msg.data)}')
+            
+            # Convert ROS image to OpenCV format with proper error handling
+            try:
+                if msg.encoding == 'rgb8':
+                    # Verify buffer size before conversion
+                    expected_size = msg.height * msg.width * 3  # 3 channels for RGB
+                    if len(msg.data) < expected_size:
+                        self.get_logger().error(f'Camera {camera_id}: Buffer too small. '
+                                              f'Expected: {expected_size}, Got: {len(msg.data)}')
+                        return
+                    
+                    cv_image = self.bridge.imgmsg_to_cv2(msg, 'rgb8')
+                    cv_image = cv2.cvtColor(cv_image, cv2.COLOR_RGB2BGR)
+                else:
+                    # For bgr8 encoding
+                    expected_size = msg.height * msg.width * 3  # 3 channels for BGR
+                    if len(msg.data) < expected_size:
+                        self.get_logger().error(f'Camera {camera_id}: Buffer too small. '
+                                              f'Expected: {expected_size}, Got: {len(msg.data)}')
+                        return
+                    
+                    cv_image = self.bridge.imgmsg_to_cv2(msg, 'bgr8')
+                    
+            except Exception as e:
+                self.get_logger().error(f'Camera {camera_id}: Image conversion failed: {e}')
+                return
+            
+            # Log actual converted image size (first frame only)
+            if self.camera_frame_counts[camera_id] == 1:
+                self.get_logger().info(f'Camera {camera_id} converted: {cv_image.shape[1]}x{cv_image.shape[0]} '
+                                     f'channels: {cv_image.shape[2]}')
+            
+            # Resize to target resolution with high-quality interpolation
+            target_size = (self.image_width, self.image_height)
+            if cv_image.shape[1] != self.image_width or cv_image.shape[0] != self.image_height:
+                if self.enable_image_resize:
+                    # Use high-quality interpolation for better results
+                    cv_image = cv2.resize(cv_image, target_size, interpolation=cv2.INTER_LANCZOS4)
+                    
+                    # Optional: Apply sharpening filter for better visual quality
+                    if self.image_quality > 80:
+                        kernel = np.array([[-1,-1,-1],
+                                         [-1, 9,-1],
+                                         [-1,-1,-1]])
+                        cv_image = cv2.filter2D(cv_image, -1, kernel * 0.1)
+                        
+                    if self.camera_frame_counts[camera_id] == 1:
+                        self.get_logger().info(f'Camera {camera_id} resized to: {cv_image.shape[1]}x{cv_image.shape[0]}')
+                else:
+                    # If resizing is disabled, use original image but log warning
+                    self.get_logger().warn_once(f'Camera {camera_id}: Received {cv_image.shape[1]}x{cv_image.shape[0]} '
+                                              f'but expected {self.image_width}x{self.image_height}')
+            
+            self.camera_last_images[camera_id] = cv_image
+            
+            # Process with detection system
+            if self.use_yolo_deepsort:
+                try:
                     moving_targets, vis_image = self.detect_and_track_yolo_deepsort(cv_image, camera_id)
                     self.camera_detection_counts[camera_id] = len(self.camera_data_deques[camera_id])
-                else:
-                    # Fallback detection methods
+                except Exception as e:
+                    self.get_logger().error(f'Camera {camera_id}: YOLO detection failed: {e}')
                     moving_targets, vis_image = [], cv_image
                     self.camera_detection_counts[camera_id] = 0
+            else:
+                moving_targets, vis_image = [], cv_image
+                self.camera_detection_counts[camera_id] = 0
+            
+            self.camera_moving_counts[camera_id] = len(moving_targets)
+            self.all_camera_targets[camera_id] = moving_targets
+            
+            # Update person following
+            if camera_id == self.primary_camera and self.enable_following:
+                merged_targets = self.merge_camera_detections()
+                self.update_person_following_multi_camera(merged_targets)
                 
-                self.camera_moving_counts[camera_id] = len(moving_targets)
+                for target in merged_targets:
+                    self.publish_target_detection(target, msg.header)
+            
+            # Publish high-quality visualization
+            if self.enable_vis and vis_image is not None and camera_id in self.vis_pubs:
+                self.publish_camera_visualization(vis_image, camera_id, msg.header)
                 
-                # Store camera-specific targets for global merging
-                self.all_camera_targets[camera_id] = moving_targets
-                
-                # Update person following (only from primary camera thread to avoid race conditions)
-                if camera_id == self.primary_camera and self.enable_following:
-                    # Collect targets from all cameras and merge
-                    merged_targets = self.merge_camera_detections()
-                    self.update_person_following_multi_camera(merged_targets)
-                    
-                    # Publish merged detections
-                    for target in merged_targets:
-                        self.publish_target_detection(target, msg.header)
-                
-                # Publish camera-specific visualization
-                if self.enable_vis and vis_image is not None and camera_id in self.vis_pubs:
-                    self.publish_camera_visualization(vis_image, camera_id, msg.header)
-                    
         except Exception as e:
             self.get_logger().error(f'Camera {camera_id} processing error: {e}')
+            import traceback
+            self.get_logger().error(f'Camera {camera_id} traceback: {traceback.format_exc()}')
 
     def publish_target_detection(self, target, header):
         """Publish individual target detection"""
@@ -1122,12 +1205,21 @@ class MultiCameraMotionDetectionNode(Node):
         self.detection_pub.publish(detection_msg)
 
     def publish_camera_visualization(self, vis_image, camera_id, header):
-        """Publish camera-specific visualization"""
+        """Publish high-quality camera-specific visualization"""
         try:
             # Add camera info to visualization
             cam_name = self.camera_orientations[camera_id]['name']
-            
-            # Camera status overlay
+        
+            # Ensure image is at target resolution
+            if vis_image.shape[1] != self.image_width or vis_image.shape[0] != self.image_height:
+                vis_image = cv2.resize(vis_image, (self.image_width, self.image_height), 
+                                     interpolation=cv2.INTER_LANCZOS4)
+
+            # Scale text and line thickness based on resolution
+            font_scale = max(0.8, self.image_width / 1280.0)
+            thickness = max(2, int(self.image_width / 640))
+
+            # Camera status overlay with better visibility
             state_color = {
                 'IDLE': (128, 128, 128),
                 'TAKING_OFF': (0, 255, 255),
@@ -1135,34 +1227,48 @@ class MultiCameraMotionDetectionNode(Node):
                 'FOLLOWING': (0, 255, 0)
             }.get(self.drone_state, (255, 255, 255))
             
+            # Add background rectangles for better text visibility
+            text_bg_color = (0, 0, 0)
+            cv2.rectangle(vis_image, (5, 5), (400, 50), text_bg_color, -1)
+            cv2.rectangle(vis_image, (5, 55), (300, 85), text_bg_color, -1)
+            
             cv2.putText(vis_image, f"CAMERA: {cam_name.upper()}", (10, 30), 
-                       cv2.FONT_HERSHEY_SIMPLEX, 0.4, (255, 255, 255), 2)
-            cv2.putText(vis_image, f"STATE: {self.drone_state}", (10, 60), 
-                       cv2.FONT_HERSHEY_SIMPLEX, 0.4, state_color, 2)
-    
+                       cv2.FONT_HERSHEY_SIMPLEX, font_scale, (255, 255, 255), thickness)
+            cv2.putText(vis_image, f"STATE: {self.drone_state}", (10, 75), 
+                       cv2.FONT_HERSHEY_SIMPLEX, font_scale, state_color, thickness)
+
             # Target following status
             if self.following_active and self.target_camera_id == camera_id:
-                cv2.putText(vis_image, f"FOLLOWING TARGET ID: {self.target_person_id}", (10, 90), 
-                           cv2.FONT_HERSHEY_SIMPLEX, 0.4, (0, 255, 0), 2)
+                cv2.rectangle(vis_image, (5, 90), (450, 120), text_bg_color, -1)
+                cv2.putText(vis_image, f"FOLLOWING TARGET ID: {self.target_person_id}", (10, 110), 
+                           cv2.FONT_HERSHEY_SIMPLEX, font_scale, (0, 255, 0), thickness)
             elif self.enable_following:
                 status = "PRIMARY CAMERA" if camera_id == self.primary_camera else "SECONDARY VIEW"
-                cv2.putText(vis_image, status, (10, 90), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (255, 255, 0), 2)
+                cv2.rectangle(vis_image, (5, 160), (300, 190), text_bg_color, -1)
+                cv2.putText(vis_image, status, (10, 180), cv2.FONT_HERSHEY_SIMPLEX, 
+                           font_scale, (255, 255, 0), thickness)
 
-            # Frame count and crosshair
+            # Frame count and resolution info
             frame_count = self.camera_frame_counts.get(camera_id, 0)
-            cv2.putText(vis_image, f"FRAME: {frame_count}", (10, 120), 
-                       cv2.FONT_HERSHEY_SIMPLEX, 0.4, (255, 255, 255), 1)
+            info_text = f"FRAME: {frame_count} | RES: {self.image_width}x{self.image_height}"
+            cv2.rectangle(vis_image, (5, 200), (500, 230), text_bg_color, -1)
+            cv2.putText(vis_image, info_text, (10, 220), 
+                       cv2.FONT_HERSHEY_SIMPLEX, font_scale * 0.7, (255, 255, 255), thickness)
 
-            # Draw crosshair at image center for reference
+            # Draw enhanced crosshair at image center for reference
             center_x, center_y = self.image_width // 2, self.image_height // 2
-            cv2.line(vis_image, (center_x - 20, center_y), (center_x + 20, center_y), (0, 255, 0), 2)
-            cv2.line(vis_image, (center_x, center_y - 20), (center_x, center_y + 20), (0, 255, 0), 2)
+            crosshair_size = max(30, self.image_width // 40)
+            cv2.line(vis_image, (center_x - crosshair_size, center_y), 
+                    (center_x + crosshair_size, center_y), (0, 255, 0), 3)
+            cv2.line(vis_image, (center_x, center_y - crosshair_size), 
+                    (center_x, center_y + crosshair_size), (0, 255, 0), 3)
+            cv2.circle(vis_image, (center_x, center_y), 5, (0, 255, 0), -1)
             
-            # Publish visualization
+            # Convert back to ROS message with proper encoding
             vis_msg = self.bridge.cv2_to_imgmsg(vis_image, 'bgr8')
             vis_msg.header = header
             self.vis_pubs[camera_id].publish(vis_msg)
-                
+            
         except Exception as e:
             self.get_logger().error(f'Camera {camera_id} visualization error: {e}')
 

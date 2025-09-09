@@ -49,6 +49,25 @@ def generate_launch_description():
         description='Following height in meters'
     )
 
+    # Image quality parameters
+    image_width_arg = DeclareLaunchArgument(
+        'image_width',
+        default_value='1280',
+        description='Image width for processing and visualization'
+    )
+    
+    image_height_arg = DeclareLaunchArgument(
+        'image_height', 
+        default_value='720',
+        description='Image height for processing and visualization'
+    )
+    
+    image_quality_arg = DeclareLaunchArgument(
+        'image_quality',
+        default_value='95',
+        description='Image quality for visualization (0-100)'
+    )
+
     # Motion Detection Node with Person Following
     motion_detection_node = Node(
         package='airsim_ros_pkgs',
@@ -63,8 +82,11 @@ def generate_launch_description():
             'follow_distance': LaunchConfiguration('follow_distance'),
             'max_follow_speed': LaunchConfiguration('max_follow_speed'),
             'follow_height': LaunchConfiguration('follow_height'),
-            'image_width': 1280,
-            'image_height': 720
+            'image_width': LaunchConfiguration('image_width'),
+            'image_height': LaunchConfiguration('image_height'),
+            'image_quality': LaunchConfiguration('image_quality'),
+            'enable_image_resize': True,
+            'enable_visualization': True
         }],
         remappings=[
             ('target_detection', '/drone1/target_detection'),
@@ -81,5 +103,8 @@ def generate_launch_description():
         follow_distance_arg,
         max_follow_speed_arg,
         follow_height_arg,
+        image_width_arg,
+        image_height_arg,
+        image_quality_arg,
         motion_detection_node
     ])

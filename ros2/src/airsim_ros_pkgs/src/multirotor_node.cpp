@@ -766,6 +766,15 @@ void MultirotorNode::process_images()
                     image_msg.width = responses[i].width;
                     image_msg.encoding = "rgb8";
                     image_msg.step = image_msg.width * 3;
+                    // Verify data size matches expected size
+                    size_t expected_data_size = image_msg.height * image_msg.width * 3;
+                    if (responses[i].image_data_uint8.size() != expected_data_size) {
+                        RCLCPP_ERROR(this->get_logger(), 
+                                   "Camera%zu: Data size mismatch. Expected: %zu, Got: %zu", 
+                                   i, expected_data_size, responses[i].image_data_uint8.size());
+                        continue;
+                    }
+                    
                     image_msg.data = responses[i].image_data_uint8;
 
                     image_pubs_[i]->publish(image_msg);
