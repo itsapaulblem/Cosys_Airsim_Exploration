@@ -58,7 +58,7 @@ class MultiCameraMotionDetectionNode(Node):
         
         # Person following parameters
         self.declare_parameter('enable_following', True)
-        self.declare_parameter('follow_distance', 8.0)
+        self.declare_parameter('follow_distance', 3.0)  # Reduced for closer following
         self.declare_parameter('max_follow_speed', 3.0)
         self.declare_parameter('follow_height', 3.0)
         self.declare_parameter('takeoff_height', 3.0)
@@ -122,7 +122,7 @@ class MultiCameraMotionDetectionNode(Node):
         self.target_person_id = None
         self.target_camera_id = None
         self.last_person_detection_time = 0.0
-        self.person_lost_timeout = 5.0 # Reduced timeout for faster response
+        self.person_lost_timeout = 3.0 # Reduced timeout for faster response
         self.following_active = False
         self.camera_fov_horizontal = 90.0
         self.camera_fov_vertical = 60.0
@@ -161,7 +161,7 @@ class MultiCameraMotionDetectionNode(Node):
         self.takeoff_start_time = None
 
         # Conservative PID parameters to prevent oscillation
-        self.pid_x = {'kp': 0.8, 'ki': 0.02, 'kd': 0.15, 'prev_error': 0.0, 'integral': 0.0}
+        self.pid_x = {'kp': 1.5, 'ki': 0.03, 'kd': 0.18, 'prev_error': 0.0, 'integral': 0.0}  # Increased kp for faster forward response
         self.pid_y = {'kp': 0.6, 'ki': 0.015, 'kd': 0.12, 'prev_error': 0.0, 'integral': 0.0}
         self.pid_z = {'kp': 0.5, 'ki': 0.01, 'kd': 0.08, 'prev_error': 0.0, 'integral': 0.0}
         self.pid_yaw = {'kp': 1.2, 'ki': 0.03, 'kd': 0.25, 'prev_error': 0.0, 'integral': 0.0}
@@ -517,7 +517,7 @@ class MultiCameraMotionDetectionNode(Node):
             self.drone_state = 'IDLE'
 
     def hover_drone(self):
-        """Make drone hover in place using VelCmd"""
+        """Make drone rotate in place (360 deg scan) when hovering after losing target"""
         if self.enable_following:
             vel_cmd = VelCmd()
             vel_cmd.twist.linear.x = 0.0
@@ -525,7 +525,7 @@ class MultiCameraMotionDetectionNode(Node):
             vel_cmd.twist.linear.z = 0.05
             vel_cmd.twist.angular.x = 0.0
             vel_cmd.twist.angular.y = 0.0
-            vel_cmd.twist.angular.z = 0.0
+            vel_cmd.twist.angular.z = 0.5  # Constant yaw for 360-degree rotation
             self.cmd_vel_pub.publish(vel_cmd)
 
     def pixel_to_world_direction(self, pixel_center, image_center):
@@ -622,7 +622,7 @@ class MultiCameraMotionDetectionNode(Node):
             
             # Correct control error calculations
             yaw_error = world_yaw_angle  # For centering: if person is to the right, turn right
-            distance_error = (estimated_distance - self.follow_distance) * 0.6  # If too far, move forward
+            distance_error = (self.follow_distance - estimated_distance) * 0.6  # If too far, move forward
             height_error = pitch_angle * 0.3  # If person is above center, move up
             # Side movement should be based on raw yaw angle (camera-relative)
             side_error = yaw_angle * 0.2  # Reduced gain to prevent oscillation
@@ -641,7 +641,7 @@ class MultiCameraMotionDetectionNode(Node):
 
             # Reduced command limits to prevent aggressive movements
             yaw_cmd = max(-0.8, min(yaw_cmd, 0.8))
-            forward_cmd = max(-2.0, min(forward_cmd, 2.0))
+            forward_cmd = max(-1.5, min(forward_cmd, 2.0))
             height_cmd = max(-0.6, min(height_cmd, 0.6))
             side_cmd = max(-1.0, min(side_cmd, 1.0))
 
