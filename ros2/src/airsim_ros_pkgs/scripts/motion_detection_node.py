@@ -1073,26 +1073,6 @@ class MultiCameraMotionDetectionNode(Node):
         world_y = (center_y - 240) * 0.01
         return [world_x, world_y]
 
-    def enhance_image_brightness(self, image):
-        img_float = image.astype(np.float32)
-
-        brightened = img_float * 1.5 + 30.0
-
-        lab = cv2.cvtColor(image, cv2.COLOR_BGR2LAB)
-        l, a, b = cv2.split(lab)
-
-        clahe = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(8, 8))
-        l = clahe.apply(l)
-
-        enhanced_lab = cv2.merge((l, a, b))
-        enhanced = cv2.cvtColor(enhanced_lab, cv2.COLOR_LAB2B)
-
-        final = cv2.addWeighted(enhanced, 0.7, brightened.astype(np.uint8), 0.3, 0)
-
-        final = np.clip(final, 0, 255).astype(np.uint8)
-
-        return final
-
     def image_callback(self, msg, camera_id):
         """Enhanced image processing with improved resolution handling"""
         try:
@@ -1148,8 +1128,10 @@ class MultiCameraMotionDetectionNode(Node):
                         kernel = np.array([[-1,-1,-1],
                                          [-1, 9,-1],
                                          [-1,-1,-1]])
-                        cv_image = cv2.filter2D(cv_image, -1, kernel * 0.1)
+                        cv_image = cv2.filter2D(cv_image, -1, kernel * 0.5)
                         
+                        cv_image = np.clip(cv_image, 0, 255).astype(np.uint8)
+
                     if self.camera_frame_counts[camera_id] == 1:
                         self.get_logger().info(f'Camera {camera_id} resized to: {cv_image.shape[1]}x{cv_image.shape[0]}')
                 else:
