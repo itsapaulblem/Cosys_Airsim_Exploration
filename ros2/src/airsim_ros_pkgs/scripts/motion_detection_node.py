@@ -161,7 +161,7 @@ class MultiCameraMotionDetectionNode(Node):
         self.takeoff_start_time = None
 
         # Conservative PID parameters to prevent oscillation
-        self.pid_x = {'kp': 1.5, 'ki': 0.03, 'kd': 0.18, 'prev_error': 0.0, 'integral': 0.0}  # Increased kp for faster forward response
+        self.pid_x = {'kp': 1.5, 'ki': 0.03, 'kd': 0.18, 'prev_error': 0.0, 'integral': 0.0}
         self.pid_y = {'kp': 0.6, 'ki': 0.015, 'kd': 0.12, 'prev_error': 0.0, 'integral': 0.0}
         self.pid_z = {'kp': 0.5, 'ki': 0.01, 'kd': 0.08, 'prev_error': 0.0, 'integral': 0.0}
         self.pid_yaw = {'kp': 1.2, 'ki': 0.03, 'kd': 0.25, 'prev_error': 0.0, 'integral': 0.0}
@@ -271,7 +271,7 @@ class MultiCameraMotionDetectionNode(Node):
     def merge_camera_detections(self):
         """Merge detections from all cameras into global coordinate system"""
         merged_targets = []
-        
+
         for cam_id, targets in self.all_camera_targets.items():
             if not targets:
                 continue
@@ -1209,31 +1209,35 @@ class MultiCameraMotionDetectionNode(Node):
                 'FOLLOWING': (0, 255, 0)
             }.get(self.drone_state, (255, 255, 255))
             
-            # Add background rectangles for better text visibility
-            text_bg_color = (0, 0, 0)
-            cv2.rectangle(vis_image, (5, 5), (400, 50), text_bg_color, -1)
-            cv2.rectangle(vis_image, (5, 55), (300, 85), text_bg_color, -1)
+            # # Add background rectangles for better text visibility
+            # text_bg_color = (0, 0, 0)
+            # cv2.rectangle(vis_image, (5, 5), (400, 50), text_bg_color, -1)
+            # cv2.rectangle(vis_image, (5, 55), (300, 85), text_bg_color, -1)
             
             cv2.putText(vis_image, f"CAMERA: {cam_name.upper()}", (10, 30), 
                        cv2.FONT_HERSHEY_SIMPLEX, font_scale, (255, 255, 255), thickness)
             cv2.putText(vis_image, f"STATE: {self.drone_state}", (10, 75), 
                        cv2.FONT_HERSHEY_SIMPLEX, font_scale, state_color, thickness)
-
+            cv2.putText(vis_image, f"CAMERA: {cam_name.upper()}", (10, 30), 
+                        cv2.FONT_HERSHEY_SIMPLEX, font_scale, (255, 255, 255), thickness)
+            cv2.putText(vis_image, f"STATE: {self.drone_state}", (10, 75),
+                        cv2.FONT_HERSHEY_SIMPLEX, font_scale, state_color, thickness)
+            
             # Target following status
             if self.following_active and self.target_camera_id == camera_id:
-                cv2.rectangle(vis_image, (5, 90), (450, 120), text_bg_color, -1)
+                # cv2.rectangle(vis_image, (5, 90), (450, 120), text_bg_color, -1)
                 cv2.putText(vis_image, f"FOLLOWING TARGET ID: {self.target_person_id}", (10, 110), 
                            cv2.FONT_HERSHEY_SIMPLEX, font_scale, (0, 255, 0), thickness)
             elif self.enable_following:
                 status = "PRIMARY CAMERA" if camera_id == self.primary_camera else "SECONDARY VIEW"
-                cv2.rectangle(vis_image, (5, 160), (300, 190), text_bg_color, -1)
+                # cv2.rectangle(vis_image, (5, 160), (300, 190), text_bg_color, -1)
                 cv2.putText(vis_image, status, (10, 180), cv2.FONT_HERSHEY_SIMPLEX, 
                            font_scale, (255, 255, 0), thickness)
 
             # Frame count and resolution info
             frame_count = self.camera_frame_counts.get(camera_id, 0)
             info_text = f"FRAME: {frame_count} | RES: {self.image_width}x{self.image_height}"
-            cv2.rectangle(vis_image, (5, 200), (500, 230), text_bg_color, -1)
+            # cv2.rectangle(vis_image, (5, 200), (500, 230), text_bg_color, -1)
             cv2.putText(vis_image, info_text, (10, 220), 
                        cv2.FONT_HERSHEY_SIMPLEX, font_scale * 0.7, (255, 255, 255), thickness)
 
