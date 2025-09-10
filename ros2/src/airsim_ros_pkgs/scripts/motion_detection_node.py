@@ -16,6 +16,7 @@ import torch
 import torch.serialization
 import time
 import math
+import traceback
 from collections import deque, defaultdict
 from pathlib import Path
 import sys
@@ -50,7 +51,7 @@ class MultiCameraMotionDetectionNode(Node):
 
         # ROS 2 Parameters Declaration and Retrieval
         self.declare_parameter('vehicle_name', 'Drone1')
-        self.declare_parameter('confidence_threshold', 0.4)
+        self.declare_parameter('confidence_threshold', 0.2)
         self.declare_parameter('iou_threshold', 0.45)  # (intersection over union) a predefined cutoff value used in object detection to determine if a predicted bounding box is true positive or false positive
         self.declare_parameter('motion_threshold', 15.0)
         self.declare_parameter('enable_visualization', True)
@@ -160,17 +161,25 @@ class MultiCameraMotionDetectionNode(Node):
         self.current_altitude = 0.0
         self.takeoff_start_time = None
 
-        # Conservative PID parameters to prevent oscillation
-        self.pid_x = {'kp': 1.5, 'ki': 0.03, 'kd': 0.18, 'prev_error': 0.0, 'integral': 0.0}
-        self.pid_y = {'kp': 0.6, 'ki': 0.015, 'kd': 0.12, 'prev_error': 0.0, 'integral': 0.0}
-        self.pid_z = {'kp': 0.5, 'ki': 0.01, 'kd': 0.08, 'prev_error': 0.0, 'integral': 0.0}
-        self.pid_yaw = {'kp': 1.2, 'ki': 0.03, 'kd': 0.25, 'prev_error': 0.0, 'integral': 0.0}
+        # More aggressive PID parameters for faster response
+        self.pid_x = {'kp': 2.5, 'ki': 0.05, 'kd': 0.3, 'prev_error': 0.0, 'integral': 0.0}
+        self.pid_y = {'kp': 1.2, 'ki': 0.03, 'kd': 0.2, 'prev_error': 0.0, 'integral': 0.0}
+        self.pid_z = {'kp': 1.0, 'ki': 0.02, 'kd': 0.15, 'prev_error': 0.0, 'integral': 0.0}
+        self.pid_yaw = {'kp': 2.0, 'ki': 0.05, 'kd': 0.3, 'prev_error': 0.0, 'integral': 0.0}
 
-        # Movement deadband zones to reduce jitter
-        self.deadband_x = 0.3
-        self.deadband_y = 0.3
-        self.deadband_z = 0.2
-        self.deadband_yaw = 0.1
+        # Reduced deadband zones for more responsive movement
+        self.deadband_x = 0.1
+        self.deadband_y = 0.1
+        self.deadband_z = 0.1
+        self.deadband_yaw = 0.05
+
+        # Add momentum tracking variables
+        self.last_movement_direction = {'x': 0.0, 'y': 0.0, 'z': 0.0, 'yaw': 0.0}
+        self.momentum_decay_factor = 0.85  # How quickly momentum decays
+        self.min_momentum_threshold = 0.1  # Minimum momentum to maintain movement
+        self.search_momentum_active = False
+        self.momentum_search_duration = 3.0  # How long to maintain momentum search
+        self.momentum_search_start_time = 0.0
 
         # Initialize detection systems
         self.initialize_detection_systems()
@@ -427,25 +436,27 @@ class MultiCameraMotionDetectionNode(Node):
                 self.drone_state = 'FOLLOWING'
                 self.target_person_data = target_person
                 
+                # Reset search patterns when target is reacquired
                 self.lost_target_search_pattern = 0
+                self.search_momentum_active = False
 
                 if old_id != self.target_person_id and self.camera_frame_counts.get(target_camera, 0) % 30 == 0:
                     cam_name = self.camera_orientations[target_camera]['name']
                     self.get_logger().info(f'Following person ID: {self.target_person_id} '
                                          f'from {cam_name} camera, confidence: {target_person.get("confidence", 0.5):.2f}')
         else:
-            # No person detected
+            # No person detected - use momentum-based search
             time_since_last = current_time - self.last_person_detection_time
-            if self.following_active and time_since_last > self.person_lost_timeout:
-                self.get_logger().warn(f'Lost person ID: {self.target_person_id} from all cameras - initiating search pattern')
+            if self.following_active and time_since_last > 1.5:  # Reduced timeout for faster response
+                self.get_logger().warn(f'Lost person ID: {self.target_person_id} from all cameras - initiating momentum search')
                 self.following_active = False
                 self.target_locked = False
                 self.target_lock_confidence = 0.0
                 self.drone_state = 'SEARCHING'
-                self.initiate_search_pattern()
-            elif self.following_active and time_since_last > 1.0:
+                # momentum_search_behavior() will be called by control_loop()
+            elif self.following_active and time_since_last > 0.5:  # Reduced from 1.0 second
                 self.drone_state = 'SEARCHING'
-                self.search_for_lost_target()
+                # This will trigger momentum search behavior
             elif self.takeoff_complete and not self.following_active:
                 self.drone_state = 'HOVERING'
                 self.hover_drone()
@@ -454,12 +465,18 @@ class MultiCameraMotionDetectionNode(Node):
         """Initiate systematic search when target is completely lost"""
         self.lost_target_search_pattern = (self.lost_target_search_pattern + 1) % 8
         
-        # Slow rotation search pattern
+        # Fast rotation search pattern with occasional forward movement
         vel_cmd = VelCmd()
-        vel_cmd.twist.linear.x = 0.0
+        
+        # Add forward movement every few search cycles
+        if self.lost_target_search_pattern % 4 == 0:
+            vel_cmd.twist.linear.x = 1.0  # Move forward briefly
+        else:
+            vel_cmd.twist.linear.x = 0.0
+            
         vel_cmd.twist.linear.y = 0.0
         vel_cmd.twist.linear.z = 0.0
-        vel_cmd.twist.angular.z = 0.3 if self.lost_target_search_pattern < 4 else -0.3
+        vel_cmd.twist.angular.z = 1.8 if self.lost_target_search_pattern < 4 else -1.8  # Fast alternating rotation
         vel_cmd.twist.angular.x = 0.0
         vel_cmd.twist.angular.y = 0.0
         
@@ -468,14 +485,33 @@ class MultiCameraMotionDetectionNode(Node):
 
     def search_for_lost_target(self):
         """Search behavior when target is temporarily lost"""
-        # Gentle hover with slight movements to help reacquisition
-        vel_cmd = VelCmd()
-        vel_cmd.twist.linear.x = 0.0
-        vel_cmd.twist.linear.y = 0.0
-        vel_cmd.twist.linear.z = 0.05  # Slight upward bias
-        vel_cmd.twist.angular.z = 0.1  # Very slow rotation
-        vel_cmd.twist.angular.x = 0.0
-        vel_cmd.twist.angular.y = 0.0
+        # This is called when target is temporarily lost (< person_lost_timeout)
+        # Continue some momentum but with added search behavior
+        
+        # If we have recent movement, use reduced momentum
+        if (abs(self.last_movement_direction['x']) > 0.1 or 
+            abs(self.last_movement_direction['y']) > 0.1):
+            
+            reduced_forward = self.last_movement_direction['x'] * 0.3
+            reduced_side = self.last_movement_direction['y'] * 0.3
+            
+            vel_cmd = VelCmd()
+            vel_cmd.twist.linear.x = reduced_forward
+            vel_cmd.twist.linear.y = reduced_side
+            vel_cmd.twist.linear.z = 0.0
+            vel_cmd.twist.angular.z = 2.5  # Fast rotation while maintaining some forward movement
+            vel_cmd.twist.angular.x = 0.0
+            vel_cmd.twist.angular.y = 0.0
+            
+        else:
+            # No significant recent movement, just rotate
+            vel_cmd = VelCmd()
+            vel_cmd.twist.linear.x = 0.0
+            vel_cmd.twist.linear.y = 0.0
+            vel_cmd.twist.linear.z = 0.0
+            vel_cmd.twist.angular.z = 2.5
+            vel_cmd.twist.angular.x = 0.0
+            vel_cmd.twist.angular.y = 0.0
         
         if self.enable_following:
             self.cmd_vel_pub.publish(vel_cmd)
@@ -522,10 +558,10 @@ class MultiCameraMotionDetectionNode(Node):
             vel_cmd = VelCmd()
             vel_cmd.twist.linear.x = 0.0
             vel_cmd.twist.linear.y = 0.0
-            vel_cmd.twist.linear.z = 0.05
+            vel_cmd.twist.linear.z = 0.0  # No vertical drift
             vel_cmd.twist.angular.x = 0.0
             vel_cmd.twist.angular.y = 0.0
-            vel_cmd.twist.angular.z = 0.5  # Constant yaw for 360-degree rotation
+            vel_cmd.twist.angular.z = 1.5  # Fast rotation for scanning
             self.cmd_vel_pub.publish(vel_cmd)
 
     def pixel_to_world_direction(self, pixel_center, image_center):
@@ -594,6 +630,7 @@ class MultiCameraMotionDetectionNode(Node):
             return
         
         if self.drone_state == 'SEARCHING':
+            self.momentum_search_behavior()
             return
         
         if not self.following_active or not hasattr(self, 'target_person_data'):
@@ -620,12 +657,11 @@ class MultiCameraMotionDetectionNode(Node):
             cam_yaw_offset = math.radians(self.camera_orientations[target_camera]['yaw'])
             world_yaw_angle = yaw_angle + cam_yaw_offset
             
-            # Correct control error calculations
-            yaw_error = world_yaw_angle  # For centering: if person is to the right, turn right
-            distance_error = (self.follow_distance - estimated_distance) * 0.6  # If too far, move forward
-            height_error = pitch_angle * 0.3  # If person is above center, move up
-            # Side movement should be based on raw yaw angle (camera-relative)
-            side_error = yaw_angle * 0.2  # Reduced gain to prevent oscillation
+            # More aggressive control error calculations
+            yaw_error = world_yaw_angle
+            distance_error = (self.follow_distance - estimated_distance) * 1.0  # Increased from 0.6
+            height_error = pitch_angle * 0.5  # Increased from 0.3
+            side_error = yaw_angle * 0.4      # Increased from 0.2
             
             # PID control outputs
             yaw_cmd = self.pid_control(self.pid_yaw, yaw_error, dt)
@@ -639,11 +675,11 @@ class MultiCameraMotionDetectionNode(Node):
             height_cmd = self.apply_deadband(height_cmd, self.deadband_z)
             side_cmd = self.apply_deadband(side_cmd, self.deadband_y)
 
-            # Reduced command limits to prevent aggressive movements
-            yaw_cmd = max(-0.8, min(yaw_cmd, 0.8))
-            forward_cmd = max(-1.5, min(forward_cmd, 2.0))
-            height_cmd = max(-0.6, min(height_cmd, 0.6))
-            side_cmd = max(-1.0, min(side_cmd, 1.0))
+            # Much more aggressive command limits for faster response
+            yaw_cmd = max(-2.5, min(yaw_cmd, 2.5))        # Increased from ±0.8
+            forward_cmd = max(-3.0, min(forward_cmd, 3.0)) # Increased from ±1.5/2.0
+            height_cmd = max(-1.5, min(height_cmd, 1.5))   # Increased from ±0.6
+            side_cmd = max(-2.0, min(side_cmd, 2.0))       # Increased from ±1.0
 
             # Apply coordinate transformation for non-primary cameras
             if target_camera != self.primary_camera:
@@ -657,6 +693,13 @@ class MultiCameraMotionDetectionNode(Node):
                 
                 forward_cmd = transformed_forward
                 side_cmd = transformed_side
+            
+            # Store movement direction for momentum tracking
+            self.last_movement_direction['x'] = forward_cmd
+            self.last_movement_direction['y'] = side_cmd
+            self.last_movement_direction['z'] = height_cmd
+            self.last_movement_direction['yaw'] = yaw_cmd
+            self.search_momentum_active = False  # Reset momentum search when actively following
             
             # Create and publish VelCmd
             vel_cmd = VelCmd()
@@ -682,6 +725,60 @@ class MultiCameraMotionDetectionNode(Node):
         except Exception as e:
             self.get_logger().error(f'Enhanced control loop error: {e}')
             self.hover_drone()
+
+    def momentum_search_behavior(self):
+        """Continue movement in last direction while searching for target"""
+        current_time = time.time()
+        
+        # Initialize momentum search if not already active
+        if not self.search_momentum_active:
+            self.search_momentum_active = True
+            self.momentum_search_start_time = current_time
+            self.get_logger().info(f'MOMENTUM SEARCH: Continuing movement - '
+                                 f'forward:{self.last_movement_direction["x"]:.2f}, '
+                                 f'side:{self.last_movement_direction["y"]:.2f}, '
+                                 f'yaw:{self.last_movement_direction["yaw"]:.2f}')
+        
+        # Check if momentum search should continue
+        time_in_momentum_search = current_time - self.momentum_search_start_time
+        
+        if time_in_momentum_search < self.momentum_search_duration:
+            # Continue with decaying momentum
+            decay_factor = self.momentum_decay_factor ** (time_in_momentum_search * 10)  # Decay over time
+            
+            # Calculate momentum-based commands
+            momentum_forward = self.last_movement_direction['x'] * decay_factor
+            momentum_side = self.last_movement_direction['y'] * decay_factor
+            momentum_height = self.last_movement_direction['z'] * decay_factor * 0.5  # Reduced vertical momentum
+            momentum_yaw = self.last_movement_direction['yaw'] * decay_factor * 0.7   # Reduced yaw momentum
+            
+            # Add search rotation to the momentum movement
+            search_yaw_addition = 1.5 * math.sin(time_in_momentum_search * 2.0)  # Oscillating search
+            final_yaw = momentum_yaw + search_yaw_addition
+            
+            # Apply minimum threshold - if momentum is too small, switch to pure search
+            if (abs(momentum_forward) < self.min_momentum_threshold and 
+                abs(momentum_side) < self.min_momentum_threshold):
+                # Transition to pure rotation search
+                momentum_forward = 0.0
+                momentum_side = 0.0
+                final_yaw = 2.0  # Fast rotation search
+                
+            vel_cmd = VelCmd()
+            vel_cmd.twist.linear.x = momentum_forward
+            vel_cmd.twist.linear.y = momentum_side
+            vel_cmd.twist.linear.z = momentum_height
+            vel_cmd.twist.angular.z = final_yaw
+            vel_cmd.twist.angular.x = 0.0
+            vel_cmd.twist.angular.y = 0.0
+            
+            if self.enable_following:
+                self.cmd_vel_pub.publish(vel_cmd)
+                
+        else:
+            # Momentum search time expired, switch to regular search pattern
+            self.search_momentum_active = False
+            self.initiate_search_pattern()
 
     def initialize_detection_systems(self):
         """Initialize YOLOv7 + DeepSORT system"""
