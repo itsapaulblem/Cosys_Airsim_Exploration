@@ -1131,7 +1131,7 @@ class MultiCameraMotionDetectionNode(Node):
             total_distance += distance
             
         velocity_pixels_per_frame = total_distance / len(recent_positions)
-        velocity_pixels_per_second = velocity_pixels_per_frame * 30
+        velocity_pixels_per_second = velocity_pixels_per_frame * 20
         return velocity_pixels_per_second * 0.01
 
     def detect_and_track_yolo_deepsort(self, image, camera_id):
