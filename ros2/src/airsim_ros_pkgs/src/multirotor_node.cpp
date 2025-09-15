@@ -877,7 +877,7 @@ void MultirotorNode::process_lidar()
             lidar_msg.row_step = lidar_msg.point_step * lidar_msg.width;
             lidar_msg.is_dense = true;
 
-            // Apply coordinate frame transformation (this is critical!)
+            // Apply coordinate frame transformation
             std::vector<float> data_std = lidar_data.point_cloud;
             fixPointCloud(data_std, 3, {1}); // Flip Y coordinate
 
@@ -888,14 +888,6 @@ void MultirotorNode::process_lidar()
 
             if (!lidar_pubs_.empty()) {
                 lidar_pubs_[0]->publish(lidar_msg);
-                
-                // Debug info - log occasionally
-                static int lidar_count = 0;
-                if (++lidar_count % 50 == 0) {
-                    RCLCPP_INFO(this->get_logger(),
-                               "Published LiDAR data: %u points from %zu raw values",
-                               lidar_msg.width, lidar_data.point_cloud.size());
-                }
             }
         } else {
             RCLCPP_WARN_THROTTLE(this->get_logger(), *this->get_clock(), 5000,

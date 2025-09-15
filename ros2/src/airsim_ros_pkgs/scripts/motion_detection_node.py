@@ -131,9 +131,9 @@ class MultiCameraMotionDetectionNode(Node):
         # Camera orientations (relative to drone body frame)
         self.camera_orientations = {
             0: {'yaw': 0.0, 'name': 'front'},      # Front camera
-            1: {'yaw': -90.0, 'name': 'right'},    # Right camera  
+            1: {'yaw': 90.0, 'name': 'right'},    # Right camera  
             2: {'yaw': 180.0, 'name': 'back'},     # Back camera
-            3: {'yaw': 90.0, 'name': 'left'}       # Left camera
+            3: {'yaw': -90.0, 'name': 'left'}       # Left camera
         }
         
         # Target persistence variables
@@ -146,11 +146,21 @@ class MultiCameraMotionDetectionNode(Node):
         self.lost_target_search_pattern = 0 # For systematic search when target is lost
 
         self.velocity_smoother = {
-            'x': deque(maxlen=5),
-            'y': deque(maxlen=5),
-            'z': deque(maxlen=5),
-            'yaw': deque(maxlen=5)
+            'x': deque(maxlen=8),
+            'y': deque(maxlen=8),
+            'z': deque(maxlen=8),
+            'yaw': deque(maxlen=8)
         }
+
+        self.velocity_smoothing_factor = 0.7
+        self.max_acceleration = {
+            'x': 1.5,
+            'y': 1.5,
+            'z': 1.0,
+            'yaw': 2.0
+        }
+        self.previous_velocity = {'x': 0.0, 'y': 0.0, 'z': 0.0, 'yaw': 0.0}
+
         self.last_target_center = None
         self.target_prediction = None
 
@@ -162,23 +172,23 @@ class MultiCameraMotionDetectionNode(Node):
         self.takeoff_start_time = None
 
         # More aggressive PID parameters for faster response
-        self.pid_x = {'kp': 2.5, 'ki': 0.05, 'kd': 0.3, 'prev_error': 0.0, 'integral': 0.0}
-        self.pid_y = {'kp': 1.2, 'ki': 0.03, 'kd': 0.2, 'prev_error': 0.0, 'integral': 0.0}
-        self.pid_z = {'kp': 1.0, 'ki': 0.02, 'kd': 0.15, 'prev_error': 0.0, 'integral': 0.0}
-        self.pid_yaw = {'kp': 2.0, 'ki': 0.05, 'kd': 0.3, 'prev_error': 0.0, 'integral': 0.0}
+        self.pid_x = {'kp': 1.8, 'ki': 0.02, 'kd': 0.4, 'prev_error': 0.0, 'integral': 0.0}
+        self.pid_y = {'kp': 1.0, 'ki': 0.015, 'kd': 0.25, 'prev_error': 0.0, 'integral': 0.0}
+        self.pid_z = {'kp': 0.8, 'ki': 0.01, 'kd': 0.2, 'prev_error': 0.0, 'integral': 0.0}
+        self.pid_yaw = {'kp': 1.5, 'ki': 0.02, 'kd': 0.35, 'prev_error': 0.0, 'integral': 0.0}
 
         # Reduced deadband zones for more responsive movement
-        self.deadband_x = 0.1
-        self.deadband_y = 0.1
-        self.deadband_z = 0.1
-        self.deadband_yaw = 0.05
+        self.deadband_x = 0.15
+        self.deadband_y = 0.15
+        self.deadband_z = 0.15
+        self.deadband_yaw = 0.08
 
         # Add momentum tracking variables
         self.last_movement_direction = {'x': 0.0, 'y': 0.0, 'z': 0.0, 'yaw': 0.0}
-        self.momentum_decay_factor = 0.85  # How quickly momentum decays
-        self.min_momentum_threshold = 0.1  # Minimum momentum to maintain movement
+        self.momentum_decay_factor = 0.95  # How quickly momentum decays
+        self.min_momentum_threshold = 0.05  # Minimum momentum to maintain movement
         self.search_momentum_active = False
-        self.momentum_search_duration = 3.0  # How long to maintain momentum search
+        self.momentum_search_duration = 10.0  # How long to maintain momentum search
         self.momentum_search_start_time = 0.0
 
         # Initialize detection systems
@@ -378,18 +388,37 @@ class MultiCameraMotionDetectionNode(Node):
         return None, None                        
 
     def smooth_velocity_command(self, cmd_type, new_value):
-        """Apply smoothing to velocity commands"""
+        """Enhanced velocity smoothing with exponential averaging and acceleration limiting"""
+        # Add to buffer
         self.velocity_smoother[cmd_type].append(new_value)
         
+        # Apply exponential moving average
         if len(self.velocity_smoother[cmd_type]) > 1:
-            # Use weighted average with more weight on recent values
-            weights = np.array([0.1, 0.2, 0.3, 0.4])[-len(self.velocity_smoother[cmd_type]):]
+            # Calculate weighted average with exponential decay
+            buffer_values = list(self.velocity_smoother[cmd_type])
+            weights = np.array([self.velocity_smoothing_factor ** (len(buffer_values) - 1 - i) 
+                               for i in range(len(buffer_values))])
             weights = weights / weights.sum()
             
-            smoothed = np.average(list(self.velocity_smoother[cmd_type]), weights=weights)
-            return smoothed
+            smoothed = np.average(buffer_values, weights=weights)
+        else:
+            smoothed = new_value
         
-        return new_value
+        # Apply acceleration limiting
+        dt = 0.05  # Control loop period
+        max_delta = self.max_acceleration[cmd_type] * dt
+        prev_vel = self.previous_velocity[cmd_type]
+        
+        # Limit rate of change
+        if abs(smoothed - prev_vel) > max_delta:
+            if smoothed > prev_vel:
+                smoothed = prev_vel + max_delta
+            else:
+                smoothed = prev_vel - max_delta
+        
+        self.previous_velocity[cmd_type] = smoothed
+        return smoothed
+
 
     def apply_deadband(self, value, deadband):
         """Apply deadband to reduce jitter around zero"""
@@ -447,14 +476,14 @@ class MultiCameraMotionDetectionNode(Node):
         else:
             # No person detected - use momentum-based search
             time_since_last = current_time - self.last_person_detection_time
-            if self.following_active and time_since_last > 1.5:  # Reduced timeout for faster response
+            if self.following_active and time_since_last > 2.0:  # Reduced timeout for faster response
                 self.get_logger().warn(f'Lost person ID: {self.target_person_id} from all cameras - initiating momentum search')
                 self.following_active = False
                 self.target_locked = False
                 self.target_lock_confidence = 0.0
                 self.drone_state = 'SEARCHING'
                 # momentum_search_behavior() will be called by control_loop()
-            elif self.following_active and time_since_last > 0.5:  # Reduced from 1.0 second
+            elif self.following_active and time_since_last > 0.8:  # Reduced from 1.0 second
                 self.drone_state = 'SEARCHING'
                 # This will trigger momentum search behavior
             elif self.takeoff_complete and not self.following_active:
@@ -659,13 +688,13 @@ class MultiCameraMotionDetectionNode(Node):
             
             # More aggressive control error calculations
             yaw_error = world_yaw_angle
-            distance_error = (self.follow_distance - estimated_distance) * 1.0  # Increased from 0.6
-            height_error = pitch_angle * 0.5  # Increased from 0.3
-            side_error = yaw_angle * 0.4      # Increased from 0.2
+            distance_error = (estimated_distance - self.follow_distance) * 0.8
+            height_error = pitch_angle * 0.4
+            side_error = yaw_angle * 0.3
             
             # PID control outputs
             yaw_cmd = self.pid_control(self.pid_yaw, yaw_error, dt)
-            forward_cmd = self.pid_control(self.pid_x, distance_error, dt)
+            forward_cmd = self.pid_control(self.pid_x, -distance_error, dt)
             height_cmd = self.pid_control(self.pid_z, height_error, dt)
             side_cmd = self.pid_control(self.pid_y, side_error, dt)
             
@@ -676,10 +705,10 @@ class MultiCameraMotionDetectionNode(Node):
             side_cmd = self.apply_deadband(side_cmd, self.deadband_y)
 
             # Much more aggressive command limits for faster response
-            yaw_cmd = max(-2.5, min(yaw_cmd, 2.5))        # Increased from ±0.8
-            forward_cmd = max(-3.0, min(forward_cmd, 3.0)) # Increased from ±1.5/2.0
-            height_cmd = max(-1.5, min(height_cmd, 1.5))   # Increased from ±0.6
-            side_cmd = max(-2.0, min(side_cmd, 2.0))       # Increased from ±1.0
+            yaw_cmd = max(-1.8, min(yaw_cmd, 2.5))        # Increased from ±0.8
+            forward_cmd = max(-2.0, min(forward_cmd, 3.0)) # Increased from ±1.5/2.0
+            height_cmd = max(-1.0, min(height_cmd, 1.5))   # Increased from ±0.6
+            side_cmd = max(-1.5, min(side_cmd, 2.0))       # Increased from ±1.0
 
             # Apply coordinate transformation for non-primary cameras
             if target_camera != self.primary_camera:
@@ -689,7 +718,7 @@ class MultiCameraMotionDetectionNode(Node):
                 
                 # Rotate forward/side commands to match camera orientation
                 transformed_forward = forward_cmd * cos_offset - side_cmd * sin_offset
-                transformed_side = forward_cmd * sin_offset + side_cmd * cos_offset
+                transformed_side = -forward_cmd * sin_offset + side_cmd * cos_offset
                 
                 forward_cmd = transformed_forward
                 side_cmd = transformed_side
@@ -713,7 +742,7 @@ class MultiCameraMotionDetectionNode(Node):
             self.cmd_vel_pub.publish(vel_cmd)
             
             # Enhanced logging with debug info
-            if sum(self.camera_frame_counts.values()) % 40 == 0:  # Less frequent logging
+            if sum(self.camera_frame_counts.values()) % 60 == 0:  # Less frequent logging
                 cam_name = self.camera_orientations[target_camera]['name']
                 lock_status = "LOCKED" if self.target_locked else "TRACKING"
                 self.get_logger().info(f'{lock_status} from {cam_name}: '
@@ -743,41 +772,63 @@ class MultiCameraMotionDetectionNode(Node):
         time_in_momentum_search = current_time - self.momentum_search_start_time
         
         if time_in_momentum_search < self.momentum_search_duration:
-            # Continue with decaying momentum
-            decay_factor = self.momentum_decay_factor ** (time_in_momentum_search * 10)  # Decay over time
+            # Calculate progress through the search (0 to 1)
+            search_progress = time_in_momentum_search / self.momentum_search_duration
+            
+            # Momentum decay: start strong, gradually reduce
+            momentum_decay = self.momentum_decay_factor ** (time_in_momentum_search * 5)
             
             # Calculate momentum-based commands
-            momentum_forward = self.last_movement_direction['x'] * decay_factor
-            momentum_side = self.last_movement_direction['y'] * decay_factor
-            momentum_height = self.last_movement_direction['z'] * decay_factor * 0.5  # Reduced vertical momentum
-            momentum_yaw = self.last_movement_direction['yaw'] * decay_factor * 0.7   # Reduced yaw momentum
+            momentum_forward = self.last_movement_direction['x'] * momentum_decay
+            momentum_side = self.last_movement_direction['y'] * momentum_decay
+            momentum_height = self.last_movement_direction['z'] * momentum_decay * 0.3  # Reduced vertical momentum
             
-            # Add search rotation to the momentum movement
-            search_yaw_addition = 1.5 * math.sin(time_in_momentum_search * 2.0)  # Oscillating search
-            final_yaw = momentum_yaw + search_yaw_addition
+            # 360-degree search rotation: complete one full rotation over 10 seconds
+            rotation_speed = 2.0 * math.pi / self.momentum_search_duration  # rad/s for 360° in 10s
+            search_yaw = rotation_speed
             
-            # Apply minimum threshold - if momentum is too small, switch to pure search
-            if (abs(momentum_forward) < self.min_momentum_threshold and 
-                abs(momentum_side) < self.min_momentum_threshold):
-                # Transition to pure rotation search
-                momentum_forward = 0.0
-                momentum_side = 0.0
-                final_yaw = 2.0  # Fast rotation search
+            # Combine momentum yaw with search rotation
+            momentum_yaw = self.last_movement_direction['yaw'] * momentum_decay * 0.5
+            final_yaw = momentum_yaw + search_yaw
+            
+            # Gradually transition from momentum movement to stationary rotation
+            transition_factor = 1.0 - search_progress  # 1.0 at start, 0.0 at end
+            
+            # Apply minimum threshold - reduce momentum as search progresses
+            if (abs(momentum_forward) < self.min_momentum_threshold or 
+                search_progress > 0.6):  # After 60% of search time, focus on rotation
+                momentum_forward *= transition_factor
+                momentum_side *= transition_factor
                 
+            # Smooth velocity commands
+            final_forward = self.smooth_velocity_command('x', momentum_forward)
+            final_side = self.smooth_velocity_command('y', momentum_side)
+            final_height = self.smooth_velocity_command('z', momentum_height)
+            final_yaw = self.smooth_velocity_command('yaw', final_yaw)
+            
             vel_cmd = VelCmd()
-            vel_cmd.twist.linear.x = momentum_forward
-            vel_cmd.twist.linear.y = momentum_side
-            vel_cmd.twist.linear.z = momentum_height
+            vel_cmd.twist.linear.x = final_forward
+            vel_cmd.twist.linear.y = final_side
+            vel_cmd.twist.linear.z = final_height
             vel_cmd.twist.angular.z = final_yaw
             vel_cmd.twist.angular.x = 0.0
             vel_cmd.twist.angular.y = 0.0
             
             if self.enable_following:
                 self.cmd_vel_pub.publish(vel_cmd)
+            
+            # Log search progress every 2 seconds
+            if int(time_in_momentum_search) % 2 == 0 and int(time_in_momentum_search * 10) % 20 == 0:
+                degrees_rotated = math.degrees(search_yaw * time_in_momentum_search)
+                self.get_logger().info(f'MOMENTUM SEARCH: {time_in_momentum_search:.1f}s/'
+                                     f'{self.momentum_search_duration:.1f}s, '
+                                     f'rotated {degrees_rotated:.0f}°, '
+                                     f'momentum: {momentum_decay:.2f}')
                 
         else:
             # Momentum search time expired, switch to regular search pattern
             self.search_momentum_active = False
+            self.get_logger().info('MOMENTUM SEARCH completed - switching to pattern search')
             self.initiate_search_pattern()
 
     def initialize_detection_systems(self):

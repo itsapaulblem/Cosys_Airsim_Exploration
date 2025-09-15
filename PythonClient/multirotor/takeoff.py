@@ -11,7 +11,7 @@ z = 5
 if len(sys.argv) > 1:
     z = float(sys.argv[1])
 
-client = airsim.MultirotorClient()
+client = airsim.MultirotorClient(ip="172.22.112.1")
 client.confirmConnection()
 client.enableApiControl(True)
 

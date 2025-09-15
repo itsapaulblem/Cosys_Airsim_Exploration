@@ -44,7 +44,7 @@ class OrbitNavigator:
         cx *= self.radius
         cy *= self.radius
 
-        self.client = airsim.MultirotorClient()
+        self.client = airsim.MultirotorClient(ip="172.22.112.1")
         self.client.confirmConnection()
         self.client.enableApiControl(True)
 
