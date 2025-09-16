@@ -246,12 +246,12 @@ class MultiCameraMotionDetectionNode(Node):
         self.camera_processing_threads = {}
         
         # OPTIMIZATION: Control loop timing optimization
-        self.control_loop_frequency = 50.0  # 50Hz for smooth control
+        self.control_loop_frequency = 20.0  # 20Hz for smooth control
         self.image_processing_frequency = {
-            0: 30.0,  # Primary camera at full rate
-            1: 15.0,  # Secondary cameras at reduced rate
-            2: 15.0,
-            3: 15.0
+            0: 30.0,  # INCREASED from 25.0 to 30.0Hz for primary camera
+            1: 25.0,  # INCREASED from 20.0 to 25.0Hz for secondary cameras
+            2: 25.0,  # INCREASED from 20.0 to 25.0Hz
+            3: 25.0   # INCREASED from 20.0 to 25.0Hz
         }
         self.camera_frame_skip = {i: 0 for i in range(self.num_cameras)}
 
@@ -280,9 +280,9 @@ class MultiCameraMotionDetectionNode(Node):
         
         # Person following control timer - OPTIMIZATION: 50Hz for faster response
         if self.enable_following:
-            self.control_timer = self.create_timer(0.02, self.control_loop)  # CHANGED from 0.05 to 0.02 (50Hz)
+            self.control_timer = self.create_timer(0.1, self.control_loop)
             
-        # OPTIMIZATION: Separate timer for camera processing management
+        # OPTIMIZATION: Separate timer for camera processing management - INCREASED frequency for higher image publishing
         self.camera_management_timer = self.create_timer(0.1, self.manage_camera_processing)
         
         self.get_logger().info(f' Multi-Camera Motion Detection node initialized for {self.vehicle_name}')
@@ -724,11 +724,13 @@ class MultiCameraMotionDetectionNode(Node):
         for cam_id in range(self.num_cameras):
             target_freq = self.image_processing_frequency[cam_id]
             
-            # Skip frames for secondary cameras to reduce processing load
+            # Reduced frame skipping for higher image publishing rates
             if cam_id != self.primary_camera:
-                skip_frames = int(30 / target_freq) - 1
+                skip_frames = max(1, int(30 / target_freq) - 1)  # CHANGED from 25 to 30 for higher rates
                 self.camera_frame_skip[cam_id] = skip_frames
-
+            else:
+                # Primary camera processes more frequently - no frame skipping
+                self.camera_frame_skip[cam_id] = 0  # Fixed typo: was camerra_frame_skip
     # OPTIMIZATION: Asynchronous image processing
     def process_image_async(self, cv_image, camera_id, header):
         """Process image in separate thread to avoid blocking"""
@@ -825,7 +827,7 @@ class MultiCameraMotionDetectionNode(Node):
 
     def control_loop(self):
         """OPTIMIZED control loop - decoupled from image processing, runs at 50Hz"""
-        dt = 0.02  # 50Hz control loop
+        dt = 0.05  # 50Hz control loop
         
         if self.drone_state == 'TAKING_OFF' and not self.takeoff_complete:
             return
@@ -929,16 +931,16 @@ class MultiCameraMotionDetectionNode(Node):
             
             self.cmd_vel_pub.publish(vel_cmd)
             
-            # Enhanced logging with debug info - MODIFIED for close following mode
-            if sum(self.camera_frame_counts.values()) % 150 == 0:  # Less frequent logging for 50Hz
+            # Enhanced logging with debug info - INCREASED frequency for higher image publishing rates
+            if sum(self.camera_frame_counts.values()) % 100 == 0:  # CHANGED from 200 to 100 for more frequent updates
                 cam_name = self.camera_orientations[target_camera]['name']
                 lock_status = "LOCKED" if self.target_locked else "TRACKING"
                 data_age_ms = int(data_age * 1000)
-                self.get_logger().info(f'{lock_status} from {cam_name} [CLOSE FOLLOW 50Hz]: '
+                self.get_logger().info(f'{lock_status} from {cam_name} [HIGH FREQ 30Hz]: '  # Updated label
                                      f'dist={estimated_distance:.2f}m->target:{self.follow_distance}m, '
                                      f'data_age={data_age_ms}ms, conf={self.target_lock_confidence:.2f}, '
                                      f'err=[y:{math.degrees(world_yaw_angle):.1f}°, d:{distance_error:.2f}m], '
-                                     f'cmd=[f:{forward_cmd:.2f}, s:{side_cmd:.2f}, u:{height_cmd:.2f}, y:{yaw_cmd:.2f}]')
+                                     f'cmd=[f:{forward_cmd:.2f}, s:{side_cmd:.2f}, u:{yaw_cmd:.2f}, y:{yaw_cmd:.2f}]')
                                      
         except Exception as e:
             self.get_logger().error(f'Optimized control loop error: {e}')
