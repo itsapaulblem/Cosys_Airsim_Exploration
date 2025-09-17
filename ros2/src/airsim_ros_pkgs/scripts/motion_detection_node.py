@@ -213,17 +213,17 @@ class MultiCameraMotionDetectionNode(Node):
         self.current_altitude = 0.0
         self.takeoff_start_time = None
 
-        # OPTIMIZATION: Enhanced PID parameters for aggressive following
-        self.pid_x = {'kp': 2.2, 'ki': 0.05, 'kd': 0.6, 'prev_error': 0.0, 'integral': 0.0}  # More aggressive
-        self.pid_y = {'kp': 1.4, 'ki': 0.03, 'kd': 0.4, 'prev_error': 0.0, 'integral': 0.0}  # More aggressive
-        self.pid_z = {'kp': 1.2, 'ki': 0.02, 'kd': 0.3, 'prev_error': 0.0, 'integral': 0.0}  # More aggressive
-        self.pid_yaw = {'kp': 2.0, 'ki': 0.04, 'kd': 0.5, 'prev_error': 0.0, 'integral': 0.0}  # More aggressive
+        # More aggressive PID parameters for faster response
+        self.pid_x = {'kp': 1.8, 'ki': 0.02, 'kd': 0.4, 'prev_error': 0.0, 'integral': 0.0}
+        self.pid_y = {'kp': 1.0, 'ki': 0.015, 'kd': 0.25, 'prev_error': 0.0, 'integral': 0.0}
+        self.pid_z = {'kp': 0.8, 'ki': 0.01, 'kd': 0.2, 'prev_error': 0.0, 'integral': 0.0}
+        self.pid_yaw = {'kp': 1.5, 'ki': 0.02, 'kd': 0.35, 'prev_error': 0.0, 'integral': 0.0}
 
-        # OPTIMIZATION: Reduced deadband zones for ultra-responsive movement
-        self.deadband_x = 0.08   # REDUCED from 0.15
-        self.deadband_y = 0.08   # REDUCED from 0.15
-        self.deadband_z = 0.08   # REDUCED from 0.15
-        self.deadband_yaw = 0.04 # REDUCED from 0.08
+        # Reduced deadband zones for more responsive movement
+        self.deadband_x = 0.15
+        self.deadband_y = 0.15
+        self.deadband_z = 0.15
+        self.deadband_yaw = 0.08
 
         # Add momentum tracking variables
         self.last_movement_direction = {'x': 0.0, 'y': 0.0, 'z': 0.0, 'yaw': 0.0}
@@ -233,25 +233,25 @@ class MultiCameraMotionDetectionNode(Node):
         self.momentum_search_duration = 10.0  # How long to maintain momentum search
         self.momentum_search_start_time = 0.0
 
-        # OPTIMIZATION: Thread-safe target data storage
-        self.target_person_data_lock = threading.RLock()
+        # SIMPLIFIED: Remove complex threading system that was causing blocking
+        # self.target_person_data_lock = threading.RLock()
         self.target_person_data = None
-        self.target_data_timestamp = 0.0
+        # self.target_data_timestamp = 0.0
         
-        # OPTIMIZATION: Motion prediction system
-        self.target_motion_predictor = MotionPredictor()
+        # SIMPLIFIED: Remove motion prediction system that was causing complexity
+        # self.target_motion_predictor = MotionPredictor()
         
-        # OPTIMIZATION: Asynchronous image processing flags
-        self.processing_cameras = {i: False for i in range(self.num_cameras)}
-        self.camera_processing_threads = {}
+        # SIMPLIFIED: Remove asynchronous processing that was causing blocking
+        # self.processing_cameras = {i: False for i in range(self.num_cameras)}
+        # self.camera_processing_threads = {}
         
         # OPTIMIZATION: Control loop timing optimization
         self.control_loop_frequency = 20.0  # 20Hz for smooth control
         self.image_processing_frequency = {
-            0: 30.0,  # INCREASED from 25.0 to 30.0Hz for primary camera
-            1: 25.0,  # INCREASED from 20.0 to 25.0Hz for secondary cameras
-            2: 25.0,  # INCREASED from 20.0 to 25.0Hz
-            3: 25.0   # INCREASED from 20.0 to 25.0Hz
+            0: 15.0,  # INCREASED from 25.0 to 30.0Hz for primary camera
+            1: 10.0,  # INCREASED from 20.0 to 25.0Hz for secondary cameras
+            2: 10.0,  # INCREASED from 20.0 to 25.0Hz
+            3: 10.0   # INCREASED from 20.0 to 25.0Hz
         }
         self.camera_frame_skip = {i: 0 for i in range(self.num_cameras)}
 
@@ -278,12 +278,12 @@ class MultiCameraMotionDetectionNode(Node):
         # Create debug timer
         self.debug_timer = self.create_timer(5.0, self.debug_status)
         
-        # Person following control timer - OPTIMIZATION: 50Hz for faster response
+        # Person following control timer - OPTIMIZATION: 20Hz for stable response (was claiming 50Hz)
         if self.enable_following:
-            self.control_timer = self.create_timer(0.1, self.control_loop)
+            self.control_timer = self.create_timer(0.05, self.control_loop)
             
-        # OPTIMIZATION: Separate timer for camera processing management - INCREASED frequency for higher image publishing
-        self.camera_management_timer = self.create_timer(0.1, self.manage_camera_processing)
+        # SIMPLIFIED: Remove complex camera processing management that was causing issues
+        # self.camera_management_timer = self.create_timer(0.2, self.manage_camera_processing)
         
         self.get_logger().info(f' Multi-Camera Motion Detection node initialized for {self.vehicle_name}')
         self.get_logger().info(f' Using {self.num_cameras} cameras: {", ".join(self.camera_topics)}')
@@ -718,60 +718,38 @@ class MultiCameraMotionDetectionNode(Node):
         pid_params['prev_error'] = error
         return output
 
-    # OPTIMIZATION: Camera processing management
-    def manage_camera_processing(self):
-        """Manage camera processing frequencies and threading"""
-        for cam_id in range(self.num_cameras):
-            target_freq = self.image_processing_frequency[cam_id]
-            
-            # Reduced frame skipping for higher image publishing rates
-            if cam_id != self.primary_camera:
-                skip_frames = max(1, int(30 / target_freq) - 1)  # CHANGED from 25 to 30 for higher rates
-                self.camera_frame_skip[cam_id] = skip_frames
-            else:
-                # Primary camera processes more frequently - no frame skipping
-                self.camera_frame_skip[cam_id] = 0  # Fixed typo: was camerra_frame_skip
-    # OPTIMIZATION: Asynchronous image processing
-    def process_image_async(self, cv_image, camera_id, header):
-        """Process image in separate thread to avoid blocking"""
-        if self.processing_cameras[camera_id]:
-            return  # Skip if already processing
-            
-        def process_worker():
-            try:
-                self.processing_cameras[camera_id] = True
-                
-                # Process with detection system
-                if self.use_yolo_deepsort:
-                    moving_targets, vis_image = self.detect_and_track_yolo_deepsort(cv_image, camera_id)
-                    self.camera_detection_counts[camera_id] = len(self.camera_data_deques[camera_id])
-                else:
-                    moving_targets, vis_image = [], cv_image
-                    self.camera_detection_counts[camera_id] = 0
-                
-                self.camera_moving_counts[camera_id] = len(moving_targets)
-                
-                # Thread-safe update of targets
-                with self.camera_locks[camera_id]:
-                    self.all_camera_targets[camera_id] = moving_targets
-                
-                # Update person following data if this is primary camera or has better target
-                if self.enable_following:
-                    self.update_target_data_async(moving_targets, camera_id, header)
-                
-                # Publish visualization (non-blocking)
-                if self.enable_vis and vis_image is not None and camera_id in self.vis_pubs:
-                    self.publish_camera_visualization(vis_image, camera_id, header)
-                    
-            except Exception as e:
-                self.get_logger().error(f'Async processing error camera {camera_id}: {e}')
-            finally:
-                self.processing_cameras[camera_id] = False
-        
-        # Start processing thread
-        if camera_id not in self.camera_processing_threads or not self.camera_processing_threads[camera_id].is_alive():
-            self.camera_processing_threads[camera_id] = threading.Thread(target=process_worker)
-            self.camera_processing_threads[camera_id].start()
+    # SIMPLIFIED: Commented out complex camera processing management
+    # def manage_camera_processing(self):
+    #     """Manage camera processing frequencies and threading"""
+    #     for cam_id in range(self.num_cameras):
+    #         target_freq = self.image_processing_frequency[cam_id]
+    #         
+    #         # Reduced frame skipping for higher image publishing rates
+    #         if cam_id != self.primary_camera:
+    #             skip_frames = max(2, int(20 / target_freq) - 1)  # CHANGED from 25 to 30 for higher rates
+    #             self.camera_frame_skip[cam_id] = skip_frames
+    #         else:
+    #             # Primary camera processes more frequently - no frame skipping
+    #             self.camera_frame_skip[cam_id] = 1  # Fixed typo: was camerra_frame_skip
+    # SIMPLIFIED: Commented out complex asynchronous image processing
+    # def process_image_async(self, cv_image, camera_id, header):
+    #     """Process image in separate thread to avoid blocking"""
+    #     if self.processing_cameras[camera_id]:
+    #         return  # Skip if already processing
+    #         
+    #     def process_worker():
+    #         try:
+    #             # ... complex processing code was here ...
+    #             pass
+    #         except Exception as e:
+    #             self.get_logger().error(f'Async processing error camera {camera_id}: {e}')
+    #         finally:
+    #             self.processing_cameras[camera_id] = False
+    #     
+    #     # Start processing thread
+    #     if camera_id not in self.camera_processing_threads or not self.camera_processing_threads[camera_id].is_alive():
+    #         self.camera_processing_threads[camera_id] = threading.Thread(target=process_worker)
+    #         self.camera_processing_threads[camera_id].start()
 
     # OPTIMIZATION: Thread-safe target data updates
     def update_target_data_async(self, moving_targets, camera_id, header):
@@ -807,9 +785,9 @@ class MultiCameraMotionDetectionNode(Node):
                  best_confidence > getattr(self, 'target_lock_confidence', 0.0) or
                  data_age > 0.5)):  # Accept new data if current is >0.5s old
                 
-                # Update motion predictor
-                if best_person.get('center'):
-                    self.target_motion_predictor.update(best_person['center'], current_time)
+                # SIMPLIFIED: Remove motion predictor update since we commented it out
+                # if best_person.get('center'):
+                #     self.target_motion_predictor.update(best_person['center'], current_time)
                 
                 self.target_person_data = best_person.copy()
                 self.target_person_data['camera_id'] = camera_id
@@ -826,8 +804,8 @@ class MultiCameraMotionDetectionNode(Node):
                     self.last_person_detection_time = current_time
 
     def control_loop(self):
-        """OPTIMIZED control loop - decoupled from image processing, runs at 50Hz"""
-        dt = 0.05  # 50Hz control loop
+        """SIMPLIFIED control loop - matches the working old version logic"""
+        dt = 0.05
         
         if self.drone_state == 'TAKING_OFF' and not self.takeoff_complete:
             return
@@ -836,35 +814,22 @@ class MultiCameraMotionDetectionNode(Node):
             self.momentum_search_behavior()
             return
         
-        # Thread-safe access to target data
-        with self.target_person_data_lock:
-            if not self.following_active or not self.target_person_data:
-                return
-            
-            # Check data freshness
-            data_age = time.time() - self.target_data_timestamp
-            if data_age > 1.0:  # Data is stale
-                self.following_active = False
-                self.drone_state = 'SEARCHING'
-                return
-                
-            # Copy target data for processing
-            person = self.target_person_data.copy()
+        # SIMPLIFIED: Use the same logic as the old working version
+        if not self.following_active or not hasattr(self, 'target_person_data'):
+            # If drone is airborne but not following, make it hover with slow rotation to search
+            if self.takeoff_complete and self.drone_state != 'SEARCHING':
+                self.hover_drone()
+            return
             
         try:
+            person = self.target_person_data
             target_camera = person.get('camera_id', 0)
             bbox = person.get('bbox', [0, 0, 100, 100])
             center = person.get('center', [bbox[0] + bbox[2]/2, bbox[1] + bbox[3]/2])
             
-            # OPTIMIZATION: Use motion prediction for smoother tracking
-            predicted_center = self.target_motion_predictor.predict(dt * 2)  # Predict 2 frames ahead
-            if predicted_center:
-                # Blend current and predicted position
-                alpha = 0.7  # Weight for prediction
-                center = [
-                    center[0] * (1-alpha) + predicted_center[0] * alpha,
-                    center[1] * (1-alpha) + predicted_center[1] * alpha
-                ]
+            # Use predicted position if available for smoother tracking
+            if self.target_prediction:
+                center = self.target_prediction
 
             image_center = [self.image_width / 2, self.image_height / 2]
             
@@ -876,11 +841,11 @@ class MultiCameraMotionDetectionNode(Node):
             cam_yaw_offset = math.radians(self.camera_orientations[target_camera]['yaw'])
             world_yaw_angle = yaw_angle + cam_yaw_offset
             
-            # MODIFIED: More aggressive control for close following
+            # More aggressive control error calculations (same as old version)
             yaw_error = world_yaw_angle
-            distance_error = (estimated_distance - self.follow_distance) * 1.5  # Increased from 0.8 to 1.5 for more aggressive approach
-            height_error = pitch_angle * 0.5
-            side_error = yaw_angle * 0.4
+            distance_error = (estimated_distance - self.follow_distance) * 0.8
+            height_error = pitch_angle * 0.4
+            side_error = yaw_angle * 0.3
             
             # PID control outputs with optimized dt
             yaw_cmd = self.pid_control(self.pid_yaw, yaw_error, dt)
@@ -894,11 +859,11 @@ class MultiCameraMotionDetectionNode(Node):
             height_cmd = self.apply_deadband(height_cmd, self.deadband_z)
             side_cmd = self.apply_deadband(side_cmd, self.deadband_y)
 
-            # MODIFIED: Even more aggressive command limits for close following
-            yaw_cmd = max(-3.0, min(yaw_cmd, 3.5))        # Increased from ±1.8/2.5
-            forward_cmd = max(-4.0, min(forward_cmd, 5.0)) # Increased from ±2.0/3.0  
-            height_cmd = max(-2.0, min(height_cmd, 2.5))   # Increased from ±1.0/1.5
-            side_cmd = max(-3.0, min(side_cmd, 3.5))       # Increased from ±1.5/2.0
+            # Much more aggressive command limits for faster response
+            yaw_cmd = max(-1.8, min(yaw_cmd, 2.5))        # Increased from ±0.8
+            forward_cmd = max(-2.0, min(forward_cmd, 3.0)) # Increased from ±1.5/2.0
+            height_cmd = max(-1.0, min(height_cmd, 1.5))   # Increased from ±0.6
+            side_cmd = max(-1.5, min(side_cmd, 2.0))       # Increased from ±1.0
 
             # Apply coordinate transformation for non-primary cameras
             if target_camera != self.primary_camera:
@@ -931,19 +896,23 @@ class MultiCameraMotionDetectionNode(Node):
             
             self.cmd_vel_pub.publish(vel_cmd)
             
-            # Enhanced logging with debug info - INCREASED frequency for higher image publishing rates
-            if sum(self.camera_frame_counts.values()) % 100 == 0:  # CHANGED from 200 to 100 for more frequent updates
+            # Add debug logging every 2 seconds to verify commands are being published
+            if sum(self.camera_frame_counts.values()) % 40 == 0:  # Every 2 seconds at 20Hz
+                self.get_logger().info(f'CONTROL CMD: forward={forward_cmd:.2f}, side={side_cmd:.2f}, '
+                                     f'height={height_cmd:.2f}, yaw={yaw_cmd:.2f}')
+            
+            # Enhanced logging with debug info (simplified)
+            if sum(self.camera_frame_counts.values()) % 60 == 0:  # Less frequent logging
                 cam_name = self.camera_orientations[target_camera]['name']
                 lock_status = "LOCKED" if self.target_locked else "TRACKING"
-                data_age_ms = int(data_age * 1000)
-                self.get_logger().info(f'{lock_status} from {cam_name} [HIGH FREQ 30Hz]: '  # Updated label
-                                     f'dist={estimated_distance:.2f}m->target:{self.follow_distance}m, '
-                                     f'data_age={data_age_ms}ms, conf={self.target_lock_confidence:.2f}, '
-                                     f'err=[y:{math.degrees(world_yaw_angle):.1f}°, d:{distance_error:.2f}m], '
-                                     f'cmd=[f:{forward_cmd:.2f}, s:{side_cmd:.2f}, u:{yaw_cmd:.2f}, y:{yaw_cmd:.2f}]')
+                self.get_logger().info(f'{lock_status} from {cam_name}: '
+                                     f'dist={estimated_distance:.1f}m->target:{self.follow_distance}m, '
+                                     f'conf={self.target_lock_confidence:.2f}, '
+                                     f'err=[y:{math.degrees(world_yaw_angle):.1f}°, d:{distance_error:.1f}m], '
+                                     f'cmd=[f:{forward_cmd:.2f}, s:{side_cmd:.2f}, u:{height_cmd:.2f}, y:{yaw_cmd:.2f}]')
                                      
         except Exception as e:
-            self.get_logger().error(f'Optimized control loop error: {e}')
+            self.get_logger().error(f'Enhanced control loop error: {e}')
             self.hover_drone()
 
     def momentum_search_behavior(self):
