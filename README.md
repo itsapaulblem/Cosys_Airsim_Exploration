@@ -1,5 +1,5 @@
 # Paulsys-AirSim
-
+mv external/rpclib/rpclib-2.3.1/.* external/rpclib/ 2>/dev/null
 Paulsys-AirSim is a simulator for multirotor drones, with extensive API support, built on [Unreal Engine](https://www.unrealengine.com/). It is open-source, cross platform, and supports hardware-in-loop with popular flight controllers such as PX4 for physically and visually realistic simulations. It is developed as an Unreal plugin that can simply be dropped into any Unreal environment. 
 
 This fork is based on last public Cosys-AirSim release from Microsoft's GitHub.
