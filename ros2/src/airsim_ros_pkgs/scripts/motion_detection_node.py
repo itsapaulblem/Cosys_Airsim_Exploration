@@ -906,7 +906,7 @@ class MultiCameraMotionDetectionNode(Node):
 
             # Forward movement only
             if forward_cmd <= 0:
-                forward_cmd = 0.2  # Minimum forward speed
+                forward_cmd = 0.4  # Minimum forward speed
             
             # Reduced deadbands for more responsive close following
             yaw_cmd = self.apply_deadband(yaw_cmd, self.deadband_yaw)
@@ -985,7 +985,7 @@ class MultiCameraMotionDetectionNode(Node):
         if time_in_search < self.momentum_search_duration:
             # SLOW FORWARD and rotate to search
             vel_cmd = VelCmd()
-            vel_cmd.twist.linear.x = 0.2   # Slow forward movement
+            vel_cmd.twist.linear.x = 0.4   # Slow forward movement
             vel_cmd.twist.linear.y = 0.0   # No side movement  
             vel_cmd.twist.linear.z = 0.0   # No vertical movement
             vel_cmd.twist.angular.x = 0.0
