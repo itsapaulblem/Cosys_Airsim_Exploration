@@ -155,6 +155,10 @@ class MultiCameraMotionDetectionNode(Node):
         
         # Thread locks for multi-camera processing to prevent race conditions
         self.camera_locks = {}
+        
+        # Target data synchronization
+        self.target_person_data_lock = threading.Lock()
+        self.target_data_timestamp = 0.0
 
         # Detection mode flags - determine which detection system to use
         self.use_yolo_deepsort = False
@@ -223,12 +227,12 @@ class MultiCameraMotionDetectionNode(Node):
         self.current_altitude = 0.0
         self.takeoff_start_time = None
 
-        # PID controller parameters for smooth, less jittery movement
+        # More aggressive PID parameters for faster response
         # Proportional Integral Derivative control for each axis 
-        self.pid_x = {'kp': 0.3, 'ki': 0.005, 'kd': 0.02, 'prev_error': 0.0, 'integral': 0.0}
-        self.pid_y = {'kp': 0.4, 'ki': 0.003, 'kd': 0.015, 'prev_error': 0.0, 'integral': 0.0}
+        self.pid_x = {'kp': 0.6, 'ki': 0.008, 'kd': 0.03, 'prev_error': 0.0, 'integral': 0.0}
+        self.pid_y = {'kp': 0.7, 'ki': 0.005, 'kd': 0.02, 'prev_error': 0.0, 'integral': 0.0}
         self.pid_z = {'kp': 0.35, 'ki': 0.003, 'kd': 0.01, 'prev_error': 0.0, 'integral': 0.0}
-        self.pid_yaw = {'kp': 0.4, 'ki': 0.005, 'kd': 0.03, 'prev_error': 0.0, 'integral': 0.0}
+        self.pid_yaw = {'kp': 0.8, 'ki': 0.008, 'kd': 0.04, 'prev_error': 0.0, 'integral': 0.0}
 
         # Deadband zones to prevent small jittery movements
         self.deadband_x = 0.3
@@ -397,8 +401,8 @@ class MultiCameraMotionDetectionNode(Node):
         
         if not persons:
             return None, None
-            
-        # If already following someone, try to maintain tracking continuity
+
+        # If already following target, try to maintain tracking continuity
         if self.target_locked and self.target_camera_id is not None:
             # First try to find the same target in the same camera
             for person in persons:
@@ -584,18 +588,18 @@ class MultiCameraMotionDetectionNode(Node):
                     self.get_logger().info(f'Following person ID: {self.target_person_id} '
                                          f'from {cam_name} camera, confidence: {target_person.get("confidence", 0.5):.2f}')
         else:
-            # No person detected - implement search behaviour
+            # No person detected - implement HOVER and SEARCH behavior
             time_since_last = current_time - self.last_person_detection_time
-            if self.following_active and time_since_last > 2.0:  # Reduced timeout for faster response
-                self.get_logger().warn(f'Lost person ID: {self.target_person_id} from all cameras - initiating momentum search')
+            if self.following_active and time_since_last > 1.5:  # Reduced timeout for faster response
+                self.get_logger().warn(f'Lost person ID: {self.target_person_id} from all cameras - hovering and searching')
                 self.following_active = False
                 self.target_locked = False
                 self.target_lock_confidence = 0.0
                 self.drone_state = 'SEARCHING'
-                # momentum_search_behavior() will be called by control_loop()
-            elif self.following_active and time_since_last > 0.8:  # Reduced from 1.0 second
+                # This will trigger hover search behavior in control loop
+            elif self.following_active and time_since_last > 0.5:  # Quick response to temporary loss
                 self.drone_state = 'SEARCHING'
-                # This will trigger momentum search behavior
+                # This will trigger hover search behavior
             elif self.takeoff_complete and not self.following_active:
                 self.drone_state = 'HOVERING'
                 self.hover_drone()
@@ -691,17 +695,33 @@ class MultiCameraMotionDetectionNode(Node):
             self.drone_state = 'IDLE'
 
     def hover_drone(self):
-        """Make drone rotate in place (360 deg scan) when hovering after losing target"""
+        """Make drone slowly inch forward while rotating when losing target"""
         if self.enable_following:
             vel_cmd = VelCmd()
-            vel_cmd.twist.linear.x = 0.0
-            vel_cmd.twist.linear.y = 0.0
-            vel_cmd.twist.linear.z = 0.0 
+            # Slowly inch forward while searching
+            vel_cmd.twist.linear.x = 0.4  # Slow forward movement
+            vel_cmd.twist.linear.y = 0.0  # No side movement
+            vel_cmd.twist.linear.z = 0.0  # No vertical movement
             vel_cmd.twist.angular.x = 0.0
             vel_cmd.twist.angular.y = 0.0
-            # Reduced rotation speed for smoother hovering
-            vel_cmd.twist.angular.z = 0.5
+            # Rotate to search for target
+            vel_cmd.twist.angular.z = 0.8  # Moderate rotation for scanning
             self.cmd_vel_pub.publish(vel_cmd)
+
+    def slow_forward_search(self):
+        """Slow forward movement while rotating to search"""
+        if self.enable_following:
+            vel_cmd = VelCmd()
+            # Slow forward movement while searching
+            vel_cmd.twist.linear.x = 0.4  # Slow forward movement
+            vel_cmd.twist.linear.y = 0.0  # No side movement
+            vel_cmd.twist.linear.z = 0.0  # No vertical movement
+            vel_cmd.twist.angular.x = 0.0
+            vel_cmd.twist.angular.y = 0.0
+            # Continue rotation for scanning
+            vel_cmd.twist.angular.z = 0.6  # Moderate rotation
+            self.cmd_vel_pub.publish(vel_cmd)
+            self.get_logger().info('SLOW FORWARD SEARCH: Moving forward slowly while rotating to find target')
 
     def pixel_to_world_direction(self, pixel_center, image_center):
         """Convert pixel coordinates to world direction angles
@@ -720,22 +740,25 @@ class MultiCameraMotionDetectionNode(Node):
         return yaw_angle, pitch_angle
 
     def estimate_person_distance(self, bbox):
-        """Estimate distance to person based on bounding box size
-        Uses person height assumption and camera FOV for distance calculation"""
         bbox_height = bbox[3]
-        
+    
         if bbox_height > 0:
-            # Assuming average person height of 1.7m
-            estimated_distance = (1.7 * self.image_height) / (bbox_height * math.tan(math.radians(self.camera_fov_vertical/2)) * 2)
+            raw_distance = (1.7 * self.image_height) / (bbox_height * math.tan(math.radians(self.camera_fov_vertical/2)) * 2)
+            raw_distance = max(1.5, min(raw_distance, 20.0))
+        
+            # Distance smoothing buffer
+            if not hasattr(self, 'distance_history'):
+                self.distance_history = deque(maxlen=5)
+        
+            self.distance_history.append(raw_distance)
+        
+            # Use median filter to remove outliers
+            if len(self.distance_history) >= 3:
+                smoothed_distance = np.median(list(self.distance_history))
+            else:
+                smoothed_distance = raw_distance
             
-            # Clamp to reasonable range (1.5m to 20m)
-            estimated_distance = max(1.5, min(estimated_distance, 20.0))
-
-            # Bias toward follow_distance for stability
-            if abs(estimated_distance - self.follow_distance) < 1.0:
-                estimated_distance = self.follow_distance
-                
-            return estimated_distance
+            return smoothed_distance
         return self.follow_distance
 
     def pid_control(self, pid_params, error, dt):
@@ -846,21 +869,44 @@ class MultiCameraMotionDetectionNode(Node):
             yaw_angle, pitch_angle = self.pixel_to_world_direction(center, image_center)
             estimated_distance = self.estimate_person_distance(bbox)
             
+            # Distance change limiting to prevent sudden jumps
+            if hasattr(self, 'last_estimated_distance'):
+                max_distance_change = 2.0  # Max 2m change per control cycle
+                distance_change = abs(estimated_distance - self.last_estimated_distance)
+                
+                if distance_change > max_distance_change:
+                    if estimated_distance > self.last_estimated_distance:
+                        estimated_distance = self.last_estimated_distance + max_distance_change
+                    else:
+                        estimated_distance = self.last_estimated_distance - max_distance_change
+            
+            self.last_estimated_distance = estimated_distance
+            
             # Apply camera orientation transformation
             cam_yaw_offset = math.radians(self.camera_orientations[target_camera]['yaw'])
             world_yaw_angle = yaw_angle + cam_yaw_offset
             
-            # Reduced error scaling for smoother, less jittery control
-            yaw_error = world_yaw_angle * 0.3
-            distance_error = (estimated_distance - self.follow_distance) * 0.25
-            height_error = pitch_angle * 0.12    
-            side_error = yaw_angle * 0.08
+            # More aggressive error scaling for faster movement
+            yaw_error = world_yaw_angle * 0.5
+            distance_error = estimated_distance - self.follow_distance
+            # Always move forward regardless of distance (slower when close, faster when far)
+            if distance_error > 0:  # Target too far - move forward at normal speed
+                distance_error = distance_error * 0.4
+            else:
+                distance_error = abs(distance_error) * 0.1  # Convert to small positive forward movement
+            
+            height_error = pitch_angle * 0.15
+            side_error = yaw_angle * 0.12   
             
             # PID control outputs with optimized dt
             yaw_cmd = self.pid_control(self.pid_yaw, yaw_error, dt)
-            forward_cmd = self.pid_control(self.pid_x, -distance_error, dt)
+            forward_cmd = self.pid_control(self.pid_x, distance_error, dt)
             height_cmd = self.pid_control(self.pid_z, height_error, dt)
             side_cmd = self.pid_control(self.pid_y, side_error, dt)
+
+            # Forward movement only
+            if forward_cmd <= 0:
+                forward_cmd = 0.2  # Minimum forward speed
             
             # Reduced deadbands for more responsive close following
             yaw_cmd = self.apply_deadband(yaw_cmd, self.deadband_yaw)
@@ -868,21 +914,20 @@ class MultiCameraMotionDetectionNode(Node):
             height_cmd = self.apply_deadband(height_cmd, self.deadband_z)
             side_cmd = self.apply_deadband(side_cmd, self.deadband_y)
 
-            # Smooth command limits for less jittery movement
-            yaw_cmd = max(-0.4, min(yaw_cmd, 0.4))
-            forward_cmd = max(-0.6, min(forward_cmd, 0.6))  
-            height_cmd = max(-0.3, min(height_cmd, 0.3)) 
-            side_cmd = max(-0.4, min(side_cmd, 0.4))  
+            # Increased velocity limits
+            yaw_cmd = max(-1.0, min(yaw_cmd, 1.0))          # Rotation allowed both ways
+            forward_cmd = max(0.1, min(forward_cmd, 2.0))   # ONLY FORWARD MOVEMENT
+            height_cmd = max(-0.8, min(height_cmd, 0.8))    # Vertical movement allowed both ways
+            side_cmd = max(-2.0, min(side_cmd, 2.0))        # Side movement allowed both ways  
 
-            # Apply coordinate transformation for non-primary cameras
+            # Apply coordinate transformation for non-primary cameras - FIXED
             if target_camera != self.primary_camera:
                 # Transform commands based on camera orientation
                 cos_offset = math.cos(cam_yaw_offset)
                 sin_offset = math.sin(cam_yaw_offset)
                 
-                # Rotate forward/side commands to match camera orientation
                 transformed_forward = forward_cmd * cos_offset - side_cmd * sin_offset
-                transformed_side = -forward_cmd * sin_offset + side_cmd * cos_offset
+                transformed_side = forward_cmd * sin_offset + side_cmd * cos_offset
                 
                 forward_cmd = transformed_forward
                 side_cmd = transformed_side
@@ -925,47 +970,44 @@ class MultiCameraMotionDetectionNode(Node):
             self.hover_drone()
 
     def momentum_search_behavior(self):
-        """Continue movement in last direction while searching for target"""
+        """Hover and rotate search instead of momentum-based movement"""
         current_time = time.time()
         
-        # Initialize momentum search if not already active
+        # Initialize search if not already active
         if not self.search_momentum_active:
             self.search_momentum_active = True
             self.momentum_search_start_time = current_time
-            self.get_logger().info(f'MOMENTUM SEARCH: Continuing movement - '
-                                 f'forward:{self.last_movement_direction["x"]:.2f}, '
-                                 f'side:{self.last_movement_direction["y"]:.2f}, '
-                                 f'yaw:{self.last_movement_direction["yaw"]:.2f}')
+            self.get_logger().info('TARGET LOST: Hovering and searching with rotation')
         
-        # Check if momentum search should continue
-        time_in_momentum_search = current_time - self.momentum_search_start_time
+        # Check if search should continue
+        time_in_search = current_time - self.momentum_search_start_time
         
-        if time_in_momentum_search < self.momentum_search_duration:
-            # Very conservative momentum decay
-            momentum_decay = 0.7 ** (time_in_momentum_search * 2)
-        
-            # Very slow movements
-            momentum_forward = self.last_movement_direction['x'] * momentum_decay * 0.3
-            momentum_side = self.last_movement_direction['y'] * momentum_decay * 0.3
-            momentum_height = 0.0  # No vertical movement during search
-        
-            # Slow rotation
-            rotation_speed = 0.5  # Very slow rotation
-        
+        if time_in_search < self.momentum_search_duration:
+            # SLOW FORWARD and rotate to search
             vel_cmd = VelCmd()
-            vel_cmd.twist.linear.x = max(-0.5, min(momentum_forward, 0.5))
-            vel_cmd.twist.linear.y = max(-0.5, min(momentum_side, 0.5))
-            vel_cmd.twist.linear.z = 0.0
-            vel_cmd.twist.angular.z = rotation_speed
+            vel_cmd.twist.linear.x = 0.2   # Slow forward movement
+            vel_cmd.twist.linear.y = 0.0   # No side movement  
+            vel_cmd.twist.linear.z = 0.0   # No vertical movement
             vel_cmd.twist.angular.x = 0.0
             vel_cmd.twist.angular.y = 0.0
-        
+            
+            # Vary rotation speed for more thorough search
+            if time_in_search < 3.0:
+                rotation_speed = 1.2  # Fast initial scan
+            elif time_in_search < 7.0:
+                rotation_speed = -1.0  # Reverse direction
+            else:
+                rotation_speed = 0.6   # Slower final scan
+            
+            vel_cmd.twist.angular.z = rotation_speed
+            
             if self.enable_following:
                 self.cmd_vel_pub.publish(vel_cmd)
             
         else:
+            # After search duration, continue hovering
             self.search_momentum_active = False
-            self.get_logger().info('MOMENTUM SEARCH completed - switching to hover')
+            self.get_logger().info('SEARCH COMPLETED - Continuing to hover and scan')
             self.hover_drone()
 
     def initialize_detection_systems(self):
@@ -1408,7 +1450,7 @@ class MultiCameraMotionDetectionNode(Node):
                     # Use high-quality interpolation for better results
                     cv_image = cv2.resize(cv_image, target_size, interpolation=cv2.INTER_LANCZOS4)
                     
-                    # Optional: Apply sharpening filter for better visual quality
+                    # Apply sharpening filter for better visual quality
                     if self.image_quality > 80:
                         kernel = np.array([[-1,-1,-1],
                                          [-1, 9,-1],
@@ -1508,17 +1550,64 @@ class MultiCameraMotionDetectionNode(Node):
                 # cv2.rectangle(vis_image, (5, 90), (450, 120), text_bg_color, -1)
                 cv2.putText(vis_image, f"FOLLOWING TARGET ID: {self.target_person_id}", (10, 110), 
                            cv2.FONT_HERSHEY_SIMPLEX, font_scale, (0, 255, 0), thickness)
+                
+                # Add target location information
+                if hasattr(self, 'target_person_data') and self.target_person_data:
+                    try:
+                        # Get target center in image coordinates (pixels)
+                        target_center = self.target_person_data.get('center', [0, 0])
+                        target_bbox = self.target_person_data.get('bbox', [0, 0, 0, 0])
+                        
+                        # Get estimated distance
+                        estimated_distance = getattr(self, 'last_estimated_distance', 0.0)
+                        
+                        # World position if available
+                        world_pos = getattr(self, 'target_person_position', [0.0, 0.0])
+                        
+                        # Display target pixel location
+                        cv2.putText(vis_image, f"TARGET POS: ({int(target_center[0])}, {int(target_center[1])})", 
+                                   (10, 140), cv2.FONT_HERSHEY_SIMPLEX, font_scale * 0.7, (0, 255, 255), thickness)
+                        
+                        # Display estimated distance
+                        cv2.putText(vis_image, f"DISTANCE: {estimated_distance:.2f}m", 
+                                   (10, 165), cv2.FONT_HERSHEY_SIMPLEX, font_scale * 0.7, (0, 255, 255), thickness)
+                        
+                        # Display world coordinates
+                        cv2.putText(vis_image, f"WORLD: ({world_pos[0]:.2f}, {world_pos[1]:.2f})", 
+                                   (10, 190), cv2.FONT_HERSHEY_SIMPLEX, font_scale * 0.7, (0, 255, 255), thickness)
+                        
+                        # Display bounding box size
+                        bbox_width = int(target_bbox[2]) if len(target_bbox) > 2 else 0
+                        bbox_height = int(target_bbox[3]) if len(target_bbox) > 3 else 0
+                        cv2.putText(vis_image, f"BBOX: {bbox_width}x{bbox_height}", 
+                                   (10, 215), cv2.FONT_HERSHEY_SIMPLEX, font_scale * 0.7, (0, 255, 255), thickness)
+                        
+                        # Draw crosshair at target position
+                        if target_center[0] > 0 and target_center[1] > 0:
+                            target_x, target_y = int(target_center[0]), int(target_center[1])
+                            # Draw target crosshair
+                            cv2.line(vis_image, (target_x - 20, target_y), (target_x + 20, target_y), (0, 0, 255), 3)
+                            cv2.line(vis_image, (target_x, target_y - 20), (target_x, target_y + 20), (0, 0, 255), 3)
+                            cv2.circle(vis_image, (target_x, target_y), 8, (0, 0, 255), 2)
+                            
+                            # Label the target
+                            cv2.putText(vis_image, "TARGET", (target_x + 25, target_y - 10), 
+                                       cv2.FONT_HERSHEY_SIMPLEX, font_scale * 0.6, (0, 0, 255), 2)
+                                       
+                    except Exception as e:
+                        cv2.putText(vis_image, f"TARGET DATA ERROR", (10, 140), 
+                                   cv2.FONT_HERSHEY_SIMPLEX, font_scale * 0.7, (0, 0, 255), thickness)
             elif self.enable_following:
                 status = "PRIMARY CAMERA" if camera_id == self.primary_camera else "SECONDARY VIEW"
                 # cv2.rectangle(vis_image, (5, 160), (300, 190), text_bg_color, -1)
-                cv2.putText(vis_image, status, (10, 180), cv2.FONT_HERSHEY_SIMPLEX, 
+                cv2.putText(vis_image, status, (10, 250), cv2.FONT_HERSHEY_SIMPLEX, 
                            font_scale, (255, 255, 0), thickness)
 
             # Frame count and resolution info
             frame_count = self.camera_frame_counts.get(camera_id, 0)
             info_text = f"FRAME: {frame_count} | RES: {self.image_width}x{self.image_height}"
             # cv2.rectangle(vis_image, (5, 200), (500, 230), text_bg_color, -1)
-            cv2.putText(vis_image, info_text, (10, 220), 
+            cv2.putText(vis_image, info_text, (10, 280), 
                        cv2.FONT_HERSHEY_SIMPLEX, font_scale * 0.7, (255, 255, 255), thickness)
 
             # Draw enhanced crosshair at image center for reference
