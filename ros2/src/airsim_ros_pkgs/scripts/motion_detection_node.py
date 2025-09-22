@@ -699,7 +699,7 @@ class MultiCameraMotionDetectionNode(Node):
         if self.enable_following:
             vel_cmd = VelCmd()
             # Slowly inch forward while searching
-            vel_cmd.twist.linear.x = 0.4  # Slow forward movement
+            vel_cmd.twist.linear.x = 0.1  # Slow forward movement
             vel_cmd.twist.linear.y = 0.0  # No side movement
             vel_cmd.twist.linear.z = 0.0  # No vertical movement
             vel_cmd.twist.angular.x = 0.0
@@ -713,7 +713,7 @@ class MultiCameraMotionDetectionNode(Node):
         if self.enable_following:
             vel_cmd = VelCmd()
             # Slow forward movement while searching
-            vel_cmd.twist.linear.x = 0.4  # Slow forward movement
+            vel_cmd.twist.linear.x = 0.1 # Slow forward movement
             vel_cmd.twist.linear.y = 0.0  # No side movement
             vel_cmd.twist.linear.z = 0.0  # No vertical movement
             vel_cmd.twist.angular.x = 0.0
