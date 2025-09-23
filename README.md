@@ -1,42 +1,32 @@
-# Paulsys-AirSim
-mv external/rpclib/rpclib-2.3.1/.* external/rpclib/ 2>/dev/null
-Paulsys-AirSim is a simulator for multirotor drones, with extensive API support, built on [Unreal Engine](https://www.unrealengine.com/). It is open-source, cross platform, and supports hardware-in-loop with popular flight controllers such as PX4 for physically and visually realistic simulations. It is developed as an Unreal plugin that can simply be dropped into any Unreal environment. 
+# Cosys-AirSim ROS2 Modular Multi-Vehicle Architecture
 
-This fork is based on last public Cosys-AirSim release from Microsoft's GitHub.
-Paulsys-Lab made extensive modifications to the Cosys-AirSim platform to support multiple projects and research goals. 
+## Overview
 
-This [main branch](https://github.com/Cosys-Lab/Cosys-AirSim/tree/main) is for the latest supported Unreal Version v5.5, maintained for support, and is available for builds in the [releases](https://github.com/Cosys-Lab/Cosys-AirSim/releases).
-Unreal [5.2.1](https://github.com/Cosys-Lab/Cosys-AirSim/tree/5.2.1) is also available for long term support builds.
-
-# PaulSys-AirSim ROS2 Multirotor Modular Package with AI Motion Detection (Search and Track Mission)
-
-This project represents a architectural change of AirSim ROS 2 integration, evolving from a monolithic single-node approach to a modular, scalable, AI-enhanced multi-drone system. The new architecture enables robust fleet operations with computer vision capabilities for autonomous search and rescue missions.
-
-## Table of Contents 
-1. Introduction
-2. Startup Instructions
-3. Architecture Overview
-4. ROS Topics and Services
-5. File by File Explanation
-6. Detailed Comparisons: Old vs New Architecture
-7. Design Decisions
-8. Troubleshooting & FAQ
-9. References 
-
---- 
-
-## 1. Introduction 
-
-This documentation describes the **Cosys-AirSim ROS 2 multi-vehicle modular architecture with AI Motion detection**, designed for robust, scalable, and maintainable multi-drone simulation. It replaces the legacy monolithic ROS node with a component-based approach, supporting parallel sensor processing, fault isolation and dynamic vehicle management.
+This documentation describes the **Cosys-AirSim ROS 2 multi-vehicle modular architecture**, designed for robust, scalable, and maintainable multi-drone simulation. It replaces the legacy monolithic ROS node with a component-based approach, supporting parallel sensor processing, fault isolation and dynamic vehicle management.
 
 **Key Features:**
 - **Multi-Drone Fleet Management**: Independent vehicle nodes with centralised coordination
-- **AI Powered Motion Detection**: YOLO integration with OpenCV fallback for search and track mission
+- **Modular Architecture**: Component-based design with inheritance hierarchy
+- **Dynamic Configuration**: Automatic node creation based on settings.json
+- **Fault Isolation**: Per-vehicle node independence prevents cascading failures
+- **Parallel Processing**: Multi-threaded sensor processing with callback groups
+
+## Table of Contents 
+1. [Startup Instructions](#startup-instructions)
+2. [Architecture Overview](#architecture-overview)
+3. [ROS Topics and Services](#ros-topics-and-services)
+4. [File-by-File Explanation](#file-by-file-explanation)
+5. [Detailed Comparisons: Old vs New Architecture](#detailed-comparisons-old-vs-new-architecture)
+6. [Design Decisions](#design-decisions)
+7. [Troubleshooting & FAQ](#troubleshooting--faq)
+8. [References](#references)
+
 ---
 
-## 2. Startup Instructions (wsl 2.5.10.0 & Windows 10)
+## Startup Instructions (WSL 2.5.10.0 & Windows 10)
 
-### Step 1: Run the Python generate settings.py file to determine the number of drones
+### Step 1: Generate AirSim Settings
+Run the Python generate settings.py file to determine the number of drones:
 ```bash
 wsl
 cd Cosys-AirSim/PythonClient/multirotor
@@ -83,7 +73,7 @@ ros2 launch airsim_ros_pkgs single_drone.launch.py
 
 - **Multi-drone**
 ```bash
-ros2 launch airsim_pos_pkgs multi_drone.launch.py
+ros2 launch airsim_ros_pkgs multi_drone.launch.py
 ``` 
 
 - **Launch Single drone with AI motion detection**
@@ -105,7 +95,7 @@ ros2 launch airsim_ros_pkgs motion_detection_launch.py vehicle_name:=Drone1
 ros2 launch airsim_ros_pkgs motion_detection_launch.py vehicle_name:=Drone2
 ```
 
-### Step 6: Test AI Motion Detection 
+### Step 6: Test System 
 
 ```bash
 # Takeoff drone
@@ -118,7 +108,7 @@ ros2 service call /drone1/search_target airsim_interfaces/srv/SearchTarget "{
   min_confidence: 0.7
 }"
 
-# Monitor AI detections (#TODO)
+# Monitor AI detections
 ros2 topic echo /target_detection 
 
 # Track detected target
@@ -128,50 +118,12 @@ ros2 service call /drone1/track_target airsim_interfaces/srv/TrackTarget "{
   target_z: -2.0
 }"
 ```
+
 ---
 
-## 3. Architecture Overview
+## Architecture Overview
 
-### Key Components
-
-#### A. Vehicle Nodes
-
-- **VehicleNodeBase**: Abstract base for all vehicle types. Handles parameter management, AirSim connections, publishers/services/timers and callback groups for parallel sensor processing. 
-  - **Role**: Abstract foundation for all vehicle types
-  - **Features**: Parameter management, AirSim connections, parallel sensor processing
-  - **Benefits**: Code reuse, consistent interfaces, extensible design
-
-- **MultirotorNode**: Inherits from VehicleNodeBase. Implements drone-specific publishers (odom, GPS, IMU, environment, camera, lidar), services (takeoff, land, gps_waypoint, track_object), velocity command subscribers, and sensor data processing. 
-  - **Role**: Drone-specific control and operations
-  - **Inherits**: VehicleNodeBase
-  - **Publishers**: Odometry, GPS, IMU, cameras, LiDAR
-  - **Services**: Takeoff, land, waypoint navigation, target tracking
-
-
-- **SimpleMultirotorNode**: FOR TESTING ONLY. Minimal node for single-drone testing/debugging. No inheritance, direct AirSim connection.
-
-#### B. Coordination Node
-
-- **CoordinationNode**: Manages global services (reset all, takeoff all, land all, pause simulation, health check), publishes system status and GPS origin, monitors all vehicles.
-  - **Role**: Fleet-wide command and control
-  - **Features**: Global services, system monitoring, armed checks
-  - **Services**: `/takeoff_all`, `/land_all`, `/reset_all`
-
-#### C. AI Motion Detection System (#TODO)
-
-- **MotionDetectionNode**: AI-powered computer vision node that processes camera feeds using YOLO object detection with OpenCV motion tracking fallback. Detects and tracks moving objects in real-time.
-  - **Role**: AI-powered computer vision
-  - **AI Models**: YOLOv7 primary, OpenCV fallback
-  - **Output**: Real-time target detection with confidence scores
-  - **YOLO Integration**: Uses YOLOv7 for object detection when available
-  - **Target Classification**: Only moving objects are published as targets (for now)
-
-#### D. Settings Parser 
-- **VehicleSettingsParser**: Parses AirSim `settings.json` to extract vehicle configurations and global parameters, enabling dynamic node creation. 
-
-### AI Motion Detection Workflow
-
-### **System Architecture Diagram**
+### System Architecture Diagram
 
 ```
                     ┌─────────────────────────────────────────┐
@@ -192,13 +144,14 @@ ros2 service call /drone1/track_target airsim_interfaces/srv/TrackTarget "{
     │ • Individual    │ │ • Individual    │ │ • Individual    │
     │   Control       │ │   Control       │ │   Control       │
     │ • Sensor Data   │ │ • Sensor Data   │ │ • Sensor Data   │
-    │ • AI Vision     │ │ • AI Vision     │ │ • AI Vision     │
+    │ • RPC Client    │ │ • RPC Client    │ │ • RPC Client    │
     └─────────┬───────┘ └─────────┬───────┘ └─────────┬───────┘
               │                   │                   │
               ▼                   ▼                   ▼
     ┌─────────────────┐ ┌─────────────────┐ ┌─────────────────┐
     │   AI MOTION     │ │   AI MOTION     │ │   AI MOTION     │
     │ DETECTION NODE  │ │ DETECTION NODE  │ │ DETECTION NODE  │
+    │ (Optional)      │ │ (Optional)      │ │ (Optional)      │
     │                 │ │                 │ │                 │
     │ • YOLO Object   │ │ • YOLO Object   │ │ • YOLO Object   │
     │   Detection     │ │   Detection     │ │   Detection     │
@@ -213,9 +166,36 @@ ros2 service call /drone1/track_target airsim_interfaces/srv/TrackTarget "{
         └─────────────────────────────────────────────────┘
 ```
 
---- 
+### Key Components
 
-## 4. ROS Topics and Services
+#### A. Vehicle Nodes
+
+- **VehicleNodeBase**: Abstract base for all vehicle types. Handles parameter management, AirSim connections, publishers/services/timers and callback groups for parallel sensor processing. 
+  - **Role**: Abstract foundation for all vehicle types
+  - **Features**: Parameter management, AirSim connections, parallel sensor processing
+  - **Benefits**: Code reuse, consistent interfaces, extensible design
+
+- **MultirotorNode**: Inherits from VehicleNodeBase. Implements drone-specific publishers (odom, GPS, IMU, environment, camera, lidar), services (takeoff, land, gps_waypoint, track_target), velocity command subscribers, and sensor data processing. 
+  - **Role**: Drone-specific control and operations
+  - **Inherits**: VehicleNodeBase
+  - **Publishers**: Odometry, GPS, IMU, cameras, LiDAR
+  - **Services**: Takeoff, land, waypoint navigation, target tracking
+
+- **SimpleMultirotorNode**: FOR TESTING ONLY. Minimal node for single-drone testing/debugging. No inheritance, direct AirSim connection.
+
+#### B. Coordination Node
+
+- **CoordinationNode**: Manages global services (reset all, takeoff all, land all, pause simulation, health check), publishes system status and GPS origin, monitors all vehicles.
+  - **Role**: Fleet-wide command and control
+  - **Features**: Global services, system monitoring, armed checks
+  - **Services**: `/takeoff_all`, `/land_all`, `/reset_all`
+
+#### C. Settings Parser 
+- **VehicleSettingsParser**: Parses AirSim `settings.json` to extract vehicle configurations and global parameters, enabling dynamic node creation. 
+
+---
+
+## ROS Topics and Services
 
 ### Topics Published Per Vehicle 
 
@@ -230,16 +210,9 @@ ros2 service call /drone1/track_target airsim_interfaces/srv/TrackTarget "{
 | `/droneX/camera2/image`   | `sensor_msgs/msg/Image`            | Back camera image (640x480)                      |
 | `/droneX/camera3/image`   | `sensor_msgs/msg/Image`            | Left camera image (640x480)                      |
 | `/droneX/camera{0-3}/camera_info` | `sensor_msgs/msg/CameraInfo`   | Camera calibration info                          |
-| `/droneX/lidarZ/points`   | `sensor_msgs/msg/PointCloud2`      | Lidar point cloud (Z = lidar index/name)         |
+| `/droneX/lidar0/points`   | `sensor_msgs/msg/PointCloud2`      | Lidar point cloud                                |
 | `/droneX/mag`             | `sensor_msgs/msg/MagneticField`    | Magnetometer data                                |
 | `/droneX/baro`            | `sensor_msgs/msg/Range`            | Barometer/altimeter data                         |
-
-### AI Motion Detection Topics
-
-| Topic Name                | Message Type                       | Description                                      |
-|---------------------------|------------------------------------|--------------------------------------------------|
-| `/target_detection`       | `airsim_interfaces/msg/TargetDetection` | AI-detected moving targets with confidence   |
-| `/target_tracking`        | `airsim_interfaces/msg/TargetTracking`  | Multi-object tracking status                |
 
 ### Topics Published by Coordination Node 
 
@@ -269,8 +242,6 @@ ros2 service call /drone1/track_target airsim_interfaces/srv/TrackTarget "{
 | `/land_all`               | `airsim_interfaces/srv/Land`       | Land all vehicles                                |
 | `/pause_simulation`       | `std_srvs/srv/SetBool`             | Pause/unpause AirSim simulation                  |
 | `/armed_check`           | `airsim_interfaces/srv/ListSceneObjectTags` | Check armed/disarmed status of all vehicles     |
-| `/search_target_all`       | `airsim_interfaces/srv/SearchTarget | Fleet-wide AI target search coordination        |
-| `/track_target_all`       | `airsim_interfaces/srv/TrackTarget | Fleet-wide formation tracking around target      |
 
 ### Command Topics (Subscribers)
 
@@ -281,7 +252,7 @@ ros2 service call /drone1/track_target airsim_interfaces/srv/TrackTarget "{
 
 ---
 
-### Example: AI Search Target Service
+### Example: Search Target Service
 
 The new `/droneX/search_target` service allows a drone to hover in place and use AI vision to detect moving targets.
 
@@ -320,35 +291,16 @@ ros2 service call /Drone1/search_target airsim_interfaces/srv/SearchTarget "{
 }
 ```
 
-## Example: Track Object Service
-
-The new `/droneX/track_object` service allows a drone to search for and track a named object in the simulation.
-
-**Service definition (`airsim_interfaces/srv/TrackObject.srv`):**
-```plaintext
-string object_name
-float64 search_radius
-float64 track_duration
----
-bool success
-string message
-```
-
-**Example usage:**
-```bash
-ros2 service call /drone1/track_object airsim_interfaces/srv/TrackObject "{object_name: 'TargetCar', search_radius: 50.0, track_duration: 30.0}"
-```
-
 ---
 
-## 5. File-by-File Explanation 
+## File-by-File Explanation 
 
 ### New Modular Architecture Files
 
 | File Name                        | Purpose / Contribution                                                                                   |
 |-----------------------------------|--------------------------------------------------------------------------------------------------------|
 | `vehicle_node_base.hpp/cpp`       | Abstract base for all vehicle nodes. Handles parameters, connections, publishers, timers, callback groups.|
-| `multirotor_node.hpp/cpp`         | Implements drone-specific logic: sensor publishers, command subscribers, takeoff/land/gps_waypoint/track_object services.         |
+| `multirotor_node.hpp/cpp`         | Implements drone-specific logic: sensor publishers, command subscribers, takeoff/land/gps_waypoint/track_target services.         |
 | `simple_multirotor_node.cpp`      | Minimal node for single-drone testing/debugging. Direct AirSim connection, basic publishers/services.   |
 | `coordination_node.hpp/cpp`       | Global node for system-wide services, status monitoring, GPS origin publishing, health checks.          |
 | `vehicle_settings_parser.hpp/cpp` | Parses AirSim `settings.json` for dynamic vehicle configuration. Used by launch files for node creation.|
@@ -360,7 +312,7 @@ ros2 service call /drone1/track_object airsim_interfaces/srv/TrackObject "{objec
 | File Name                        | Purpose / Contribution                                                                                   |
 |-----------------------------------|--------------------------------------------------------------------------------------------------------|
 | `simple_single_drone.launch.py`   | Launches a single `simple_multirotor_node` in `/drone1` namespace. For quick testing/debugging.         |
-| `single_drone.launch.py`          | Launches two `multirotor_node` instances and the coordination node.                                     |
+| `single_drone.launch.py`          | Launches one `multirotor_node` instance and the coordination node.                                     |
 | `multi_drone.launch.py`           | Dynamically launches nodes for all vehicles in `settings.json`, plus the coordination node.             |
 | `airsim_node.launch.py`           | Legacy: launches the old monolithic node.                                                               |
 
@@ -373,7 +325,7 @@ ros2 service call /drone1/track_object airsim_interfaces/srv/TrackObject "{objec
 
 ---
 
-## 6. Detailed Comparison: Old vs. New Architecture
+## Detailed Comparisons: Old vs New Architecture
 
 | Aspect                | Old (Monolithic)                      | New (Modular, Multi-Node)                | Why New is Better                        |
 |-----------------------|---------------------------------------|------------------------------------------|------------------------------------------|
@@ -393,8 +345,7 @@ ros2 service call /drone1/track_object airsim_interfaces/srv/TrackObject "{objec
 **Summary:**  
 The new architecture is modular, robust, and scalable. Each vehicle runs in its own node and namespace, with isolated connections and timers. The coordination node manages global services and monitoring. This design enables parallel sensor processing, fault isolation, and dynamic vehicle management, making it ideal for large-scale multi-vehicle simulation.
 
-
-## 7. Design Decisions
+## Design Decisions
 
 - **Modularity:** Each vehicle type gets its own node class, making it easy to extend for new vehicle types (cars, drones, etc.).
 - **Isolation:** Per-vehicle nodes mean a crash or RPC error in one vehicle does not affect others.
@@ -403,7 +354,7 @@ The new architecture is modular, robust, and scalable. Each vehicle runs in its 
 - **Coordination Node:** Centralizes global services (reset, takeoff, land, pause, health check) and system status monitoring.
 - **Legacy Compatibility:** Old files (`airsim_ros_wrapper.*`, `airsim_node.cpp`) are retained for reference and backward compatibility, but are not recommended for new deployments.
 
-## 8. Troubleshooting & FAQ
+## Troubleshooting & FAQ
 
 - **bad_weak_ptr errors:** Ensure you have rebuilt your workspace and are not running old binaries.
 - **Nodes not connecting:** Check that AirSim is running and vehicle names match those in `settings.json`.
@@ -411,18 +362,7 @@ The new architecture is modular, robust, and scalable. Each vehicle runs in its 
 - **PX4 SITL:** Each drone instance needs its own PX4 SITL process.
 - **Logs:** Each vehicle node logs independently; use `ros2 node list` and `ros2 topic list` to inspect running nodes and topics.
 
----
-
-## 9. References
-
-- [AirSim Documentation](https://microsoft.github.io/AirSim/)
-- [ROS2 Tutorials](https://docs.ros.org/en/rolling/Tutorials.html)
-
-### AI/Computer Vision References
-- [YOLOv7 Paper](https://arxiv.org/abs/2207.02696)
-- [OpenCV Motion Detection](https://opencv.org/)
-- [PyTorch Installation](https://pytorch.org/get-started/locally/)
----
+### Common Commands
 
 - **List nodes:**
   ```bash
@@ -438,26 +378,22 @@ The new architecture is modular, robust, and scalable. Each vehicle runs in its 
   ```
 - **Takeoff:**
   ```bash
-  ros2 service call /drone1/takeoff airsim_interfaces/srv/Takeoff "{wait_on_last_task: true}"
+  ros2 service call /drone1/takeoff airsim_interfaces/srv/Takeoff "{}"
   ```
 - **Land:**
   ```bash
-  ros2 service call /drone1/land airsim_interfaces/srv/Land "{wait_on_last_task: true}"
+  ros2 service call /drone1/land airsim_interfaces/srv/Land "{}"
   ```
 - **Global takeoff:**
   ```bash
-  ros2 service call /takeoff_all airsim_interfaces/srv/Takeoff "{wait_on_last_task: true}"
+  ros2 service call /takeoff_all airsim_interfaces/srv/Takeoff "{}"
   ```
 - **Move to GPS waypoint:**
   ```bash
-  ros2 service call /drone1/gps_waypoint airsim_interfaces/srv/GpsWaypoint "{latitude: 47.641468, longitude: -122.140165, altitude: 10.0, speed: 5.0, tolerance: 1.0, wait_on_last_task: true}"
-  ```
-- **Track object (TODO):**
-  ```bash
-  ros2 service call /drone1/track_object airsim_interfaces/srv/TrackObject "{object_name: 'TargetCar', search_radius: 50.0, track_duration: 30.0}"
+  ros2 service call /drone1/gps_waypoint airsim_interfaces/srv/GpsWaypoint "{latitude: 47.641468, longitude: -122.140165, altitude: 10.0, speed: 5.0, tolerance: 1.0}"
   ```
 
-  Example of settings.json
+### Example settings.json Configuration
 ```json
 {
   "SettingsVersion": 2,
@@ -520,10 +456,17 @@ The new architecture is modular, robust, and scalable. Each vehicle runs in its 
   }
 }
 ``` 
-*Last update on 27 Aug 2025*
+
 ---
-```
+
+## References
+
+- [AirSim Documentation](https://microsoft.github.io/AirSim/)
+- [ROS2 Tutorials](https://docs.ros.org/en/rolling/Tutorials.html)
+- [Cosys-AirSim GitHub](https://github.com/Cosys-Lab/Cosys-AirSim)
 
 ## License
 
 This project is released under the MIT License. Please review the [License file](https://github.com/Cosys-Lab/Cosys-AirSim/blob/main/LICENSE) for more details.
+
+*Last updated: 23 Sept 2025*

@@ -16,11 +16,9 @@ import torch
 import torch.serialization
 import time
 import math
-import traceback
-from collections import deque, defaultdict
+from collections import deque
 from pathlib import Path
 import sys
-import os
 import threading
 
 # YOLOv7 + DeepSORT Integration Setup
