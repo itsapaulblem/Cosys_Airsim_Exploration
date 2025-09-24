@@ -16,9 +16,11 @@ import torch
 import torch.serialization
 import time
 import math
-from collections import deque
+import traceback
+from collections import deque, defaultdict
 from pathlib import Path
 import sys
+import os
 import threading
 
 # YOLOv7 + DeepSORT Integration Setup
@@ -50,7 +52,7 @@ class MotionPredictor:
         self.position_history = deque(maxlen=history_size)
         self.velocity_history = deque(maxlen=5)
         self.last_update_time = 0.0
-        
+
     def update(self, position, timestamp):
         """Update position history and calculate velocity"""
         # Calculate velocity from position change if we have previous data
@@ -64,29 +66,29 @@ class MotionPredictor:
                     (position[1] - last_pos[1]) / dt
                 ]
                 self.velocity_history.append(velocity)
-        
+
         # Add new position to history
         self.position_history.append(position)
         self.last_update_time = timestamp
-        
+
     def predict(self, prediction_time=0.1):
         """Predict future position based on current velocity"""
         # Return current position if insufficient data
         if len(self.position_history) < 2 or len(self.velocity_history) < 1:
             return self.position_history[-1] if self.position_history else [0, 0]
-            
+
         # Use weighted average of recent velocities for stability
         recent_velocities = list(self.velocity_history)[-3:]
         weights = np.array([0.5, 0.3, 0.2])[:len(recent_velocities)]
         avg_velocity = np.average(recent_velocities, axis=0, weights=weights)
-        
+
         # Predict future position using current position + velocity * time
         current_pos = self.position_history[-1]
         predicted_pos = [
             current_pos[0] + avg_velocity[0] * prediction_time,
             current_pos[1] + avg_velocity[1] * prediction_time
         ]
-        
+
         return predicted_pos
 
 class MultiCameraMotionDetectionNode(Node):
@@ -100,15 +102,15 @@ class MultiCameraMotionDetectionNode(Node):
         self.declare_parameter('motion_threshold', 15.0)
         self.declare_parameter('enable_visualization', True)
         self.declare_parameter('trail_length', 30)
-        
+
         # Person following specific parameters
         self.declare_parameter('enable_following', True)
         self.declare_parameter('follow_distance', 0.5)  # Reduced for closer following
         self.declare_parameter('max_follow_speed', 4.0)
         self.declare_parameter('follow_height', 3.0)
         self.declare_parameter('takeoff_height', 3.0)
-        self.declare_parameter('image_width', 640)
-        self.declare_parameter('image_height', 480)
+        self.declare_parameter('image_width', 1280)
+        self.declare_parameter('image_height', 720)
         self.declare_parameter('image_quality', 95)
         self.declare_parameter('enable_image_resize', True)
 
@@ -150,10 +152,10 @@ class MultiCameraMotionDetectionNode(Node):
         self.camera_moving_counts = {}
         self.camera_data_deques = {}  # Separate tracking for each camera
         self.all_camera_targets = {}  # All detected targets per camera
-        
+
         # Thread locks for multi-camera processing to prevent race conditions
         self.camera_locks = {}
-        
+
         # Target data synchronization
         self.target_person_data_lock = threading.Lock()
         self.target_data_timestamp = 0.0
@@ -164,7 +166,7 @@ class MultiCameraMotionDetectionNode(Node):
 
         # Common Objects in Context (COCO) class names
         self.names = self.load_coco_names()
-        
+
         # Color palette for different classes in visualization
         self.palette = (2 ** 11 - 1, 2 ** 15 - 1, 2 ** 20 - 1)
 
@@ -176,7 +178,7 @@ class MultiCameraMotionDetectionNode(Node):
         self.following_active = False
         self.camera_fov_horizontal = 90.0
         self.camera_fov_vertical = 60.0
-        
+
         # Camera orientations relative to drone body frame
         # Used for coordinate transformation between camera views
         self.camera_orientations = {
@@ -248,7 +250,7 @@ class MultiCameraMotionDetectionNode(Node):
         self.momentum_search_start_time = 0.0
 
         self.target_person_data = None
-        
+
         # Control loop timing optimization
         self.control_loop_frequency = 15.0  # 15Hz control frequency
         self.image_processing_frequency = {
@@ -262,33 +264,33 @@ class MultiCameraMotionDetectionNode(Node):
 
         # Initialize detection systems (YOLOv7 + DeepSORT or OpenCV fallback)
         self.initialize_detection_systems()
-        
+
         # OpenCV tracking variables for fallback motion detection
         self.background_subtractor = None
         self.kernel = None
         self.previous_detections = {}
         self.next_track_id = 1
-        
+
         # Initialize multi-camera subscriptions and publishers
         self.setup_multi_camera_interfaces()
-        
+
         # Drone control setup
         if self.enable_following:
             # Publish velocity commands to drone
             self.cmd_vel_pub = self.create_publisher(
                 VelCmd, f'{self.vehicle_name.lower()}/vel_cmd_body_frame', 10)
-            
+
             # Service clients for takeoff and landing
             self.takeoff_client = self.create_client(Takeoff, f'{self.vehicle_name.lower()}/takeoff')
             self.land_client = self.create_client(Land, f'{self.vehicle_name.lower()}/land')
-        
+
         # Create debug timer for status reporting every 5 seconds
         self.debug_timer = self.create_timer(5.0, self.debug_status)
-        
+
         # Person following control timer - main control loop
         if self.enable_following:
             self.control_timer = self.create_timer(0.067, self.control_loop)  # 15Hz = 1/15 ≈ 0.067s
-        
+
         # Log initialisation copmpletion
         self.get_logger().info(f' Multi-Camera Motion Detection node initialized for {self.vehicle_name}')
         self.get_logger().info(f' Using {self.num_cameras} cameras: {", ".join(self.camera_topics)}')
@@ -302,7 +304,7 @@ class MultiCameraMotionDetectionNode(Node):
         """Setup ROS subscriptions and publishers for all 4 cameras"""
         self.image_subs = {}
         self.vis_pubs = {}
-        
+
         # Initialize data structures and create interfaces for each camera
         for cam_id in range(self.num_cameras):
             # Initialize per-camera tracking data structures
@@ -313,20 +315,20 @@ class MultiCameraMotionDetectionNode(Node):
             self.camera_data_deques[cam_id] = {}
             self.camera_locks[cam_id] = threading.Lock()
             self.all_camera_targets[cam_id] = []
-            
+
             # Create image subscription for each camera
             self.image_subs[cam_id] = self.create_subscription(
                 Image, self.camera_topics[cam_id], 
                 lambda msg, cam_id=cam_id: self.image_callback(msg, cam_id), 10)
-            
+
             # Create visualization publisher for each camera if visualisation is enabled
             if self.enable_vis:
                 vis_topic = f'detection_visualization_cam{cam_id}'
                 self.vis_pubs[cam_id] = self.create_publisher(Image, vis_topic, 10)
-                
+
             cam_name = self.camera_orientations[cam_id]['name']
             self.get_logger().info(f'Camera {cam_id} ({cam_name}): {self.camera_topics[cam_id]} -> {vis_topic if self.enable_vis else "no viz"}')
-        
+
         # Global detection publisher for publishing target detections
         self.detection_pub = self.create_publisher(TargetDetection, 'target_detection', 10)
 
@@ -347,7 +349,7 @@ class MultiCameraMotionDetectionNode(Node):
         """Debug timer callback showing status of all cameras every 5 seconds"""
         total_detections = sum(self.camera_detection_counts.values())
         total_moving = sum(self.camera_moving_counts.values())
-        
+
         camera_status = []
         for cam_id in range(self.num_cameras):
             frames = self.camera_frame_counts.get(cam_id, 0)
@@ -356,9 +358,9 @@ class MultiCameraMotionDetectionNode(Node):
             cam_name = self.camera_orientations[cam_id]['name']
             # Format: "front: [F: 123 D: 5 M: 3]" (Frames, Detections, Moving)
             camera_status.append(f"{cam_name}:[F:{frames} D:{detections} M:{moving}]")
-        
+
         following_status = f", Following: {self.following_active}, Target ID: {self.target_person_id}, Target Cam: {self.target_camera_id}" if self.enable_following else ""
-        
+
         self.get_logger().info(f'[DEBUG] State: {self.drone_state}, {" ".join(camera_status)}{following_status}')
 
     def merge_camera_detections(self):
@@ -369,34 +371,34 @@ class MultiCameraMotionDetectionNode(Node):
         for cam_id, targets in self.all_camera_targets.items():
             if not targets:
                 continue
-                
+
             cam_orientation = self.camera_orientations[cam_id]
-            
+
             for target in targets:
                 # Copy target data and add camera information
                 transformed_target = target.copy()
                 transformed_target['camera_id'] = cam_id
                 transformed_target['camera_name'] = cam_orientation['name']
-                
+
                 # Transform target position from camera coordinates to drone body coordinates
                 # Apply rotation based on camera mounting angle
                 cam_yaw = math.radians(cam_orientation['yaw'])
                 world_x = target['world_x'] * math.cos(cam_yaw) - target['world_y'] * math.sin(cam_yaw)
                 world_y = target['world_x'] * math.sin(cam_yaw) + target['world_y'] * math.cos(cam_yaw)
-                
+
                 transformed_target['world_x'] = world_x
                 transformed_target['world_y'] = world_y
                 transformed_target['global_track_id'] = f"cam{cam_id}_id{target['track_id']}"
 
                 merged_targets.append(transformed_target)
-        
+
         return merged_targets
 
     def select_target_person_multi_camera(self, merged_targets):
         """Select the best person target from multiple camera views"""
         # Filter for person class only (class ID = 0 in COCO dataset)
         persons = [target for target in merged_targets if target.get('class', -1) == 0]
-        
+
         if not persons:
             return None, None
 
@@ -408,25 +410,25 @@ class MultiCameraMotionDetectionNode(Node):
                     person.get('track_id') == self.target_person_id):
                     self.target_lock_confidence = self.calculate_target_confidence(person, self.target_camera_id)
                     return person, self.target_camera_id
-            
+
             # If not found in same camera, look for target in other cameras based on position
             if self.target_person_position is not None:
                 best_match = None
                 best_camera = None
                 best_confidence = 0.0
-                
+
                 for person in persons:
                     # Calculate distance from last known position in world coordinates
                     distance = np.sqrt((person['world_x'] - self.target_person_position[0])**2 + 
                                      (person['world_y'] - self.target_person_position[1])**2)
-                    
+
                     if distance < 7.0:
                         confidence = self.calculate_target_confidence(person, person.get('camera_id'))
                         if confidence > best_confidence:
                             best_confidence = confidence
                             best_match = person
                             best_camera = person.get('camera_id')
-                
+
                 # Accept match if confidence is above threshold
                 if best_match and best_confidence > 0.5:
                     self.get_logger().info(f'Target re-acquired in {self.camera_orientations[best_camera]["name"]} camera')
@@ -434,45 +436,45 @@ class MultiCameraMotionDetectionNode(Node):
                     self.target_camera_id = best_camera
                     self.target_lock_confidence = best_confidence
                     return best_match, best_camera
-                
+
         # Select best target based on confidence scoring when no locked target
         best_person = None
         best_camera = None
         best_confidence = 0.0
-        
+
         for person in persons:
             camera_id = person.get('camera_id')
             confidence = self.calculate_target_confidence(person, camera_id)
-            
+
             if confidence > best_confidence:
                 best_confidence = confidence
                 best_person = person
                 best_camera = camera_id
-        
+
         # Lock onto target if confidence is high enough
         if best_person and best_confidence > self.target_lock_threshold:
             if not self.target_locked:
                 self.get_logger().info(f'Target LOCKED: ID {best_person.get("track_id")} in {self.camera_orientations[best_camera]["name"]} camera (confidence: {best_confidence:.2f})')
                 self.target_locked = True
-            
+
             self.target_lock_confidence = best_confidence
             return best_person, best_camera
-        
+
         # If no high-confidence target, return best available but don't lock
         if best_person:
             self.target_locked = False
             self.target_lock_confidence = best_confidence
             return best_person, best_camera
-        
+
         return None, None                        
 
     def smooth_velocity_command(self, cmd_type, new_value):
         """Enhanced velocity smoothing with exponential averaging and acceleration limiting
         Reduce jittery drone movement by smoothing velocity commands"""
-        
+
         # Add new velocity command to rolling buffer
         self.velocity_smoother[cmd_type].append(new_value)
-        
+
         # Apply exponential moving average for smoothing transitions
         if len(self.velocity_smoother[cmd_type]) > 1:
             buffer_values = list(self.velocity_smoother[cmd_type])
@@ -482,25 +484,25 @@ class MultiCameraMotionDetectionNode(Node):
             weights = np.array([smoothing_factor ** (len(buffer_values) - 1 - i) 
                                for i in range(len(buffer_values))])
             weights = weights / weights.sum()
-            
+
             smoothed = np.average(buffer_values, weights=weights)
         else:
             smoothed = new_value
-        
+
         # Apply acceleration limiting to prevent abrupt changes
         dt = 0.067  # Control loop period updated to 15Hz
         # Reduced max acceleration for smoother movement
         conservative_max_accel = self.max_acceleration[cmd_type] * 0.6
         max_delta = conservative_max_accel * dt
         prev_vel = self.previous_velocity[cmd_type]
-        
+
         # Limit rate of change to prevent sudden movements
         if abs(smoothed - prev_vel) > max_delta:
             if smoothed > prev_vel:
                 smoothed = prev_vel + max_delta
             else:
                 smoothed = prev_vel - max_delta
-        
+
         self.previous_velocity[cmd_type] = smoothed
         return smoothed
 
@@ -511,50 +513,50 @@ class MultiCameraMotionDetectionNode(Node):
         if abs(value) < deadband:
             return 0.0
         return value
-    
+
     def smooth_target_position(self, new_center):
         """Smooth target position to reduce tracking jitter
         Uses weighted average of recent target positions"""
         if not new_center:
             return None
-            
+
         # Add new position to buffer
         self.target_position_buffer.append(new_center)
-        
+
         if len(self.target_position_buffer) < 2:
             return new_center
-        
+
         # Calculate smoothed position using weighted average
         positions = list(self.target_position_buffer)
         weights = [self.target_smoothing_factor ** (len(positions) - 1 - i) 
                   for i in range(len(positions))]
         total_weight = sum(weights)
-        
+
         smoothed_x = sum(pos[0] * w for pos, w in zip(positions, weights)) / total_weight
         smoothed_y = sum(pos[1] * w for pos, w in zip(positions, weights)) / total_weight
-        
+
         return [smoothed_x, smoothed_y]
-    
+
     def update_person_following_multi_camera(self, merged_targets):
         """Update person following logic with multi-camera support
         Main state machine for person detection and following behaviour"""
         current_time = time.time()
-        
+
         # Find best target person across all cameras
         target_person, target_camera = self.select_target_person_multi_camera(merged_targets)
-        
+
         if target_person:
             # Person detected - update tracking state
 
             # Initiate takeoff if drone is idle and person is detected for the first time
             if not self.takeoff_initiated and self.drone_state == 'IDLE':
                 self.initiate_takeoff()
-            
+
             old_id = self.target_person_id
             self.target_person_id = target_person.get('track_id')
             self.target_camera_id = target_camera
             self.last_person_detection_time = current_time
-            
+
             # Store position for tracking continuity between camera switches
             self.target_person_position = [target_person['world_x'], target_person['world_y']]
             current_center = target_person.get('center')
@@ -562,7 +564,7 @@ class MultiCameraMotionDetectionNode(Node):
             if current_center:
                 self.target_prediction = self.predict_target_position(current_center)
                 self.last_target_center = current_center
-            
+
             # Add to history for trend analysis and position prediction
             self.target_history.append({
                 'time': current_time,
@@ -576,7 +578,7 @@ class MultiCameraMotionDetectionNode(Node):
                 self.following_active = True
                 self.drone_state = 'FOLLOWING'
                 self.target_person_data = target_person
-                
+
                 # Reset search patterns when target is reacquired
                 self.lost_target_search_pattern = 0
                 self.search_momentum_active = False
@@ -605,7 +607,7 @@ class MultiCameraMotionDetectionNode(Node):
     def initiate_search_pattern(self):
         """Initiate systematic search when target is completely lost"""
         self.lost_target_search_pattern = (self.lost_target_search_pattern + 1) % 8
-        
+
         # Create velocity command based on search pattern
         vel_cmd = VelCmd()
 
@@ -614,13 +616,13 @@ class MultiCameraMotionDetectionNode(Node):
             vel_cmd.twist.linear.x = 4.0  # Move forward briefly
         else:
             vel_cmd.twist.linear.x = 2.0
-            
+
         vel_cmd.twist.linear.y = 0.0
         vel_cmd.twist.linear.z = 0.0
         vel_cmd.twist.angular.z = 3.0 if self.lost_target_search_pattern < 4 else -3.0  # Fast alternating rotation
         vel_cmd.twist.angular.x = 0.0
         vel_cmd.twist.angular.y = 0.0
-        
+
         if self.enable_following:
             self.cmd_vel_pub.publish(vel_cmd)
 
@@ -631,10 +633,10 @@ class MultiCameraMotionDetectionNode(Node):
         # If we have recent movement, use reduced momentum
         if (abs(self.last_movement_direction['x']) > 0.1 or 
             abs(self.last_movement_direction['y']) > 0.1):
-            
+
             reduced_forward = self.last_movement_direction['x'] * 0.3
             reduced_side = self.last_movement_direction['y'] * 0.3
-            
+
             vel_cmd = VelCmd()
             vel_cmd.twist.linear.x = reduced_forward
             vel_cmd.twist.linear.y = reduced_side
@@ -642,7 +644,7 @@ class MultiCameraMotionDetectionNode(Node):
             vel_cmd.twist.angular.z = 4.0 # Fast rotation while maintaining some forward movement
             vel_cmd.twist.angular.x = 0.0
             vel_cmd.twist.angular.y = 0.0
-            
+
         else:
             # No significant recent movement, just rotate
             vel_cmd = VelCmd()
@@ -652,7 +654,7 @@ class MultiCameraMotionDetectionNode(Node):
             vel_cmd.twist.angular.z = 4.0
             vel_cmd.twist.angular.x = 0.0
             vel_cmd.twist.angular.y = 0.0
-        
+
         if self.enable_following:
             self.cmd_vel_pub.publish(vel_cmd)
 
@@ -663,7 +665,7 @@ class MultiCameraMotionDetectionNode(Node):
             self.drone_state = 'TAKING_OFF'
             self.takeoff_initiated = True
             self.takeoff_start_time = time.time()
-            
+
             if self.takeoff_client.wait_for_service(timeout_sec=5.0):
                 request = Takeoff.Request()
                 future = self.takeoff_client.call_async(request)
@@ -726,36 +728,36 @@ class MultiCameraMotionDetectionNode(Node):
         Transforms image pixel position to yaw/pitch angles for drone control"""
         dx = pixel_center[0] - image_center[0]
         dy = pixel_center[1] - image_center[1]
-        
+
         # Normalize by half image dimensions to get [-1, 1] range
         dx_normalized = dx / (self.image_width / 2.0)
         dy_normalized = dy / (self.image_height / 2.0)
-        
+
         # Convert to angles using half FOV
         yaw_angle = dx_normalized * math.radians(self.camera_fov_horizontal / 2.0)
         pitch_angle = -dy_normalized * math.radians(self.camera_fov_vertical / 2.0)  # Negative for upward positive
-        
+
         return yaw_angle, pitch_angle
 
     def estimate_person_distance(self, bbox):
         bbox_height = bbox[3]
-    
+
         if bbox_height > 0:
             raw_distance = (1.7 * self.image_height) / (bbox_height * math.tan(math.radians(self.camera_fov_vertical/2)) * 2)
             raw_distance = max(1.5, min(raw_distance, 20.0))
-        
+
             # Distance smoothing buffer
             if not hasattr(self, 'distance_history'):
                 self.distance_history = deque(maxlen=5)
-        
+
             self.distance_history.append(raw_distance)
-        
+
             # Use median filter to remove outliers
             if len(self.distance_history) >= 3:
                 smoothed_distance = np.median(list(self.distance_history))
             else:
                 smoothed_distance = raw_distance
-            
+
             return smoothed_distance
         return self.follow_distance
 
@@ -764,28 +766,28 @@ class MultiCameraMotionDetectionNode(Node):
         Implements Proportional-Integral-Derivative control for smooth drone movement"""
         if dt <= 0:
             return 0.0
-            
+
         if abs(error) < 0.05:
             error = 0.0
-            
+
         # Integral windup protection - only integrate small errors
         max_integral = 5.0  # Maximum integral value 
         if abs(error) < 0.5:  # Only integrate for small errors
             pid_params['integral'] = max(-max_integral, min(pid_params['integral'] + error * dt, max_integral))
-        
+
         derivative = (error - pid_params['prev_error']) / dt if pid_params['prev_error'] is not None else 0.0
-        
+
         # Limit derivative spikes to reduce noise
         if abs(derivative) > 10.0:
             derivative = 10.0 if derivative > 0 else -10.0
-        
+
         output = (pid_params['kp'] * error + 
                  pid_params['ki'] * pid_params['integral'] + 
                  pid_params['kd'] * derivative)
-        
+
         pid_params['prev_error'] = error
         return output
-    
+
     def update_target_data_async(self, moving_targets, camera_id, header):
         """Thread safe target data update"""
         current_time = time.time()
@@ -794,43 +796,43 @@ class MultiCameraMotionDetectionNode(Node):
         persons = [target for target in moving_targets if target.get('class', -1) == 0]
         if not persons:
             return
-            
+
         # Select best person based on confidence and camera priority
         best_person = None
         best_confidence = 0.0
-        
+
         for person in persons:
             confidence = self.calculate_target_confidence(person, camera_id)
             # Boost confidence for primary camera
             if camera_id == self.primary_camera:
                 confidence *= 1.2
-                
+
             if confidence > best_confidence:
                 best_confidence = confidence
                 best_person = person
-        
+
         with self.target_person_data_lock:
             # Only update if we have a better target or data is stale
             data_age = current_time - self.target_data_timestamp
-            
+
             if (best_person and 
                 (self.target_person_data is None or 
                  best_confidence > getattr(self, 'target_lock_confidence', 0.0) or
                  data_age > 0.5)):  # Accept new data if current is >0.5s old
-                
-                
+
+
                 self.target_person_data = best_person.copy()
                 self.target_person_data['camera_id'] = camera_id
                 self.target_data_timestamp = current_time
                 self.target_lock_confidence = best_confidence
-                
+
                 # Update following state
-                if not self.takeoff_initiated and self.drone_state == 'idle':
+                if not self.takeoff_initiated and self.drone_state == 'IDLE':
                     self.initiate_takeoff()
-                
+
                 if self.takeoff_complete:
                     self.following_active = True
-                    self.drone_state = 'following'
+                    self.drone_state = 'FOLLOWING'
                     self.last_person_detection_time = current_time
 
     def control_loop(self):
@@ -866,24 +868,24 @@ class MultiCameraMotionDetectionNode(Node):
             # Get raw angles from pixel coordinates
             yaw_angle, pitch_angle = self.pixel_to_world_direction(center, image_center)
             estimated_distance = self.estimate_person_distance(bbox)
-            
+
             # Distance change limiting to prevent sudden jumps
             if hasattr(self, 'last_estimated_distance'):
                 max_distance_change = 2.0  # Max 2m change per control cycle
                 distance_change = abs(estimated_distance - self.last_estimated_distance)
-                
+
                 if distance_change > max_distance_change:
                     if estimated_distance > self.last_estimated_distance:
                         estimated_distance = self.last_estimated_distance + max_distance_change
                     else:
                         estimated_distance = self.last_estimated_distance - max_distance_change
-            
+
             self.last_estimated_distance = estimated_distance
-            
+
             # Apply camera orientation transformation
             cam_yaw_offset = math.radians(self.camera_orientations[target_camera]['yaw'])
             world_yaw_angle = yaw_angle + cam_yaw_offset
-            
+
             # More aggressive error scaling for faster movement
             yaw_error = world_yaw_angle * 0.5
             distance_error = estimated_distance - self.follow_distance
@@ -892,10 +894,10 @@ class MultiCameraMotionDetectionNode(Node):
                 distance_error = distance_error * 0.4
             else:
                 distance_error = abs(distance_error) * 0.1  # Convert to small positive forward movement
-            
+
             height_error = pitch_angle * 0.15
             side_error = yaw_angle * 0.12   
-            
+
             # PID control outputs with optimized dt
             yaw_cmd = self.pid_control(self.pid_yaw, yaw_error, dt)
             forward_cmd = self.pid_control(self.pid_x, distance_error, dt)
@@ -905,7 +907,7 @@ class MultiCameraMotionDetectionNode(Node):
             # Forward movement only
             if forward_cmd <= 0:
                 forward_cmd = 0.4  # Minimum forward speed
-            
+
             # Reduced deadbands for more responsive close following
             yaw_cmd = self.apply_deadband(yaw_cmd, self.deadband_yaw)
             forward_cmd = self.apply_deadband(forward_cmd, self.deadband_x)
@@ -923,20 +925,20 @@ class MultiCameraMotionDetectionNode(Node):
                 # Transform commands based on camera orientation
                 cos_offset = math.cos(cam_yaw_offset)
                 sin_offset = math.sin(cam_yaw_offset)
-                
+
                 transformed_forward = forward_cmd * cos_offset - side_cmd * sin_offset
                 transformed_side = forward_cmd * sin_offset + side_cmd * cos_offset
-                
+
                 forward_cmd = transformed_forward
                 side_cmd = transformed_side
-            
+
             # Store movement direction for momentum tracking
             self.last_movement_direction['x'] = forward_cmd
             self.last_movement_direction['y'] = side_cmd
             self.last_movement_direction['z'] = height_cmd
             self.last_movement_direction['yaw'] = yaw_cmd
             self.search_momentum_active = False  # Reset momentum search when actively following
-            
+
             # Create and publish VelCmd
             vel_cmd = VelCmd()
             vel_cmd.twist.linear.x = forward_cmd
@@ -945,14 +947,14 @@ class MultiCameraMotionDetectionNode(Node):
             vel_cmd.twist.angular.z = yaw_cmd
             vel_cmd.twist.angular.x = 0.0
             vel_cmd.twist.angular.y = 0.0
-            
+
             self.cmd_vel_pub.publish(vel_cmd)
-            
+
             # Add debug logging every 2 seconds to verify commands are being published
             if sum(self.camera_frame_counts.values()) % 40 == 0:  # Every 2 seconds at 20Hz
                 self.get_logger().info(f'CONTROL CMD: forward={forward_cmd:.2f}, side={side_cmd:.2f}, '
                                      f'height={height_cmd:.2f}, yaw={yaw_cmd:.2f}')
-            
+
             # Enhanced logging with debug info (simplified)
             if sum(self.camera_frame_counts.values()) % 60 == 0:  # Less frequent logging
                 cam_name = self.camera_orientations[target_camera]['name']
@@ -962,7 +964,7 @@ class MultiCameraMotionDetectionNode(Node):
                                      f'conf={self.target_lock_confidence:.2f}, '
                                      f'err=[y:{math.degrees(world_yaw_angle):.1f}°, d:{distance_error:.1f}m], '
                                      f'cmd=[f:{forward_cmd:.2f}, s:{side_cmd:.2f}, u:{height_cmd:.2f}, y:{yaw_cmd:.2f}]')
-                                     
+
         except Exception as e:
             self.get_logger().error(f'Enhanced control loop error: {e}')
             self.hover_drone()
@@ -970,16 +972,16 @@ class MultiCameraMotionDetectionNode(Node):
     def momentum_search_behavior(self):
         """Hover and rotate search instead of momentum-based movement"""
         current_time = time.time()
-        
+
         # Initialize search if not already active
         if not self.search_momentum_active:
             self.search_momentum_active = True
             self.momentum_search_start_time = current_time
             self.get_logger().info('TARGET LOST: Hovering and searching with rotation')
-        
+
         # Check if search should continue
         time_in_search = current_time - self.momentum_search_start_time
-        
+
         if time_in_search < self.momentum_search_duration:
             # SLOW FORWARD and rotate to search
             vel_cmd = VelCmd()
@@ -988,7 +990,7 @@ class MultiCameraMotionDetectionNode(Node):
             vel_cmd.twist.linear.z = 0.0   # No vertical movement
             vel_cmd.twist.angular.x = 0.0
             vel_cmd.twist.angular.y = 0.0
-            
+
             # Vary rotation speed for more thorough search
             if time_in_search < 3.0:
                 rotation_speed = 1.2  # Fast initial scan
@@ -996,12 +998,12 @@ class MultiCameraMotionDetectionNode(Node):
                 rotation_speed = -1.0  # Reverse direction
             else:
                 rotation_speed = 0.6   # Slower final scan
-            
+
             vel_cmd.twist.angular.z = rotation_speed
-            
+
             if self.enable_following:
                 self.cmd_vel_pub.publish(vel_cmd)
-            
+
         else:
             # After search duration, continue hovering
             self.search_momentum_active = False
@@ -1011,19 +1013,19 @@ class MultiCameraMotionDetectionNode(Node):
     def initialize_detection_systems(self):
         """Initialize YOLOv7 + DeepSORT system"""
         self.get_logger().info("[DEBUG] Initializing detection systems...")
-        
+
         if YOLO_DEEPSORT_AVAILABLE:
             try:
                 self.device = select_device('')
                 self.half = self.device.type != 'cpu'
                 self.get_logger().info(f"[DEBUG] Selected device: {self.device}")
-                
+
                 weights_path = DETECTION_PATH / 'yolov7.pt'
                 self.get_logger().info(f"[DEBUG] Looking for weights at: {weights_path}")
-                
+
                 if weights_path.exists():
                     self.get_logger().info("[DEBUG] YOLOv7 weights found, loading model...")
-                    
+
                     try:
                         self.get_logger().info("[DEBUG] Attempting safe loading...")
                         yolo_safe_globals = [
@@ -1036,43 +1038,43 @@ class MultiCameraMotionDetectionNode(Node):
                             'torch.nn.modules.activation.SiLU', 'torch.nn.modules.pooling.MaxPool2d',
                             'torch.nn.modules.upsampling.Upsample'
                         ]
-                        
+
                         with torch.serialization.safe_globals(yolo_safe_globals):
                             self.model = attempt_load(str(weights_path), map_location=self.device)
                         self.get_logger().info("[DEBUG] Safe loading successful")
-                        
+
                     except Exception as safe_error:
                         self.get_logger().warn(f"[DEBUG] Safe loading failed: {safe_error}")
                         self.get_logger().warn("[DEBUG] Attempting unsafe loading...")
-                        
+
                         original_load = torch.load
-                        
+
                         def unsafe_load(*args, **kwargs):
                             kwargs['weights_only'] = False
                             return original_load(*args, **kwargs)
-                        
+
                         torch.load = unsafe_load
                         self.model = attempt_load(str(weights_path), map_location=self.device)
                         torch.load = original_load
                         self.get_logger().info("[DEBUG] Unsafe loading successful")
-                    
+
                     self.stride = int(self.model.stride.max())
                     self.img_size = 640
-                    
+
                     if self.half:
                         self.model.half()
-                    
+
                     self.model.eval()
                     self.get_logger().info("[DEBUG] YOLOv7 model loaded successfully")
-                    
+
                     # Initialize DeepSORT
                     checkpoint_path = DETECTION_PATH / "deep_sort_pytorch" / "deep_sort" / "deep" / "checkpoint" / "ckpt.t7"
                     config_path = DETECTION_PATH / "deep_sort_pytorch" / "configs" / "deep_sort.yaml"
-                    
+
                     if checkpoint_path.exists() and config_path.exists():
                         cfg_deep = get_config()
                         cfg_deep.merge_from_file(str(config_path))
-                        
+
                         self.deepsort = DeepSort(
                             str(checkpoint_path),
                             max_dist=cfg_deep.DEEPSORT.MAX_DIST,
@@ -1084,22 +1086,22 @@ class MultiCameraMotionDetectionNode(Node):
                             nn_budget=cfg_deep.DEEPSORT.NN_BUDGET,
                             use_cuda=torch.cuda.is_available()
                         )
-                        
+
                         self.use_yolo_deepsort = True
                         self.use_yolo_only = False
                         self.get_logger().info('[DEBUG] YOLOv7 + DeepSORT initialized successfully')
                         self.warmup_model()
-                        
+
                     else:
                         self.get_logger().warn("[DEBUG] Using YOLOv7 only")
                         self.use_yolo_deepsort = False
                         self.use_yolo_only = True
                         self.warmup_model()
-                        
+
                 else:
                     self.use_yolo_deepsort = False
                     self.use_yolo_only = False
-                    
+
             except Exception as e:
                 self.get_logger().error(f'[DEBUG] Failed to initialize YOLOv7+DeepSORT: {e}')
                 self.use_yolo_deepsort = False
@@ -1107,7 +1109,7 @@ class MultiCameraMotionDetectionNode(Node):
         else:
             self.use_yolo_deepsort = False
             self.use_yolo_only = False
-            
+
         # Fallback to OpenCV
         if not self.use_yolo_deepsort and not self.use_yolo_only:
             self.setup_opencv_detection()
@@ -1177,12 +1179,12 @@ class MultiCameraMotionDetectionNode(Node):
 
         cv2.rectangle(img, (x1 + r, y1), (x2 - r, y2), color, -1, cv2.LINE_AA)
         cv2.rectangle(img, (x1, y1 + r), (x2, y2 - r - d), color, -1, cv2.LINE_AA)
-        
+
         cv2.circle(img, (x1 + r, y1 + r), 2, color, 12)
         cv2.circle(img, (x2 - r, y1 + r), 2, color, 12)
         cv2.circle(img, (x1 + r, y2 - r), 2, color, 12)
         cv2.circle(img, (x2 - r, y2 - r), 2, color, 12)
-        
+
         return img
 
     def UI_box(self, x, img, color=None, label=None, line_thickness=None):
@@ -1202,10 +1204,10 @@ class MultiCameraMotionDetectionNode(Node):
     def draw_boxes(self, img, bbox, object_id, identities=None, offset=(0, 0), camera_id=0):
         """Draw tracking boxes with trails - camera-specific version"""
         height, width, _ = img.shape
-        
+
         # Use camera-specific data deque
         data_deque = self.camera_data_deques[camera_id]
-        
+
         # Remove tracked point from buffer if object is lost
         for key in list(data_deque):
             if identities is None or key not in identities:
@@ -1231,15 +1233,15 @@ class MultiCameraMotionDetectionNode(Node):
             label = '{}{:d}'.format("", id) + ":" + '%s' % (obj_name)
 
             data_deque[id].appendleft(center)
-            
+
             # For person class, always consider as potential target
             is_moving = self.is_track_moving_camera(id, camera_id)
             is_person = object_id[i] == 0
-            
+
             if is_moving or is_person:
                 velocity = self.calculate_track_velocity_camera(id, camera_id) if is_moving else 0.0
                 world_pos = self.pixel_to_world(center)
-                
+
                 moving_objects.append({
                     'track_id': id,
                     'world_x': world_pos[0],
@@ -1253,60 +1255,60 @@ class MultiCameraMotionDetectionNode(Node):
                 })
 
             self.UI_box(box, img, label=label, color=color, line_thickness=2)
-            
+
             # Draw trail
             for j in range(1, len(data_deque[id])):
                 if data_deque[id][j - 1] is None or data_deque[id][j] is None:
                     continue
                 thickness = int(np.sqrt(self.trail_length / float(j + j)) * 1.5)
                 cv2.line(img, data_deque[id][j - 1], data_deque[id][j], color, thickness)
-                
+
         return img, moving_objects
 
     def is_track_moving_camera(self, track_id, camera_id):
         """Check if tracked object is moving for specific camera"""
         data_deque = self.camera_data_deques[camera_id]
-        
+
         if track_id not in data_deque:
             return True
-            
+
         positions = list(data_deque[track_id])
         if len(positions) < 3:
             return True
-            
+
         recent_positions = positions[-5:]
         if len(recent_positions) < 2:
             return True
-            
+
         start_pos = recent_positions[0]
         end_pos = recent_positions[-1]
         displacement = np.sqrt((end_pos[0] - start_pos[0])**2 + (end_pos[1] - start_pos[1])**2)
-        
+
         return displacement > (self.motion_threshold * 0.5)
 
     def calculate_track_velocity_camera(self, track_id, camera_id):
         """Calculate velocity for camera-specific track"""
         data_deque = self.camera_data_deques[camera_id]
-        
+
         if track_id not in data_deque:
             return 0.0
-            
+
         positions = list(data_deque[track_id])
-        
+
         if len(positions) < 2:
             return 0.0
-            
+
         recent_positions = positions[-5:]
         if len(recent_positions) < 2:
             return 0.0
-            
+
         total_distance = 0.0
         for i in range(1, len(recent_positions)):
             dx = recent_positions[i][0] - recent_positions[i-1][0]
             dy = recent_positions[i][1] - recent_positions[i-1][1]
             distance = np.sqrt(dx**2 + dy**2)
             total_distance += distance
-            
+
         velocity_pixels_per_frame = total_distance / len(recent_positions)
         velocity_pixels_per_second = velocity_pixels_per_frame * 20
         return velocity_pixels_per_second * 0.01
@@ -1314,11 +1316,11 @@ class MultiCameraMotionDetectionNode(Node):
     def detect_and_track_yolo_deepsort(self, image, camera_id):
         """YOLOv7 + DeepSORT detection and tracking for specific camera"""
         im0 = image.copy()
-        
+
         img = self.letterbox(image, self.img_size, stride=self.stride)[0]
         img = img[:, :, ::-1].transpose(2, 0, 1)
         img = np.ascontiguousarray(img)
-        
+
         img = torch.from_numpy(img).to(self.device)
         img = img.half() if self.half else img.float()
         img /= 255.0
@@ -1331,7 +1333,7 @@ class MultiCameraMotionDetectionNode(Node):
         pred = non_max_suppression(pred, self.conf_threshold, self.iou_threshold, classes=None, agnostic=False)
 
         moving_targets = []
-        
+
         for i, det in enumerate(pred):
             if len(det):
                 det[:, :4] = scale_coords(img.shape[2:], det[:, :4], im0.shape).round()
@@ -1339,7 +1341,7 @@ class MultiCameraMotionDetectionNode(Node):
                 xywh_bboxs = []
                 confs = []
                 oids = []
-                
+
                 for *xyxy, conf, cls in reversed(det):
                     x_c, y_c, bbox_w, bbox_h = self.xyxy_to_xywh(*xyxy)
                     xywh_obj = [x_c, y_c, bbox_w, bbox_h]
@@ -1349,9 +1351,9 @@ class MultiCameraMotionDetectionNode(Node):
 
                 xywhs = torch.Tensor(xywh_bboxs)
                 confss = torch.Tensor(confs)
-                
+
                 outputs = self.deepsort.update(xywhs, confss, oids, im0)
-                
+
                 if len(outputs) > 0:
                     bbox_xyxy = outputs[:, :4]
                     identities = outputs[:, -2]
@@ -1403,13 +1405,13 @@ class MultiCameraMotionDetectionNode(Node):
         try:
             with self.camera_locks[camera_id]:
                 self.camera_frame_counts[camera_id] += 1
-            
-                # Log incoming image details for debugging (first frame only)
+
+            # Log incoming image details for debugging (first frame only)
             if self.camera_frame_counts[camera_id] == 1:
                 self.get_logger().info(f'Camera {camera_id} input: {msg.width}x{msg.height}, '
                                      f'encoding: {msg.encoding}, step: {msg.step}, '
                                      f'data_size: {len(msg.data)}')
-            
+
             # Convert ROS image to OpenCV format with proper error handling
             try:
                 if msg.encoding == 'rgb8':
@@ -1419,7 +1421,7 @@ class MultiCameraMotionDetectionNode(Node):
                         self.get_logger().error(f'Camera {camera_id}: Buffer too small. '
                                               f'Expected: {expected_size}, Got: {len(msg.data)}')
                         return
-                    
+
                     cv_image = self.bridge.imgmsg_to_cv2(msg, 'rgb8')
                     cv_image = cv2.cvtColor(cv_image, cv2.COLOR_RGB2BGR)
                 else:
@@ -1429,32 +1431,32 @@ class MultiCameraMotionDetectionNode(Node):
                         self.get_logger().error(f'Camera {camera_id}: Buffer too small. '
                                               f'Expected: {expected_size}, Got: {len(msg.data)}')
                         return
-                    
+
                     cv_image = self.bridge.imgmsg_to_cv2(msg, 'bgr8')
-                    
+
             except Exception as e:
                 self.get_logger().error(f'Camera {camera_id}: Image conversion failed: {e}')
                 return
-            
+
             # Log actual converted image size (first frame only)
             if self.camera_frame_counts[camera_id] == 1:
                 self.get_logger().info(f'Camera {camera_id} converted: {cv_image.shape[1]}x{cv_image.shape[0]} '
                                      f'channels: {cv_image.shape[2]}')
-            
+
             # Resize to target resolution with high-quality interpolation
             target_size = (self.image_width, self.image_height)
             if cv_image.shape[1] != self.image_width or cv_image.shape[0] != self.image_height:
                 if self.enable_image_resize:
                     # Use high-quality interpolation for better results
                     cv_image = cv2.resize(cv_image, target_size, interpolation=cv2.INTER_LANCZOS4)
-                    
+
                     # Apply sharpening filter for better visual quality
                     if self.image_quality > 80:
                         kernel = np.array([[-1,-1,-1],
                                          [-1, 9,-1],
                                          [-1,-1,-1]])
                         cv_image = cv2.filter2D(cv_image, -1, kernel * 0.5)
-                        
+
                         cv_image = np.clip(cv_image, 0, 255).astype(np.uint8)
 
                     if self.camera_frame_counts[camera_id] == 1:
@@ -1463,9 +1465,9 @@ class MultiCameraMotionDetectionNode(Node):
                     # If resizing is disabled, use original image but log warning
                     self.get_logger().warn_once(f'Camera {camera_id}: Received {cv_image.shape[1]}x{cv_image.shape[0]} '
                                               f'but expected {self.image_width}x{self.image_height}')
-            
+
             self.camera_last_images[camera_id] = cv_image
-            
+
             # Process with detection system
             if self.use_yolo_deepsort:
                 try:
@@ -1478,22 +1480,22 @@ class MultiCameraMotionDetectionNode(Node):
             else:
                 moving_targets, vis_image = [], cv_image
                 self.camera_detection_counts[camera_id] = 0
-            
+
             self.camera_moving_counts[camera_id] = len(moving_targets)
             self.all_camera_targets[camera_id] = moving_targets
-            
+
             # Update person following
             if camera_id == self.primary_camera and self.enable_following:
                 merged_targets = self.merge_camera_detections()
                 self.update_person_following_multi_camera(merged_targets)
-                
+
                 for target in merged_targets:
                     self.publish_target_detection(target, msg.header)
-            
+
             # Publish high-quality visualization
             if self.enable_vis and vis_image is not None and camera_id in self.vis_pubs:
                 self.publish_camera_visualization(vis_image, camera_id, msg.header)
-                
+
         except Exception as e:
             self.get_logger().error(f'Camera {camera_id} processing error: {e}')
             import traceback
@@ -1508,7 +1510,7 @@ class MultiCameraMotionDetectionNode(Node):
         detection_msg.target_y = target['world_y']
         detection_msg.target_z = target['world_z']
         detection_msg.confidence = target['confidence']
-        
+
         self.detection_pub.publish(detection_msg)
 
     def publish_camera_visualization(self, vis_image, camera_id, header):
@@ -1516,7 +1518,7 @@ class MultiCameraMotionDetectionNode(Node):
         try:
             # Add camera info to visualization
             cam_name = self.camera_orientations[camera_id]['name']
-        
+
             # Ensure image is at target resolution
             if vis_image.shape[1] != self.image_width or vis_image.shape[0] != self.image_height:
                 vis_image = cv2.resize(vis_image, (self.image_width, self.image_height), 
@@ -1533,7 +1535,7 @@ class MultiCameraMotionDetectionNode(Node):
                 'HOVERING': (255, 255, 0),
                 'FOLLOWING': (0, 255, 0)
             }.get(self.drone_state, (255, 255, 255))
-            
+
             cv2.putText(vis_image, f"CAMERA: {cam_name.upper()}", (10, 30), 
                        cv2.FONT_HERSHEY_SIMPLEX, font_scale, (255, 255, 255), thickness)
             cv2.putText(vis_image, f"STATE: {self.drone_state}", (10, 75), 
@@ -1542,44 +1544,44 @@ class MultiCameraMotionDetectionNode(Node):
                         cv2.FONT_HERSHEY_SIMPLEX, font_scale, (255, 255, 255), thickness)
             cv2.putText(vis_image, f"STATE: {self.drone_state}", (10, 75),
                         cv2.FONT_HERSHEY_SIMPLEX, font_scale, state_color, thickness)
-            
+
             # Target following status
             if self.following_active and self.target_camera_id == camera_id:
                 # cv2.rectangle(vis_image, (5, 90), (450, 120), text_bg_color, -1)
                 cv2.putText(vis_image, f"FOLLOWING TARGET ID: {self.target_person_id}", (10, 110), 
                            cv2.FONT_HERSHEY_SIMPLEX, font_scale, (0, 255, 0), thickness)
-                
+
                 # Add target location information
                 if hasattr(self, 'target_person_data') and self.target_person_data:
                     try:
                         # Get target center in image coordinates (pixels)
                         target_center = self.target_person_data.get('center', [0, 0])
                         target_bbox = self.target_person_data.get('bbox', [0, 0, 0, 0])
-                        
+
                         # Get estimated distance
                         estimated_distance = getattr(self, 'last_estimated_distance', 0.0)
-                        
+
                         # World position if available
                         world_pos = getattr(self, 'target_person_position', [0.0, 0.0])
-                        
+
                         # Display target pixel location
                         cv2.putText(vis_image, f"TARGET POS: ({int(target_center[0])}, {int(target_center[1])})", 
                                    (10, 140), cv2.FONT_HERSHEY_SIMPLEX, font_scale * 0.7, (0, 255, 255), thickness)
-                        
+
                         # Display estimated distance
                         cv2.putText(vis_image, f"DISTANCE: {estimated_distance:.2f}m", 
                                    (10, 165), cv2.FONT_HERSHEY_SIMPLEX, font_scale * 0.7, (0, 255, 255), thickness)
-                        
+
                         # Display world coordinates
                         cv2.putText(vis_image, f"WORLD: ({world_pos[0]:.2f}, {world_pos[1]:.2f})", 
                                    (10, 190), cv2.FONT_HERSHEY_SIMPLEX, font_scale * 0.7, (0, 255, 255), thickness)
-                        
+
                         # Display bounding box size
                         bbox_width = int(target_bbox[2]) if len(target_bbox) > 2 else 0
                         bbox_height = int(target_bbox[3]) if len(target_bbox) > 3 else 0
                         cv2.putText(vis_image, f"BBOX: {bbox_width}x{bbox_height}", 
                                    (10, 215), cv2.FONT_HERSHEY_SIMPLEX, font_scale * 0.7, (0, 255, 255), thickness)
-                        
+
                         # Draw crosshair at target position
                         if target_center[0] > 0 and target_center[1] > 0:
                             target_x, target_y = int(target_center[0]), int(target_center[1])
@@ -1587,11 +1589,11 @@ class MultiCameraMotionDetectionNode(Node):
                             cv2.line(vis_image, (target_x - 20, target_y), (target_x + 20, target_y), (0, 0, 255), 3)
                             cv2.line(vis_image, (target_x, target_y - 20), (target_x, target_y + 20), (0, 0, 255), 3)
                             cv2.circle(vis_image, (target_x, target_y), 8, (0, 0, 255), 2)
-                            
+
                             # Label the target
                             cv2.putText(vis_image, "TARGET", (target_x + 25, target_y - 10), 
                                        cv2.FONT_HERSHEY_SIMPLEX, font_scale * 0.6, (0, 0, 255), 2)
-                                       
+
                     except Exception as e:
                         cv2.putText(vis_image, f"TARGET DATA ERROR", (10, 140), 
                                    cv2.FONT_HERSHEY_SIMPLEX, font_scale * 0.7, (0, 0, 255), thickness)
@@ -1616,22 +1618,22 @@ class MultiCameraMotionDetectionNode(Node):
             cv2.line(vis_image, (center_x, center_y - crosshair_size), 
                     (center_x, center_y + crosshair_size), (0, 255, 0), 3)
             cv2.circle(vis_image, (center_x, center_y), 5, (0, 255, 0), -1)
-            
+
             # Convert back to ROS message with proper encoding
             vis_msg = self.bridge.cv2_to_imgmsg(vis_image, 'bgr8')
             vis_msg.header = header
             self.vis_pubs[camera_id].publish(vis_msg)
-            
+
         except Exception as e:
             self.get_logger().error(f'Camera {camera_id} visualization error: {e}')
 
     def predict_target_position(self, current_center):
         if self.last_target_center is None or current_center is None:
             return current_center
-        
+
         dx = current_center[0] - self.last_target_center[0]
         dy = current_center[1] - self.last_target_center[1]
-        
+
         prediction_frames = 2
         predicted_x = current_center[0] + dx * prediction_frames
         predicted_y = current_center[1] + dy * prediction_frames
@@ -1641,11 +1643,11 @@ class MultiCameraMotionDetectionNode(Node):
         predicted_y = max(0, min(predicted_y, self.image_height))
 
         return [predicted_x, predicted_y]
-    
+
     def calculate_target_confidence(self, target, camera_id):
         if not target:
             return 0.0
-        
+
         confidence = target.get('confidence', 0.5)
         bbox = target.get('bbox', [0, 0, 1, 1])
 
@@ -1665,12 +1667,12 @@ class MultiCameraMotionDetectionNode(Node):
 
         total_confidence = confidence * size_factor * center_factor * consistency_factor * camera_factor
         return min(total_confidence, 1.0)
-    
-    
+
+
 def main(args=None):
     rclpy.init(args=args)
     node = MultiCameraMotionDetectionNode()
-    
+
     try:
         rclpy.spin(node)
     except KeyboardInterrupt:
@@ -1679,12 +1681,12 @@ def main(args=None):
         # Landing sequence
         if hasattr(node, 'enable_following') and node.enable_following:
             node.get_logger().info('Shutting down - Landing drone via RPC service')
-            
+
             if hasattr(node, 'land_client') and node.land_client.wait_for_service(timeout_sec=5.0):
                 request = Land.Request()
                 future = node.land_client.call_async(request)
                 rclpy.spin_until_future_complete(node, future, timeout_sec=10.0)
-                
+
                 try:
                     response = future.result()
                     if response.success:
@@ -1693,7 +1695,7 @@ def main(args=None):
                         node.get_logger().error(f'Landing failed: {response.message}')
                 except Exception as e:
                     node.get_logger().error(f'Landing service call failed: {e}')
-            
+
             if hasattr(node, 'cmd_vel_pub'):
                 vel_cmd = VelCmd()
                 vel_cmd.twist.linear.x = 0.0
@@ -1701,7 +1703,7 @@ def main(args=None):
                 vel_cmd.twist.linear.z = 0.0
                 vel_cmd.twist.angular.z = 0.0
                 node.cmd_vel_pub.publish(vel_cmd)
-            
+
         node.destroy_node()
         rclpy.shutdown()
 
