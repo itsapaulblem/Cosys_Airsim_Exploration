@@ -147,8 +147,8 @@ class MultiCameraMotionDetectionNode(Node):
         self.deadband_y = 0.3
         self.deadband_z = 0.3
         self.deadband_yaw = 0.15
-    self.last_movement_direction = {'x': 0.0, 'y': 0.0, 'z': 0.0, 'yaw': 0.0}
-    self.search_velocity = {'x': 0.0, 'y': 0.0, 'z': 0.0, 'yaw': 0.0}
+        self.last_movement_direction = {'x': 0.0, 'y': 0.0, 'z': 0.0, 'yaw': 0.0}
+        self.search_velocity = {'x': 0.0, 'y': 0.0, 'z': 0.0, 'yaw': 0.0}
         self.momentum_decay_factor = 0.95
         self.min_momentum_threshold = 0.05
         self.search_momentum_active = False
@@ -1498,31 +1498,7 @@ def main(args=None):
     except KeyboardInterrupt:
         pass
     finally:
-        if hasattr(node, 'enable_following') and node.enable_following:
-            node.get_logger().info('Shutting down - Landing drone via RPC service')
-
-            if hasattr(node, 'land_client') and node.land_client.wait_for_service(timeout_sec=5.0):
-                request = Land.Request()
-                future = node.land_client.call_async(request)
-                rclpy.spin_until_future_complete(node, future, timeout_sec=10.0)
-
-                try:
-                    response = future.result()
-                    if response.success:
-                        node.get_logger().info(f'Landing successful: {response.message}')
-                    else:
-                        node.get_logger().error(f'Landing failed: {response.message}')
-                except Exception as e:
-                    node.get_logger().error(f'Landing service call failed: {e}')
-
-            if hasattr(node, 'cmd_vel_pub'):
-                vel_cmd = VelCmd()
-                vel_cmd.twist.linear.x = 0.0
-                vel_cmd.twist.linear.y = 0.0
-                vel_cmd.twist.linear.z = 0.0
-                vel_cmd.twist.angular.z = 0.0
-                node.cmd_vel_pub.publish(vel_cmd)
-
+        # Removed auto-landing and zero velocity commands to prevent unwanted landing on shutdown
         node.destroy_node()
         rclpy.shutdown()
 
