@@ -149,8 +149,8 @@ class MultiCameraMotionDetectionNode(Node):
         self.deadband_yaw = 0.15
         self.last_movement_direction = {'x': 0.0, 'y': 0.0, 'z': 0.0, 'yaw': 0.0}
         self.search_velocity = {'x': 0.0, 'y': 0.0, 'z': 0.0, 'yaw': 0.0}
-        self.momentum_decay_factor = 0.95
-        self.min_momentum_threshold = 0.05
+        self.momentum_decay_factor = 0.65  # Faster decay for quicker stop
+        self.min_momentum_threshold = 0.18  # Higher threshold to trigger stop/rotate sooner
         self.search_momentum_active = False
         self.momentum_search_duration = 10.0
         self.momentum_search_start_time = 0.0
@@ -532,7 +532,6 @@ class MultiCameraMotionDetectionNode(Node):
                 self.takeoff_complete = True
                 self.drone_state = 'HOVERING'
                 self.current_altitude = self.takeoff_height
-                time.sleep(1.0)  # Add a short delay before sending velocity commands
             else:
                 self.get_logger().error(f'Takeoff service failed: {response.message}')
                 self.takeoff_initiated = False
@@ -789,7 +788,7 @@ class MultiCameraMotionDetectionNode(Node):
             self.search_momentum_active = True
             self.momentum_search_start_time = current_time
             self.search_velocity = self.last_movement_direction.copy()  # Start with last direction
-            self.get_logger().info('TARGET LOST: Continuing in last known direction with momentum')
+            self.get_logger().warn('[SEARCH] Target lost: continuing in last known direction (momentum search)')
 
         # Decay velocity
         decay = self.momentum_decay_factor  # e.g., 0.95
@@ -797,7 +796,7 @@ class MultiCameraMotionDetectionNode(Node):
             self.search_velocity[key] *= decay
 
         # Limit velocity change to avoid PX4 flight task errors
-        max_search_vel = 0.8  # m/s, conservative for PX4
+        max_search_vel = 0.5  # m/s, conservative for PX4
         for key in ['x', 'y', 'z']:
             self.search_velocity[key] = max(-max_search_vel, min(self.search_velocity[key], max_search_vel))
         self.search_velocity['yaw'] = max(-0.8, min(self.search_velocity['yaw'], 0.8))
@@ -816,7 +815,7 @@ class MultiCameraMotionDetectionNode(Node):
             vel_cmd.twist.angular.y = 0.0
             if self.enable_following:
                 self.cmd_vel_pub.publish(vel_cmd)
-            self.get_logger().info('Momentum search stopped, rotating to search')
+            self.get_logger().warn('[SEARCH] Momentum search stopped: rotating in place to find target')
             return
 
         # Continue moving in decayed direction
@@ -830,6 +829,7 @@ class MultiCameraMotionDetectionNode(Node):
 
         if self.enable_following:
             self.cmd_vel_pub.publish(vel_cmd)
+        self.get_logger().info(f'[SEARCH] Continuing momentum: x={self.search_velocity["x"]:.2f}, y={self.search_velocity["y"]:.2f}, yaw={self.search_velocity["yaw"]:.2f}')
 
     def initialize_detection_systems(self):
         """Initialize YOLOv7 + DeepSORT system"""
