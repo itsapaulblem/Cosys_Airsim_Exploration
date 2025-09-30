@@ -147,7 +147,8 @@ class MultiCameraMotionDetectionNode(Node):
         self.deadband_y = 0.3
         self.deadband_z = 0.3
         self.deadband_yaw = 0.15
-        self.last_movement_direction = {'x': 0.0, 'y': 0.0, 'z': 0.0, 'yaw': 0.0}
+    self.last_movement_direction = {'x': 0.0, 'y': 0.0, 'z': 0.0, 'yaw': 0.0}
+    self.search_velocity = {'x': 0.0, 'y': 0.0, 'z': 0.0, 'yaw': 0.0}
         self.momentum_decay_factor = 0.95
         self.min_momentum_threshold = 0.05
         self.search_momentum_active = False
@@ -787,38 +788,48 @@ class MultiCameraMotionDetectionNode(Node):
         if not self.search_momentum_active:
             self.search_momentum_active = True
             self.momentum_search_start_time = current_time
-            self.get_logger().info('TARGET LOST: Hovering and searching with rotation')
+            self.search_velocity = self.last_movement_direction.copy()  # Start with last direction
+            self.get_logger().info('TARGET LOST: Continuing in last known direction with momentum')
 
-        # Check if search should continue
-        time_in_search = current_time - self.momentum_search_start_time
+        # Decay velocity
+        decay = self.momentum_decay_factor  # e.g., 0.95
+        for key in ['x', 'y', 'z', 'yaw']:
+            self.search_velocity[key] *= decay
 
-        if time_in_search < self.momentum_search_duration:
-            # SLOW FORWARD and rotate to search
+        # Limit velocity change to avoid PX4 flight task errors
+        max_search_vel = 0.8  # m/s, conservative for PX4
+        for key in ['x', 'y', 'z']:
+            self.search_velocity[key] = max(-max_search_vel, min(self.search_velocity[key], max_search_vel))
+        self.search_velocity['yaw'] = max(-0.8, min(self.search_velocity['yaw'], 0.8))
+
+        # If velocity is very small, stop and rotate to search
+        if abs(self.search_velocity['x']) < self.min_momentum_threshold and \
+           abs(self.search_velocity['y']) < self.min_momentum_threshold:
+            self.search_velocity['x'] = 0.0
+            self.search_velocity['y'] = 0.0
             vel_cmd = VelCmd()
-            vel_cmd.twist.linear.x = 0.4   # Slow forward movement
-            vel_cmd.twist.linear.y = 0.0   # No side movement  
-            vel_cmd.twist.linear.z = 0.0   # No vertical movement
+            vel_cmd.twist.linear.x = 0.0
+            vel_cmd.twist.linear.y = 0.0
+            vel_cmd.twist.linear.z = 0.0
+            vel_cmd.twist.angular.z = 0.8  # Rotate to search
             vel_cmd.twist.angular.x = 0.0
             vel_cmd.twist.angular.y = 0.0
-
-            # Vary rotation speed for more thorough search
-            if time_in_search < 3.0:
-                rotation_speed = 1.2  # Fast initial scan
-            elif time_in_search < 7.0:
-                rotation_speed = -1.0  # Reverse direction
-            else:
-                rotation_speed = 0.6   # Slower final scan
-
-            vel_cmd.twist.angular.z = rotation_speed
-
             if self.enable_following:
                 self.cmd_vel_pub.publish(vel_cmd)
+            self.get_logger().info('Momentum search stopped, rotating to search')
+            return
 
-        else:
-            # After search duration, continue hovering
-            self.search_momentum_active = False
-            self.get_logger().info('SEARCH COMPLETED - Continuing to hover and scan')
-            self.hover_drone()
+        # Continue moving in decayed direction
+        vel_cmd = VelCmd()
+        vel_cmd.twist.linear.x = self.search_velocity['x']
+        vel_cmd.twist.linear.y = self.search_velocity['y']
+        vel_cmd.twist.linear.z = self.search_velocity['z']
+        vel_cmd.twist.angular.z = self.search_velocity['yaw']
+        vel_cmd.twist.angular.x = 0.0
+        vel_cmd.twist.angular.y = 0.0
+
+        if self.enable_following:
+            self.cmd_vel_pub.publish(vel_cmd)
 
     def initialize_detection_systems(self):
         """Initialize YOLOv7 + DeepSORT system"""
@@ -1294,11 +1305,10 @@ class MultiCameraMotionDetectionNode(Node):
             self.camera_moving_counts[camera_id] = len(moving_targets)
             self.all_camera_targets[camera_id] = moving_targets
 
-            # Update person following
-            if camera_id == self.primary_camera and self.enable_following:
+            # Update person following (run for all cameras)
+            if self.enable_following:
                 merged_targets = self.merge_camera_detections()
                 self.update_person_following_multi_camera(merged_targets)
-
                 for target in merged_targets:
                     self.publish_target_detection(target, msg.header)
 
