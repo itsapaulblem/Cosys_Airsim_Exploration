@@ -50,8 +50,8 @@ class MultiCameraMotionDetectionNode(Node):
         self.declare_parameter('enable_visualization', True)
         self.declare_parameter('trail_length', 30)
         self.declare_parameter('enable_following', True)
-        self.declare_parameter('follow_distance', 0.5)
-        self.declare_parameter('takeoff_height', 3.0)
+        self.declare_parameter('follow_distance', 0.1)
+        self.declare_parameter('takeoff_height', 5.0)
         self.declare_parameter('image_width', 1280)
         self.declare_parameter('image_height', 720)
         self.declare_parameter('image_quality', 95)
@@ -387,6 +387,22 @@ class MultiCameraMotionDetectionNode(Node):
         current_time = time.time()
         target_person, target_camera = self.select_target_person_multi_camera(merged_targets)
 
+        # General collision avoidance logic
+        obstacle_classes = [0, 2, 3, 5, 7, 9, 58]  # person, car, motorcycle, bus, truck, traffic light, potted plant
+        obstacle_targets = [t for t in merged_targets if t.get('class', -1) in obstacle_classes]
+        repulse_x, repulse_y = 0.0, 0.0
+        for obs in obstacle_targets:
+            obs_distance = np.sqrt(obs['world_x']**2 + obs['world_y']**2)
+            if obs_distance < 3.0:
+                direction = np.arctan2(obs['world_y'], obs['world_x'])
+                strength = 1.0 / (obs_distance + 0.1)
+                repulse_x -= strength * np.cos(direction)
+                repulse_y -= strength * np.sin(direction)
+        if abs(repulse_x) > 0.01 or abs(repulse_y) > 0.01:
+            self.collision_avoidance_cmd = {'x': repulse_x, 'y': repulse_y}
+        else:
+            self.collision_avoidance_cmd = None
+
         if target_person:
             if not self.takeoff_initiated and self.drone_state == 'IDLE':
                 self.initiate_takeoff()
@@ -427,6 +443,7 @@ class MultiCameraMotionDetectionNode(Node):
                     self.get_logger().info(f'Following person ID: {self.target_person_id} '
                                          f'from {cam_name} camera, confidence: {target_person.get("confidence", 0.5):.2f}')
         else:
+            self.collision_avoidance_cmd = None
             # No person detected - implement HOVER and SEARCH behavior
             time_since_last = current_time - self.last_person_detection_time
             if self.following_active and time_since_last > 1.5:  # Reduced timeout for faster response
@@ -514,6 +531,7 @@ class MultiCameraMotionDetectionNode(Node):
                 self.takeoff_complete = True
                 self.drone_state = 'HOVERING'
                 self.current_altitude = self.takeoff_height
+                time.sleep(1.0)  # Add a short delay before sending velocity commands
             else:
                 self.get_logger().error(f'Takeoff service failed: {response.message}')
                 self.takeoff_initiated = False
@@ -643,9 +661,13 @@ class MultiCameraMotionDetectionNode(Node):
                     self.drone_state = 'FOLLOWING'
                     self.last_person_detection_time = current_time
 
+    def publish_velocity_command(self, vel_cmd):
+        # Only publish if takeoff is complete and drone is in a valid state
+        if self.takeoff_complete and self.drone_state in ['FOLLOWING', 'SEARCHING', 'HOVERING']:
+            self.cmd_vel_pub.publish(vel_cmd)
+
     def control_loop(self):
-        """Main control loop for drone following behavior"""
-        dt = 0.067
+        dt = 0.067  # ~15Hz, so always >2Hz
 
         if self.drone_state == 'TAKING_OFF' and not self.takeoff_complete:
             return
@@ -700,6 +722,11 @@ class MultiCameraMotionDetectionNode(Node):
             height_cmd = self.pid_control(self.pid_z, height_error, dt)
             side_cmd = self.pid_control(self.pid_y, side_error, dt)
 
+            # --- General collision avoidance ---
+            if hasattr(self, 'collision_avoidance_cmd') and self.collision_avoidance_cmd:
+                forward_cmd += self.collision_avoidance_cmd['x']
+                side_cmd += self.collision_avoidance_cmd['y']
+
             if forward_cmd <= 0:
                 forward_cmd = 0.4
             yaw_cmd = self.apply_deadband(yaw_cmd, self.deadband_yaw)
@@ -733,7 +760,7 @@ class MultiCameraMotionDetectionNode(Node):
             vel_cmd.twist.angular.x = 0.0
             vel_cmd.twist.angular.y = 0.0
 
-            self.cmd_vel_pub.publish(vel_cmd)
+            self.publish_velocity_command(vel_cmd)
 
             if sum(self.camera_frame_counts.values()) % 40 == 0:
                 self.get_logger().info(f'CONTROL CMD: forward={forward_cmd:.2f}, side={side_cmd:.2f}, '

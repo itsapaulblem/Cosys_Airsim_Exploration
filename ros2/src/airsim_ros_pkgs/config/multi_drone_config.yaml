@@ -1,0 +1,93 @@
+# Multi-Drone Detection System Configuration
+
+# Fleet Configuration
+drone_names: ["Drone1", "Drone2", "Drone3", "Drone4"]  # List of drone names in the fleet
+leader_drone: "Drone1"                                   # Designated leader drone
+num_drones: 4                                           # Total number of drones
+
+# Formation Parameters
+formation_type: "triangle"        # Options: triangle, line, box, custom
+formation_spacing: 5.0           # Distance between drones in meters
+formation_altitude: 3.0          # Default flight altitude in meters
+formation_speed: 2.0             # Formation flight speed in m/s
+
+# Detection Parameters
+confidence_threshold: 0.3        # Minimum detection confidence (0.0-1.0)
+iou_threshold: 0.45             # IoU threshold for NMS
+motion_threshold: 15.0          # Motion detection threshold in pixels
+target_timeout: 5.0             # Seconds before target is considered lost
+
+# Coordination Parameters
+coordination_frequency: 10.0     # Hz - How often coordination updates occur
+target_assignment_method: "closest"  # Options: closest, load_balance, priority
+enable_swarm_intelligence: true  # Enable collective decision making
+max_tracking_distance: 50.0     # Maximum distance for target tracking (meters)
+
+# Search Parameters
+search_pattern: "grid"           # Options: grid, spiral, random, adaptive
+search_timeout: 30.0            # Seconds to search before giving up
+search_grid_size: 20.0          # Grid spacing for search pattern (meters)
+search_altitude_variation: 2.0   # Altitude variation during search (meters)
+
+# Mission Parameters
+takeoff_height: 3.0             # Default takeoff altitude (meters)
+follow_distance: 2.0            # Target following distance (meters)
+emergency_land_timeout: 60.0    # Auto-land timeout in emergency (seconds)
+battery_warning_level: 20.0     # Battery level to trigger warning (%)
+battery_critical_level: 10.0    # Battery level to force landing (%)
+
+# Visualization Parameters
+enable_visualization: true       # Enable visual output
+visualization_quality: "medium"  # Options: low, medium, high
+show_formation_lines: true      # Draw formation connections
+show_search_grid: true          # Show search grid overlay
+show_target_trails: true        # Show target movement trails
+
+# Communication Parameters
+heartbeat_frequency: 1.0        # Hz - Drone health check frequency  
+command_timeout: 2.0            # Seconds before command times out
+retry_attempts: 3               # Number of retry attempts for failed commands
+
+# Safety Parameters
+collision_avoidance: true       # Enable collision avoidance
+min_separation_distance: 2.0    # Minimum distance between drones (meters)
+max_velocity: 5.0               # Maximum allowed velocity (m/s)
+geofence_enabled: true          # Enable geographic boundaries
+geofence_radius: 100.0          # Maximum distance from origin (meters)
+
+# Performance Parameters
+image_processing_frequency: 15.0 # Hz - Image processing rate
+control_loop_frequency: 20.0    # Hz - Control update rate
+prediction_horizon: 1.0         # Seconds - Target position prediction
+smoothing_factor: 0.7           # Velocity command smoothing (0.0-1.0)
+
+# Advanced Features
+enable_target_prediction: true   # Use AI for target movement prediction
+enable_adaptive_formation: true  # Dynamically adjust formation based on situation
+enable_role_switching: true     # Allow drones to switch roles dynamically
+enable_fault_tolerance: true    # Handle drone failures gracefully
+
+# Debug and Logging
+debug_mode: false               # Enable debug output
+log_detections: true            # Log all target detections
+log_commands: false             # Log all drone commands
+performance_monitoring: true     # Monitor system performance
+
+# Network Configuration
+airsim_ip: "127.0.0.1"          # AirSim server IP address
+airsim_port: 41451              # AirSim server port
+ros_domain_id: 0                # ROS 2 domain ID for isolation
+
+# Sensor Configuration
+camera_resolution:
+  width: 640
+  height: 480
+camera_fps: 30
+enable_lidar: false             # Use LiDAR for enhanced detection
+lidar_range: 100.0              # LiDAR maximum range (meters)
+
+# Machine Learning
+yolo_model_path: "yolov7.pt"    # Path to YOLO model file
+deepsort_config: "deep_sort.yaml" # DeepSORT configuration file
+gpu_acceleration: true          # Use GPU if available
+model_precision: "fp16"         # Options: fp32, fp16, int8
