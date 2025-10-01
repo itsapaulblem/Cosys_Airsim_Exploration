@@ -683,114 +683,129 @@ class MultiCameraMotionDetectionNode(Node):
         try:
             person = self.target_person_data
             target_camera = person.get('camera_id', 0)
-            bbox = person.get('bbox', [0, 0, 100, 100])
-            center = person.get('center', [bbox[0] + bbox[2]/2, bbox[1] + bbox[3]/2])
-            smoothed_center = self.smooth_target_position(center)
-            if smoothed_center:
-                center = smoothed_center
-            if self.target_prediction:
-                center = self.target_prediction
-            image_center = [self.image_width / 2, self.image_height / 2]
-            yaw_angle, pitch_angle = self.pixel_to_world_direction(center, image_center)
-            estimated_distance = self.estimate_person_distance(bbox)
-            if hasattr(self, 'last_estimated_distance'):
-                max_distance_change = 2.0
-                distance_change = abs(estimated_distance - self.last_estimated_distance)
+            dt = 0.067  # ~15Hz, so always >2Hz
 
-                if distance_change > max_distance_change:
-                    if estimated_distance > self.last_estimated_distance:
-                        estimated_distance = self.last_estimated_distance + max_distance_change
-                    else:
-                        estimated_distance = self.last_estimated_distance - max_distance_change
-
-            self.last_estimated_distance = estimated_distance
-            cam_yaw_offset = math.radians(self.camera_orientations[target_camera]['yaw'])
-            world_yaw_angle = yaw_angle + cam_yaw_offset
-
-            yaw_error = world_yaw_angle * 0.5
-            distance_error = estimated_distance - self.follow_distance
-            if distance_error > 0:
-                distance_error = distance_error * 0.4
+            # Increase acceleration when following a target
+            if self.drone_state == 'FOLLOWING':
+                self.max_acceleration = {
+                    'x': 3.0,   # was 1.5
+                    'y': 3.0,   # was 1.5
+                    'z': 2.0,   # was 1.0
+                    'yaw': 4.0  # was 2.0
+                }
             else:
-                distance_error = abs(distance_error) * 0.1
+                self.max_acceleration = {
+                    'x': 1.5,
+                    'y': 1.5,
+                    'z': 1.0,
+                    'yaw': 2.0
+                }
 
-            height_error = pitch_angle * 0.15
-            side_error = yaw_angle * 0.12
+            if self.drone_state == 'TAKING_OFF' and not self.takeoff_complete:
+                return
 
-            yaw_cmd = self.pid_control(self.pid_yaw, yaw_error, dt)
-            forward_cmd = self.pid_control(self.pid_x, distance_error, dt)
-            height_cmd = self.pid_control(self.pid_z, height_error, dt)
-            side_cmd = self.pid_control(self.pid_y, side_error, dt)
+            if self.drone_state == 'SEARCHING':
+                self.momentum_search_behavior()
+                return
 
-            # --- General collision avoidance ---
-            if hasattr(self, 'collision_avoidance_cmd') and self.collision_avoidance_cmd:
-                forward_cmd += self.collision_avoidance_cmd['x']
-                side_cmd += self.collision_avoidance_cmd['y']
+            if not self.following_active or not hasattr(self, 'target_person_data'):
+                if self.takeoff_complete and self.drone_state != 'SEARCHING':
+                    self.hover_drone()
+                return
+            try:
+                person = self.target_person_data
+                target_camera = person.get('camera_id', 0)
+                bbox = person.get('bbox', [0, 0, 100, 100])
+                center = person.get('center', [bbox[0] + bbox[2]/2, bbox[1] + bbox[3]/2])
+                smoothed_center = self.smooth_target_position(center)
+                if smoothed_center:
+                    center = smoothed_center
+                if self.target_prediction:
+                    center = self.target_prediction
+                image_center = [self.image_width / 2, self.image_height / 2]
+                yaw_angle, pitch_angle = self.pixel_to_world_direction(center, image_center)
+                estimated_distance = self.estimate_person_distance(bbox)
+                if hasattr(self, 'last_estimated_distance'):
+                    max_distance_change = 2.0
+                    distance_change = abs(estimated_distance - self.last_estimated_distance)
 
-            if forward_cmd <= 0:
-                forward_cmd = 0.4
-            yaw_cmd = self.apply_deadband(yaw_cmd, self.deadband_yaw)
-            forward_cmd = self.apply_deadband(forward_cmd, self.deadband_x)
-            height_cmd = self.apply_deadband(height_cmd, self.deadband_z)
-            side_cmd = self.apply_deadband(side_cmd, self.deadband_y)
+                    if distance_change > max_distance_change:
+                        pass
 
-            yaw_cmd = max(-1.0, min(yaw_cmd, 1.0))
-            forward_cmd = max(0.1, min(forward_cmd, 2.0))
-            height_cmd = max(-0.8, min(height_cmd, 0.8))
-            side_cmd = max(-2.0, min(side_cmd, 2.0))
-            if target_camera != self.primary_camera:
-                cos_offset = math.cos(cam_yaw_offset)
-                sin_offset = math.sin(cam_yaw_offset)
+                self.last_estimated_distance = estimated_distance
+                cam_yaw_offset = math.radians(self.camera_orientations[target_camera]['yaw'])
+                world_yaw_angle = yaw_angle + cam_yaw_offset
 
-                transformed_forward = forward_cmd * cos_offset - side_cmd * sin_offset
-                transformed_side = forward_cmd * sin_offset + side_cmd * cos_offset
+                yaw_error = world_yaw_angle * 0.5
+                distance_error = estimated_distance - self.follow_distance
+                if distance_error > 0:
+                    distance_error = distance_error * 0.4
+                else:
+                    distance_error = abs(distance_error) * 0.1
 
-                forward_cmd = transformed_forward
-                side_cmd = transformed_side
-            self.last_movement_direction['x'] = forward_cmd
-            self.last_movement_direction['y'] = side_cmd
-            self.last_movement_direction['z'] = height_cmd
-            self.last_movement_direction['yaw'] = yaw_cmd
-            self.search_momentum_active = False
-            vel_cmd = VelCmd()
-            vel_cmd.twist.linear.x = forward_cmd
-            vel_cmd.twist.linear.y = side_cmd
-            vel_cmd.twist.linear.z = height_cmd
-            vel_cmd.twist.angular.z = yaw_cmd
-            vel_cmd.twist.angular.x = 0.0
-            vel_cmd.twist.angular.y = 0.0
+                height_error = pitch_angle * 0.15
+                side_error = yaw_angle * 0.12
 
-            self.publish_velocity_command(vel_cmd)
+                yaw_cmd = self.pid_control(self.pid_yaw, yaw_error, dt)
+                forward_cmd = self.pid_control(self.pid_x, distance_error, dt)
+                height_cmd = self.pid_control(self.pid_z, height_error, dt)
+                side_cmd = self.pid_control(self.pid_y, side_error, dt)
 
-            if sum(self.camera_frame_counts.values()) % 40 == 0:
-                self.get_logger().info(f'CONTROL CMD: forward={forward_cmd:.2f}, side={side_cmd:.2f}, '
-                                     f'height={height_cmd:.2f}, yaw={yaw_cmd:.2f}')
+                # --- General collision avoidance ---
+                if hasattr(self, 'collision_avoidance_cmd') and self.collision_avoidance_cmd:
+                    forward_cmd += self.collision_avoidance_cmd['x']
+                    side_cmd += self.collision_avoidance_cmd['y']
 
-            if sum(self.camera_frame_counts.values()) % 60 == 0:
-                cam_name = self.camera_orientations[target_camera]['name']
-                lock_status = "LOCKED" if self.target_locked else "TRACKING"
-                self.get_logger().info(f'{lock_status} from {cam_name}: '
-                                     f'dist={estimated_distance:.1f}m->target:{self.follow_distance}m, '
-                                     f'conf={self.target_lock_confidence:.2f}, '
-                                     f'err=[y:{math.degrees(world_yaw_angle):.1f}°, d:{distance_error:.1f}m], '
-                                     f'cmd=[f:{forward_cmd:.2f}, s:{side_cmd:.2f}, u:{height_cmd:.2f}, y:{yaw_cmd:.2f}]')
+                if forward_cmd <= 0:
+                    forward_cmd = 0.4
+                yaw_cmd = self.apply_deadband(yaw_cmd, self.deadband_yaw)
+                forward_cmd = self.apply_deadband(forward_cmd, self.deadband_x)
+                height_cmd = self.apply_deadband(height_cmd, self.deadband_z)
+                side_cmd = self.apply_deadband(side_cmd, self.deadband_y)
 
-        except Exception as e:
-            self.get_logger().error(f'Enhanced control loop error: {e}')
-            self.hover_drone()
+                yaw_cmd = max(-1.0, min(yaw_cmd, 1.0))
+                forward_cmd = max(0.1, min(forward_cmd, 2.0))
+                height_cmd = max(-0.8, min(height_cmd, 0.8))
+                side_cmd = max(-2.0, min(side_cmd, 2.0))
+                if target_camera != self.primary_camera:
+                    cos_offset = math.cos(cam_yaw_offset)
+                    sin_offset = math.sin(cam_yaw_offset)
 
-    def momentum_search_behavior(self):
-        """Hover and rotate search instead of momentum-based movement"""
-        current_time = time.time()
+                    transformed_forward = forward_cmd * cos_offset - side_cmd * sin_offset
+                    transformed_side = forward_cmd * sin_offset + side_cmd * cos_offset
 
-        # Initialize search if not already active
-        if not self.search_momentum_active:
-            self.search_momentum_active = True
-            self.momentum_search_start_time = current_time
-            self.search_velocity = self.last_movement_direction.copy()  # Start with last direction
-            self.get_logger().warn('[SEARCH] Target lost: continuing in last known direction (momentum search)')
+                    forward_cmd = transformed_forward
+                    side_cmd = transformed_side
+                self.last_movement_direction['x'] = forward_cmd
+                self.last_movement_direction['y'] = side_cmd
+                self.last_movement_direction['z'] = height_cmd
+                self.last_movement_direction['yaw'] = yaw_cmd
+                self.search_momentum_active = False
+                vel_cmd = VelCmd()
+                vel_cmd.twist.linear.x = forward_cmd
+                vel_cmd.twist.linear.y = side_cmd
+                vel_cmd.twist.linear.z = height_cmd
+                vel_cmd.twist.angular.z = yaw_cmd
+                vel_cmd.twist.angular.x = 0.0
+                vel_cmd.twist.angular.y = 0.0
 
-        # Decay velocity
+                self.publish_velocity_command(vel_cmd)
+
+                if sum(self.camera_frame_counts.values()) % 40 == 0:
+                    self.get_logger().info(f'CONTROL CMD: forward={forward_cmd:.2f}, side={side_cmd:.2f}, '
+                                         f'height={height_cmd:.2f}, yaw={yaw_cmd:.2f}')
+
+                if sum(self.camera_frame_counts.values()) % 60 == 0:
+                    cam_name = self.camera_orientations[target_camera]['name']
+                    lock_status = "LOCKED" if self.target_locked else "TRACKING"
+                    self.get_logger().info(f'{lock_status} from {cam_name}: '
+                                         f'dist={estimated_distance:.1f}m->target:{self.follow_distance}m, '
+                                         f'conf={self.target_lock_confidence:.2f}, '
+                                         f'err=[y:{math.degrees(world_yaw_angle):.1f}°, d:{distance_error:.1f}m], '
+                                         f'cmd=[f:{forward_cmd:.2f}, s:{side_cmd:.2f}, u:{height_cmd:.2f}, y:{yaw_cmd:.2f}]')
+            except Exception as e:
+                self.get_logger().error(f'Enhanced control loop error: {e}')
+                self.hover_drone()
         decay = self.momentum_decay_factor  # e.g., 0.95
         for key in ['x', 'y', 'z', 'yaw']:
             self.search_velocity[key] *= decay
