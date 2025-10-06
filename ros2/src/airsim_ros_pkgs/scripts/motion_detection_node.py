@@ -365,7 +365,7 @@ class MultiCameraMotionDetectionNode(Node):
         return value
 
     def smooth_target_position(self, new_center):
-        """Smooth target position to reduce tracking jitter"""
+        """Reduced smoothing to be more responsive"""
         if not new_center:
             return None
 
@@ -373,15 +373,13 @@ class MultiCameraMotionDetectionNode(Node):
 
         if len(self.target_position_buffer) < 2:
             return new_center
+        
+        # Use simple averaging instead of weighted smoothing
         positions = list(self.target_position_buffer)
-        weights = [self.target_smoothing_factor ** (len(positions) - 1 - i) 
-                  for i in range(len(positions))]
-        total_weight = sum(weights)
+        avg_x = sum(pos[0] for pos in positions[-3:]) / min(len(positions), 3)
+        avg_y = sum(pos[1] for pos in positions[-3:]) / min(len(positions), 3)
 
-        smoothed_x = sum(pos[0] * w for pos, w in zip(positions, weights)) / total_weight
-        smoothed_y = sum(pos[1] * w for pos, w in zip(positions, weights)) / total_weight
-
-        return [smoothed_x, smoothed_y]
+        return [avg_x, avg_y]
 
     def update_person_following_multi_camera(self, merged_targets):
         """Update person following logic with multi-camera support"""
@@ -462,17 +460,12 @@ class MultiCameraMotionDetectionNode(Node):
                 self.hover_drone()
 
     def initiate_search_pattern(self):
-        """Initiate systematic search when target is completely lost"""
-        self.lost_target_search_pattern = (self.lost_target_search_pattern + 1) % 8
+        """Simplified search pattern - just rotation"""
         vel_cmd = VelCmd()
-        if self.lost_target_search_pattern % 2 == 0:
-            vel_cmd.twist.linear.x = 4.0
-        else:
-            vel_cmd.twist.linear.x = 2.0
-
+        vel_cmd.twist.linear.x = 0.0
         vel_cmd.twist.linear.y = 0.0
         vel_cmd.twist.linear.z = 0.0
-        vel_cmd.twist.angular.z = 3.0 if self.lost_target_search_pattern < 4 else -3.0
+        vel_cmd.twist.angular.z = 0.8
         vel_cmd.twist.angular.x = 0.0
         vel_cmd.twist.angular.y = 0.0
 
@@ -480,27 +473,14 @@ class MultiCameraMotionDetectionNode(Node):
             self.cmd_vel_pub.publish(vel_cmd)
 
     def search_for_lost_target(self):
-        """Search behavior when target is temporarily lost"""
-        if (abs(self.last_movement_direction['x']) > 0.1 or 
-            abs(self.last_movement_direction['y']) > 0.1):
-            reduced_forward = self.last_movement_direction['x'] * 0.3
-            reduced_side = self.last_movement_direction['y'] * 0.3
-
-            vel_cmd = VelCmd()
-            vel_cmd.twist.linear.x = reduced_forward
-            vel_cmd.twist.linear.y = reduced_side
-            vel_cmd.twist.linear.z = 0.0
-            vel_cmd.twist.angular.z = 4.0
-            vel_cmd.twist.angular.x = 0.0
-            vel_cmd.twist.angular.y = 0.0
-        else:
-            vel_cmd = VelCmd()
-            vel_cmd.twist.linear.x = 0.0
-            vel_cmd.twist.linear.y = 0.0
-            vel_cmd.twist.linear.z = 0.0
-            vel_cmd.twist.angular.z = 4.0
-            vel_cmd.twist.angular.x = 0.0
-            vel_cmd.twist.angular.y = 0.0
+        """Simple search - just rotate"""
+        vel_cmd = VelCmd()
+        vel_cmd.twist.linear.x = 0.0
+        vel_cmd.twist.linear.y = 0.0
+        vel_cmd.twist.linear.z = 0.0
+        vel_cmd.twist.angular.z = 0.6  # Rotate to search
+        vel_cmd.twist.angular.x = 0.0
+        vel_cmd.twist.angular.y = 0.0
 
         if self.enable_following:
             self.cmd_vel_pub.publish(vel_cmd)
@@ -542,15 +522,15 @@ class MultiCameraMotionDetectionNode(Node):
             self.drone_state = 'IDLE'
 
     def hover_drone(self):
-        """Make drone slowly inch forward while rotating when losing target"""
+        """Stable hover - all velocities zero"""
         if self.enable_following:
             vel_cmd = VelCmd()
-            vel_cmd.twist.linear.x = 0.1
+            vel_cmd.twist.linear.x = 0.0
             vel_cmd.twist.linear.y = 0.0
             vel_cmd.twist.linear.z = 0.0
             vel_cmd.twist.angular.x = 0.0
             vel_cmd.twist.angular.y = 0.0
-            vel_cmd.twist.angular.z = 0.8
+            vel_cmd.twist.angular.z = 0.0
             self.cmd_vel_pub.publish(vel_cmd)
 
     def slow_forward_search(self):
@@ -667,7 +647,7 @@ class MultiCameraMotionDetectionNode(Node):
             self.cmd_vel_pub.publish(vel_cmd)
 
     def control_loop(self):
-        dt = 0.067  # ~15Hz, so always >2Hz
+        dt = 0.067  # ~15Hz
 
         if self.drone_state == 'TAKING_OFF' and not self.takeoff_complete:
             return
@@ -680,160 +660,124 @@ class MultiCameraMotionDetectionNode(Node):
             if self.takeoff_complete and self.drone_state != 'SEARCHING':
                 self.hover_drone()
             return
+
         try:
             person = self.target_person_data
             target_camera = person.get('camera_id', 0)
-            dt = 0.067  # ~15Hz, so always >2Hz
-
-            # Increase acceleration when following a target
-            if self.drone_state == 'FOLLOWING':
-                self.max_acceleration = {
-                    'x': 3.0,   # was 1.5
-                    'y': 3.0,   # was 1.5
-                    'z': 2.0,   # was 1.0
-                    'yaw': 4.0  # was 2.0
-                }
-            else:
-                self.max_acceleration = {
-                    'x': 1.5,
-                    'y': 1.5,
-                    'z': 1.0,
-                    'yaw': 2.0
-                }
 
             bbox = person.get('bbox', [0, 0, 100, 100])
             center = person.get('center', [bbox[0] + bbox[2]/2, bbox[1] + bbox[3]/2])
+            
+            # Use smoothed center position
             smoothed_center = self.smooth_target_position(center)
             if smoothed_center:
                 center = smoothed_center
-            if self.target_prediction:
-                center = self.target_prediction
+
             image_center = [self.image_width / 2, self.image_height / 2]
             yaw_angle, pitch_angle = self.pixel_to_world_direction(center, image_center)
             estimated_distance = self.estimate_person_distance(bbox)
+
+            # Smooth distance estimation to reduce oscillations
             if hasattr(self, 'last_estimated_distance'):
-                max_distance_change = 2.0
-                distance_change = abs(estimated_distance - self.last_estimated_distance)
-
-                if distance_change > max_distance_change:
-                    pass
-
+                alpha = 0.7  # Smoothing factor
+                estimated_distance = alpha * self.last_estimated_distance + (1 - alpha) * estimated_distance
             self.last_estimated_distance = estimated_distance
+
+            # Calculate camera offset for multi-camera support
             cam_yaw_offset = math.radians(self.camera_orientations[target_camera]['yaw'])
             world_yaw_angle = yaw_angle + cam_yaw_offset
 
-            yaw_error = world_yaw_angle * 0.5
-            distance_error = estimated_distance - self.follow_distance
-            if distance_error > 0:
-                distance_error = distance_error * 0.4
+            # SIMPLIFIED CONTROL: Only X (forward) and YAW
+            # Y and Z remain 0 as requested
+            
+            # YAW Control - only turn if target is significantly off-center
+            yaw_deadband = math.radians(15)  # 15 degree deadband
+            if abs(world_yaw_angle) > yaw_deadband:
+                yaw_cmd = np.sign(world_yaw_angle) * 0.8  # Simple proportional control
             else:
-                distance_error = abs(distance_error) * 0.1
+                yaw_cmd = 0.0
 
-            height_error = pitch_angle * 0.15
-            side_error = yaw_angle * 0.12
+            # X Control - simple distance-based forward movement
+            distance_error = estimated_distance - self.follow_distance
+            
+            if distance_error > 1.0:  # Too far - move forward
+                forward_cmd = 1.5
+            elif distance_error > 0.5:
+                forward_cmd = 1.0
+            elif distance_error > 0.2:
+                forward_cmd = 0.5
+            elif distance_error < -0.5:  # Too close - move backward slowly
+                forward_cmd = -0.3
+            else:  # Just right - maintain position
+                forward_cmd = 0.1
 
-            yaw_cmd = self.pid_control(self.pid_yaw, yaw_error, dt)
-            forward_cmd = self.pid_control(self.pid_x, distance_error, dt)
-            height_cmd = self.pid_control(self.pid_z, height_error, dt)
-            side_cmd = self.pid_control(self.pid_y, side_error, dt)
+            # Y and Z commands are ZERO as requested
+            side_cmd = 0.0
+            height_cmd = 0.0
 
-            # --- General collision avoidance ---
+            # Apply collision avoidance if needed (only affects X)
             if hasattr(self, 'collision_avoidance_cmd') and self.collision_avoidance_cmd:
-                forward_cmd += self.collision_avoidance_cmd['x']
-                side_cmd += self.collision_avoidance_cmd['y']
+                forward_cmd += self.collision_avoidance_cmd.get('x', 0.0) * 0.5
+                # Don't apply Y collision avoidance since we want Y=0
 
-            if forward_cmd <= 0:
-                forward_cmd = 0.4
-            yaw_cmd = self.apply_deadband(yaw_cmd, self.deadband_yaw)
-            forward_cmd = self.apply_deadband(forward_cmd, self.deadband_x)
-            height_cmd = self.apply_deadband(height_cmd, self.deadband_z)
-            side_cmd = self.apply_deadband(side_cmd, self.deadband_y)
-
+            # Limit commands to safe ranges
+            forward_cmd = max(-1.0, min(forward_cmd, 2.0))
             yaw_cmd = max(-1.0, min(yaw_cmd, 1.0))
-            forward_cmd = max(0.1, min(forward_cmd, 2.0))
-            height_cmd = max(-0.8, min(height_cmd, 0.8))
-            side_cmd = max(-2.0, min(side_cmd, 2.0))
+
+            # Transform for non-front cameras
             if target_camera != self.primary_camera:
                 cos_offset = math.cos(cam_yaw_offset)
                 sin_offset = math.sin(cam_yaw_offset)
-
-                transformed_forward = forward_cmd * cos_offset - side_cmd * sin_offset
-                transformed_side = forward_cmd * sin_offset + side_cmd * cos_offset
-
+                
+                # Only transform X, keep Y=0
+                transformed_forward = forward_cmd * cos_offset
                 forward_cmd = transformed_forward
-                side_cmd = transformed_side
+
+            # Store for momentum search
             self.last_movement_direction['x'] = forward_cmd
-            self.last_movement_direction['y'] = side_cmd
-            self.last_movement_direction['z'] = height_cmd
+            self.last_movement_direction['y'] = 0.0  # Always 0
+            self.last_movement_direction['z'] = 0.0  # Always 0  
             self.last_movement_direction['yaw'] = yaw_cmd
-            self.search_momentum_active = False
+
+            # Create and publish velocity command
             vel_cmd = VelCmd()
             vel_cmd.twist.linear.x = forward_cmd
-            vel_cmd.twist.linear.y = side_cmd
-            vel_cmd.twist.linear.z = height_cmd
+            vel_cmd.twist.linear.y = 0.0  # ALWAYS 0
+            vel_cmd.twist.linear.z = 0.0  # ALWAYS 0
             vel_cmd.twist.angular.z = yaw_cmd
             vel_cmd.twist.angular.x = 0.0
             vel_cmd.twist.angular.y = 0.0
 
             self.publish_velocity_command(vel_cmd)
 
-            if sum(self.camera_frame_counts.values()) % 40 == 0:
-                self.get_logger().info(f'CONTROL CMD: forward={forward_cmd:.2f}, side={side_cmd:.2f}, '
-                                     f'height={height_cmd:.2f}, yaw={yaw_cmd:.2f}')
-
+            # Logging
             if sum(self.camera_frame_counts.values()) % 60 == 0:
                 cam_name = self.camera_orientations[target_camera]['name']
                 lock_status = "LOCKED" if self.target_locked else "TRACKING"
                 self.get_logger().info(f'{lock_status} from {cam_name}: '
                                      f'dist={estimated_distance:.1f}m->target:{self.follow_distance}m, '
-                                     f'conf={self.target_lock_confidence:.2f}, '
-                                     f'err=[y:{math.degrees(world_yaw_angle):.1f}°, d:{distance_error:.1f}m], '
-                                     f'cmd=[f:{forward_cmd:.2f}, s:{side_cmd:.2f}, u:{height_cmd:.2f}, y:{yaw_cmd:.2f}]')
+                                     f'yaw_angle={math.degrees(world_yaw_angle):.1f}°, '
+                                     f'cmd=[forward:{forward_cmd:.2f}, yaw:{yaw_cmd:.2f}]')
+
         except Exception as e:
-            self.get_logger().error(f'Enhanced control loop error: {e}')
+            self.get_logger().error(f'Control loop error: {e}')
             self.hover_drone()
 
     def momentum_search_behavior(self):
-        """Handle momentum-based search behavior when target is lost"""
-        decay = self.momentum_decay_factor  # e.g., 0.95
-        for key in ['x', 'y', 'z', 'yaw']:
-            self.search_velocity[key] *= decay
-
-        # Limit velocity change to avoid PX4 flight task errors
-        max_search_vel = 0.5  # m/s, conservative for PX4
-        for key in ['x', 'y', 'z']:
-            self.search_velocity[key] = max(-max_search_vel, min(self.search_velocity[key], max_search_vel))
-        self.search_velocity['yaw'] = max(-0.8, min(self.search_velocity['yaw'], 0.8))
-
-        # If velocity is very small, stop and rotate to search
-        if abs(self.search_velocity['x']) < self.min_momentum_threshold and \
-           abs(self.search_velocity['y']) < self.min_momentum_threshold:
-            self.search_velocity['x'] = 0.0
-            self.search_velocity['y'] = 0.0
-            vel_cmd = VelCmd()
-            vel_cmd.twist.linear.x = 0.0
-            vel_cmd.twist.linear.y = 0.0
-            vel_cmd.twist.linear.z = 0.0
-            vel_cmd.twist.angular.z = 0.8  # Rotate to search
-            vel_cmd.twist.angular.x = 0.0
-            vel_cmd.twist.angular.y = 0.0
-            if self.enable_following:
-                self.cmd_vel_pub.publish(vel_cmd)
-            self.get_logger().warn('[SEARCH] Momentum search stopped: rotating in place to find target')
-            return
-
-        # Continue moving in decayed direction
+        """Simplified search behavior - only rotate in place"""
+        # When searching, just rotate slowly to find target
         vel_cmd = VelCmd()
-        vel_cmd.twist.linear.x = self.search_velocity['x']
-        vel_cmd.twist.linear.y = self.search_velocity['y']
-        vel_cmd.twist.linear.z = self.search_velocity['z']
-        vel_cmd.twist.angular.z = self.search_velocity['yaw']
+        vel_cmd.twist.linear.x = 0.0
+        vel_cmd.twist.linear.y = 0.0  # Always 0
+        vel_cmd.twist.linear.z = 0.0  # Always 0
+        vel_cmd.twist.angular.z = 0.5  # Slow rotation to search
         vel_cmd.twist.angular.x = 0.0
         vel_cmd.twist.angular.y = 0.0
 
         if self.enable_following:
             self.cmd_vel_pub.publish(vel_cmd)
-        self.get_logger().info(f'[SEARCH] Continuing momentum: x={self.search_velocity["x"]:.2f}, y={self.search_velocity["y"]:.2f}, yaw={self.search_velocity["yaw"]:.2f}')
+        
+        self.get_logger().info('[SEARCH] Rotating in place to find target')
 
     def initialize_detection_systems(self):
         """Initialize YOLOv7 + DeepSORT system"""
