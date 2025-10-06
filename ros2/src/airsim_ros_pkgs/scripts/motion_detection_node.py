@@ -403,61 +403,40 @@ class MultiCameraMotionDetectionNode(Node):
             self.collision_avoidance_cmd = None
 
         if target_person:
+            # Target found - switch to following
             if not self.takeoff_initiated and self.drone_state == 'IDLE':
                 self.initiate_takeoff()
 
-            old_id = self.target_person_id
             self.target_person_id = target_person.get('track_id')
             self.target_camera_id = target_camera
             self.last_person_detection_time = current_time
-
-            # Store position for tracking continuity between camera switches
             self.target_person_position = [target_person['world_x'], target_person['world_y']]
-            current_center = target_person.get('center')
-
-            if current_center:
-                self.target_prediction = self.predict_target_position(current_center)
-                self.last_target_center = current_center
-
-            # Add to history for trend analysis and position prediction
-            self.target_history.append({
-                'time': current_time,
-                'position': self.target_person_position,
-                'center': current_center,
-                'confidence': target_person.get('confidence', 0.5),
-                'camera_id': target_camera
-            })
 
             if self.takeoff_complete:
+                # Reset hover search when target is found
+                if hasattr(self, 'hover_search_start_time'):
+                    delattr(self, 'hover_search_start_time')
+                
                 self.following_active = True
                 self.drone_state = 'FOLLOWING'
                 self.target_person_data = target_person
 
-                # Reset search patterns when target is reacquired
-                self.lost_target_search_pattern = 0
-                self.search_momentum_active = False
-
-                if old_id != self.target_person_id and self.camera_frame_counts.get(target_camera, 0) % 30 == 0:
-                    cam_name = self.camera_orientations[target_camera]['name']
-                    self.get_logger().info(f'Following person ID: {self.target_person_id} '
-                                         f'from {cam_name} camera, confidence: {target_person.get("confidence", 0.5):.2f}')
+                cam_name = self.camera_orientations[target_camera]['name']
+                if self.camera_frame_counts.get(target_camera, 0) % 60 == 0:
+                    self.get_logger().info(f'FAST FOLLOWING: Person ID {self.target_person_id} '
+                                         f'from {cam_name} camera')
         else:
-            self.collision_avoidance_cmd = None
-            # No person detected - implement HOVER and SEARCH behavior
+            # No target found
             time_since_last = current_time - self.last_person_detection_time
-            if self.following_active and time_since_last > 1.5:  # Reduced timeout for faster response
-                self.get_logger().warn(f'Lost person ID: {self.target_person_id} from all cameras - hovering and searching')
+            
+            if self.following_active and time_since_last > 1.0:  # Lost target
+                self.get_logger().warn(f'Target lost - switching to HOVER SEARCH')
                 self.following_active = False
                 self.target_locked = False
-                self.target_lock_confidence = 0.0
-                self.drone_state = 'SEARCHING'
-                # This will trigger hover search behavior in control loop
-            elif self.following_active and time_since_last > 0.5:  # Quick response to temporary loss
-                self.drone_state = 'SEARCHING'
-                # This will trigger hover search behavior
-            elif self.takeoff_complete and not self.following_active:
-                self.drone_state = 'HOVERING'
-                self.hover_drone()
+                self.drone_state = 'HOVERING'  # This will trigger hover_search_behavior
+                
+            elif self.takeoff_complete and not self.following_active and self.drone_state != 'HOVERING':
+                self.drone_state = 'HOVERING'  # Enter hover search mode
 
     def initiate_search_pattern(self):
         """Simplified search pattern - just rotation"""
@@ -653,11 +632,15 @@ class MultiCameraMotionDetectionNode(Node):
             return
 
         if self.drone_state == 'SEARCHING':
-            self.momentum_search_behavior()
+            self.search_for_lost_target()
+            return
+
+        if self.drone_state == 'HOVERING':
+            self.hover_search_behavior()
             return
 
         if not self.following_active or not hasattr(self, 'target_person_data'):
-            if self.takeoff_complete and self.drone_state != 'SEARCHING':
+            if self.takeoff_complete:
                 self.hover_drone()
             return
 
@@ -668,7 +651,6 @@ class MultiCameraMotionDetectionNode(Node):
             bbox = person.get('bbox', [0, 0, 100, 100])
             center = person.get('center', [bbox[0] + bbox[2]/2, bbox[1] + bbox[3]/2])
             
-            # Use smoothed center position
             smoothed_center = self.smooth_target_position(center)
             if smoothed_center:
                 center = smoothed_center
@@ -677,107 +659,151 @@ class MultiCameraMotionDetectionNode(Node):
             yaw_angle, pitch_angle = self.pixel_to_world_direction(center, image_center)
             estimated_distance = self.estimate_person_distance(bbox)
 
-            # Smooth distance estimation to reduce oscillations
-            if hasattr(self, 'last_estimated_distance'):
-                alpha = 0.7  # Smoothing factor
-                estimated_distance = alpha * self.last_estimated_distance + (1 - alpha) * estimated_distance
-            self.last_estimated_distance = estimated_distance
-
             # Calculate camera offset for multi-camera support
             cam_yaw_offset = math.radians(self.camera_orientations[target_camera]['yaw'])
             world_yaw_angle = yaw_angle + cam_yaw_offset
 
-            # SIMPLIFIED CONTROL: Only X (forward) and YAW
-            # Y and Z remain 0 as requested
+            # SIMPLIFIED FOLLOWING CONTROL: Fast acceleration towards target
             
-            # YAW Control - only turn if target is significantly off-center
-            yaw_deadband = math.radians(15)  # 15 degree deadband
+            # YAW Control - turn to face target
+            yaw_deadband = math.radians(10)  # Smaller deadband for more responsive turning
             if abs(world_yaw_angle) > yaw_deadband:
-                yaw_cmd = np.sign(world_yaw_angle) * 0.8  # Simple proportional control
+                yaw_cmd = np.sign(world_yaw_angle) * 1.2  # Faster turning
             else:
                 yaw_cmd = 0.0
 
-            # X Control - simple distance-based forward movement
+            # X Control - FAST acceleration towards target
             distance_error = estimated_distance - self.follow_distance
             
-            if distance_error > 1.0:  # Too far - move forward
+            if distance_error > 2.0:  # Far away - accelerate fast
+                forward_cmd = 2.5
+            elif distance_error > 1.0:  # Medium distance - fast approach
+                forward_cmd = 2.0
+            elif distance_error > 0.5:  # Getting closer - moderate speed
                 forward_cmd = 1.5
-            elif distance_error > 0.5:
-                forward_cmd = 1.0
-            elif distance_error > 0.2:
-                forward_cmd = 0.5
-            elif distance_error < -0.5:  # Too close - move backward slowly
-                forward_cmd = -0.3
-            else:  # Just right - maintain position
-                forward_cmd = 0.1
+            elif distance_error > 0.2:  # Close - slow approach
+                forward_cmd = 0.8
+            elif distance_error < -0.5:  # Too close - back away fast
+                forward_cmd = -1.0
+            else:  # Perfect distance - maintain position
+                forward_cmd = 0.2
 
             # Y and Z commands are ZERO as requested
             side_cmd = 0.0
             height_cmd = 0.0
 
-            # Apply collision avoidance if needed (only affects X)
-            if hasattr(self, 'collision_avoidance_cmd') and self.collision_avoidance_cmd:
-                forward_cmd += self.collision_avoidance_cmd.get('x', 0.0) * 0.5
-                # Don't apply Y collision avoidance since we want Y=0
-
-            # Limit commands to safe ranges
-            forward_cmd = max(-1.0, min(forward_cmd, 2.0))
-            yaw_cmd = max(-1.0, min(yaw_cmd, 1.0))
-
             # Transform for non-front cameras
             if target_camera != self.primary_camera:
                 cos_offset = math.cos(cam_yaw_offset)
                 sin_offset = math.sin(cam_yaw_offset)
-                
-                # Only transform X, keep Y=0
                 transformed_forward = forward_cmd * cos_offset
                 forward_cmd = transformed_forward
-
-            # Store for momentum search
-            self.last_movement_direction['x'] = forward_cmd
-            self.last_movement_direction['y'] = 0.0  # Always 0
-            self.last_movement_direction['z'] = 0.0  # Always 0  
-            self.last_movement_direction['yaw'] = yaw_cmd
 
             # Create and publish velocity command
             vel_cmd = VelCmd()
             vel_cmd.twist.linear.x = forward_cmd
-            vel_cmd.twist.linear.y = 0.0  # ALWAYS 0
-            vel_cmd.twist.linear.z = 0.0  # ALWAYS 0
+            vel_cmd.twist.linear.y = 0.0  
+            vel_cmd.twist.linear.z = 0.0  
             vel_cmd.twist.angular.z = yaw_cmd
             vel_cmd.twist.angular.x = 0.0
             vel_cmd.twist.angular.y = 0.0
+
+            # Store last movement direction for hover search
+            self.last_movement_direction = forward_cmd
+            self.last_seen_target_yaw = world_yaw_angle
 
             self.publish_velocity_command(vel_cmd)
 
             # Logging
             if sum(self.camera_frame_counts.values()) % 60 == 0:
                 cam_name = self.camera_orientations[target_camera]['name']
-                lock_status = "LOCKED" if self.target_locked else "TRACKING"
-                self.get_logger().info(f'{lock_status} from {cam_name}: '
-                                     f'dist={estimated_distance:.1f}m->target:{self.follow_distance}m, '
-                                     f'yaw_angle={math.degrees(world_yaw_angle):.1f}°, '
+                self.get_logger().info(f'FAST FOLLOWING from {cam_name}: '
+                                     f'dist={estimated_distance:.1f}m, '
                                      f'cmd=[forward:{forward_cmd:.2f}, yaw:{yaw_cmd:.2f}]')
 
         except Exception as e:
             self.get_logger().error(f'Control loop error: {e}')
             self.hover_drone()
 
-    def momentum_search_behavior(self):
-        """Simplified search behavior - only rotate in place"""
-        # When searching, just rotate slowly to find target
+    def hover_search_behavior(self):
+        """New hover behavior: move straight towards last seen target, then rotate if not found"""
+        
+        # Initialize hover search timer if not exists
+        if not hasattr(self, 'hover_search_start_time'):
+            self.hover_search_start_time = time.time()
+            self.hover_search_phase = 'MOVING'  # MOVING -> ROTATING
+            self.rotation_start_time = None
+            self.total_rotation = 0.0
+            
+            # Store last movement direction when entering hover
+            if hasattr(self, 'last_movement_direction'):
+                self.hover_forward_speed = max(0.5, abs(self.last_movement_direction))
+            else:
+                self.hover_forward_speed = 0.8
+                
+            self.get_logger().info(f'HOVER SEARCH: Starting forward movement at speed {self.hover_forward_speed:.2f}')
+
+        current_time = time.time()
+        search_duration = current_time - self.hover_search_start_time
+
+        vel_cmd = VelCmd()
+        
+        if self.hover_search_phase == 'MOVING' and search_duration < 20.0:
+            # Phase 1: Move straight forward for up to 20 seconds
+            vel_cmd.twist.linear.x = self.hover_forward_speed  # Move forward
+            vel_cmd.twist.linear.y = 0.0  # Y unchanged
+            vel_cmd.twist.linear.z = 0.0  # Z unchanged
+            vel_cmd.twist.angular.z = 0.0  # No rotation
+            vel_cmd.twist.angular.x = 0.0
+            vel_cmd.twist.angular.y = 0.0
+            
+            if search_duration > 19.0:  # Warn before switching
+                self.get_logger().info('HOVER SEARCH: Switching to rotation phase')
+            
+        else:
+            # Phase 2: Stop and rotate 360 degrees
+            if self.hover_search_phase == 'MOVING':
+                self.hover_search_phase = 'ROTATING'
+                self.rotation_start_time = current_time
+                self.total_rotation = 0.0
+                self.get_logger().info('HOVER SEARCH: Starting 360° rotation')
+            
+            rotation_speed = 0.8  # rad/s
+            vel_cmd.twist.linear.x = 0.0  # X unchanged during rotation
+            vel_cmd.twist.linear.y = 0.0  # Y unchanged
+            vel_cmd.twist.linear.z = 0.0  # Z unchanged
+            vel_cmd.twist.angular.z = rotation_speed
+            vel_cmd.twist.angular.x = 0.0
+            vel_cmd.twist.angular.y = 0.0
+            
+            # Track rotation progress
+            if self.rotation_start_time:
+                rotation_duration = current_time - self.rotation_start_time
+                self.total_rotation = rotation_speed * rotation_duration
+                
+                # Complete 360 degrees (2π radians)
+                if self.total_rotation >= 2 * math.pi:
+                    self.get_logger().info('HOVER SEARCH: Completed 360° rotation, stopping')
+                    # Reset for next search cycle
+                    self.hover_search_start_time = current_time
+                    self.hover_search_phase = 'MOVING'
+                    self.rotation_start_time = None
+
+        if self.enable_following:
+            self.cmd_vel_pub.publish(vel_cmd)
+
+    def search_for_lost_target(self):
+        """Simplified search - just rotate in place"""
         vel_cmd = VelCmd()
         vel_cmd.twist.linear.x = 0.0
-        vel_cmd.twist.linear.y = 0.0  # Always 0
-        vel_cmd.twist.linear.z = 0.0  # Always 0
-        vel_cmd.twist.angular.z = 0.5  # Slow rotation to search
+        vel_cmd.twist.linear.y = 0.0
+        vel_cmd.twist.linear.z = 0.0
+        vel_cmd.twist.angular.z = 0.8  # Rotate to search
         vel_cmd.twist.angular.x = 0.0
         vel_cmd.twist.angular.y = 0.0
 
         if self.enable_following:
             self.cmd_vel_pub.publish(vel_cmd)
-        
-        self.get_logger().info('[SEARCH] Rotating in place to find target')
 
     def initialize_detection_systems(self):
         """Initialize YOLOv7 + DeepSORT system"""
