@@ -111,58 +111,18 @@ class MultiCameraMotionDetectionNode(Node):
         self.target_locked = False
         self.target_lock_confidence = 0.0
         self.target_lock_threshold = 0.7
-        self.target_history = deque(maxlen=10)
-        self.lost_target_search_pattern = 0
 
-        self.velocity_smoother = {
-            'x': deque(maxlen=8),
-            'y': deque(maxlen=8),
-            'z': deque(maxlen=8),
-            'yaw': deque(maxlen=8)
-        }
-
+        # Target position smoothing (simplified)
         self.target_position_buffer = deque(maxlen=5)
-        self.target_smoothing_factor = 0.8
-        self.max_acceleration = {
-            'x': 1.5,
-            'y': 1.5,
-            'z': 1.0,
-            'yaw': 2.0
-        }
-        self.previous_velocity = {'x': 0.0, 'y': 0.0, 'z': 0.0, 'yaw': 0.0}
 
-        self.last_target_center = None
-        self.target_prediction = None
-
+        # Drone state management (simplified)
         self.drone_state = 'IDLE'
         self.takeoff_initiated = False
         self.takeoff_complete = False
         self.current_altitude = 0.0
-        self.takeoff_start_time = None 
-        self.pid_x = {'kp': 0.6, 'ki': 0.008, 'kd': 0.03, 'prev_error': 0.0, 'integral': 0.0}
-        self.pid_y = {'kp': 0.7, 'ki': 0.005, 'kd': 0.02, 'prev_error': 0.0, 'integral': 0.0}
-        self.pid_z = {'kp': 0.35, 'ki': 0.003, 'kd': 0.01, 'prev_error': 0.0, 'integral': 0.0}
-        self.pid_yaw = {'kp': 0.8, 'ki': 0.008, 'kd': 0.04, 'prev_error': 0.0, 'integral': 0.0}
-        self.deadband_x = 0.3
-        self.deadband_y = 0.3
-        self.deadband_z = 0.3
-        self.deadband_yaw = 0.15
-        self.last_movement_direction = {'x': 0.0, 'y': 0.0, 'z': 0.0, 'yaw': 0.0}
-        self.search_velocity = {'x': 0.0, 'y': 0.0, 'z': 0.0, 'yaw': 0.0}
-        self.momentum_decay_factor = 0.65  # Faster decay for quicker stop
-        self.min_momentum_threshold = 0.18  # Higher threshold to trigger stop/rotate sooner
-        self.search_momentum_active = False
-        self.momentum_search_duration = 10.0
-        self.momentum_search_start_time = 0.0
+        self.takeoff_start_time = None
+        self.last_movement_direction = 0.0  # Simple float instead of dictionary
         self.target_person_data = None
-        self.control_loop_frequency = 15.0
-        self.image_processing_frequency = {
-            0: 15.0,
-            1: 10.0,
-            2: 10.0,
-            3: 10.0
-        }
-        self.camera_frame_skip = {i: 0 for i in range(self.num_cameras)}
         self.initialize_detection_systems()
         self.background_subtractor = None
         self.kernel = None
@@ -331,38 +291,7 @@ class MultiCameraMotionDetectionNode(Node):
 
         return None, None                        
 
-    def smooth_velocity_command(self, cmd_type, new_value):
-        """Enhanced velocity smoothing with exponential averaging and acceleration limiting"""
-        self.velocity_smoother[cmd_type].append(new_value)
-        if len(self.velocity_smoother[cmd_type]) > 1:
-            buffer_values = list(self.velocity_smoother[cmd_type])
-            smoothing_factor = 0.9
-            weights = np.array([smoothing_factor ** (len(buffer_values) - 1 - i) 
-                               for i in range(len(buffer_values))])
-            weights = weights / weights.sum()
-            smoothed = np.average(buffer_values, weights=weights)
-        else:
-            smoothed = new_value
-
-        dt = 0.067
-        conservative_max_accel = self.max_acceleration[cmd_type] * 0.6
-        max_delta = conservative_max_accel * dt
-        prev_vel = self.previous_velocity[cmd_type]
-        if abs(smoothed - prev_vel) > max_delta:
-            if smoothed > prev_vel:
-                smoothed = prev_vel + max_delta
-            else:
-                smoothed = prev_vel - max_delta
-
-        self.previous_velocity[cmd_type] = smoothed
-        return smoothed
-
-
-    def apply_deadband(self, value, deadband):
-        """Apply deadband to reduce jitter around zero"""
-        if abs(value) < deadband:
-            return 0.0
-        return value
+    # Removed unused velocity smoothing and deadband methods
 
     def smooth_target_position(self, new_center):
         """Reduced smoothing to be more responsive"""
@@ -554,28 +483,7 @@ class MultiCameraMotionDetectionNode(Node):
             return smoothed_distance
         return self.follow_distance
 
-    def pid_control(self, pid_params, error, dt):
-        """PID controller with integral windup protection"""
-        if dt <= 0:
-            return 0.0
-
-        if abs(error) < 0.05:
-            error = 0.0
-
-        max_integral = 5.0
-        if abs(error) < 0.5:
-            pid_params['integral'] = max(-max_integral, min(pid_params['integral'] + error * dt, max_integral))
-
-        derivative = (error - pid_params['prev_error']) / dt if pid_params['prev_error'] is not None else 0.0
-        if abs(derivative) > 10.0:
-            derivative = 10.0 if derivative > 0 else -10.0
-
-        output = (pid_params['kp'] * error + 
-                 pid_params['ki'] * pid_params['integral'] + 
-                 pid_params['kd'] * derivative)
-
-        pid_params['prev_error'] = error
-        return output
+    # Removed unused PID control method
 
     def update_target_data_async(self, moving_targets, camera_id, header):
         """Thread safe target data update"""
@@ -741,9 +649,10 @@ class MultiCameraMotionDetectionNode(Node):
             
             # Store last movement direction when entering hover
             if hasattr(self, 'last_movement_direction'):
-                self.hover_forward_speed = max(0.5, abs(self.last_movement_direction))
+                # Much slower - cap at 0.1 m/s for very gentle movement
+                self.hover_forward_speed = min(0.1, max(0.05, abs(self.last_movement_direction) * 0.1))
             else:
-                self.hover_forward_speed = 0.8
+                self.hover_forward_speed = 0.08
                 
             self.get_logger().info(f'HOVER: Starting movement in last direction at speed {self.hover_forward_speed:.2f}')
 
@@ -761,10 +670,11 @@ class MultiCameraMotionDetectionNode(Node):
             vel_cmd.twist.angular.x = 0.0
             vel_cmd.twist.angular.y = 0.0
             
-            # Log countdown for last 5 seconds
-            if search_duration > 15.0:
+            # Log countdown for last 3 seconds only
+            if search_duration > 17.0:
                 remaining = 20.0 - search_duration
-                self.get_logger().info(f'HOVER: Switching to stationary in {remaining:.1f} seconds')
+                if int(remaining) <= 3:  # Only log final 3 seconds
+                    self.get_logger().info(f'HOVER: Switching to stationary in {remaining:.1f} seconds')
             
         else:
             # After 20 seconds: Stay stationary (idle)
@@ -1404,22 +1314,7 @@ class MultiCameraMotionDetectionNode(Node):
         except Exception as e:
             self.get_logger().error(f'Camera {camera_id} visualization error: {e}')
 
-    def predict_target_position(self, current_center):
-        if self.last_target_center is None or current_center is None:
-            return current_center
-
-        dx = current_center[0] - self.last_target_center[0]
-        dy = current_center[1] - self.last_target_center[1]
-
-        prediction_frames = 2
-        predicted_x = current_center[0] + dx * prediction_frames
-        predicted_y = current_center[1] + dy * prediction_frames
-
-        # Clamp to image bounds
-        predicted_x = max(0, min(predicted_x, self.image_width))
-        predicted_y = max(0, min(predicted_y, self.image_height))
-
-        return [predicted_x, predicted_y]
+    # Removed unused target prediction method
 
     def calculate_target_confidence(self, target, camera_id):
         if not target:
