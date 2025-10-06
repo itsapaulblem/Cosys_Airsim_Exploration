@@ -44,7 +44,7 @@ class MultiCameraMotionDetectionNode(Node):
 
         # ROS 2 Parameters Declaration and Retrieval
         self.declare_parameter('vehicle_name', 'Drone1')
-        self.declare_parameter('confidence_threshold', 0.2)
+        self.declare_parameter('confidence_threshold', 0.15)
         self.declare_parameter('iou_threshold', 0.45)
         self.declare_parameter('motion_threshold', 15.0)
         self.declare_parameter('enable_visualization', True)
@@ -413,9 +413,11 @@ class MultiCameraMotionDetectionNode(Node):
             self.target_person_position = [target_person['world_x'], target_person['world_y']]
 
             if self.takeoff_complete:
-                # Reset hover search when target is found
+                # Reset hover attributes when target is found
                 if hasattr(self, 'hover_search_start_time'):
                     delattr(self, 'hover_search_start_time')
+                if hasattr(self, 'hover_stationary_logged'):
+                    delattr(self, 'hover_stationary_logged')
                 
                 self.following_active = True
                 self.drone_state = 'FOLLOWING'
@@ -423,46 +425,41 @@ class MultiCameraMotionDetectionNode(Node):
 
                 cam_name = self.camera_orientations[target_camera]['name']
                 if self.camera_frame_counts.get(target_camera, 0) % 60 == 0:
-                    self.get_logger().info(f'FAST FOLLOWING: Person ID {self.target_person_id} '
+                    self.get_logger().info(f'FOLLOWING: Person ID {self.target_person_id} '
                                          f'from {cam_name} camera')
         else:
             # No target found
             time_since_last = current_time - self.last_person_detection_time
             
             if self.following_active and time_since_last > 1.0:  # Lost target
-                self.get_logger().warn(f'Target lost - switching to HOVER SEARCH')
+                self.get_logger().warn(f'Target lost - switching to HOVERING')
                 self.following_active = False
                 self.target_locked = False
-                self.drone_state = 'HOVERING'  # This will trigger hover_search_behavior
+                self.drone_state = 'HOVERING'
                 
+                # Reset hover timer to start fresh 20-second cycle
+                if hasattr(self, 'hover_search_start_time'):
+                    delattr(self, 'hover_search_start_time')
+                if hasattr(self, 'hover_stationary_logged'):
+                    delattr(self, 'hover_stationary_logged')
+                    
             elif self.takeoff_complete and not self.following_active and self.drone_state != 'HOVERING':
-                self.drone_state = 'HOVERING'  # Enter hover search mode
+                self.drone_state = 'HOVERING'
+                # Reset hover timer for new hover cycle
+                if hasattr(self, 'hover_search_start_time'):
+                    delattr(self, 'hover_search_start_time')
+                if hasattr(self, 'hover_stationary_logged'):
+                    delattr(self, 'hover_stationary_logged')
 
     def initiate_search_pattern(self):
-        """Simplified search pattern - just rotation"""
-        vel_cmd = VelCmd()
-        vel_cmd.twist.linear.x = 0.0
-        vel_cmd.twist.linear.y = 0.0
-        vel_cmd.twist.linear.z = 0.0
-        vel_cmd.twist.angular.z = 0.8
-        vel_cmd.twist.angular.x = 0.0
-        vel_cmd.twist.angular.y = 0.0
-
-        if self.enable_following:
-            self.cmd_vel_pub.publish(vel_cmd)
+        """Deprecated - now using hover_search_behavior instead"""
+        # This method is kept for backward compatibility but functionality moved to hover_search_behavior
+        pass
 
     def search_for_lost_target(self):
-        """Simple search - just rotate"""
-        vel_cmd = VelCmd()
-        vel_cmd.twist.linear.x = 0.0
-        vel_cmd.twist.linear.y = 0.0
-        vel_cmd.twist.linear.z = 0.0
-        vel_cmd.twist.angular.z = 0.6  # Rotate to search
-        vel_cmd.twist.angular.x = 0.0
-        vel_cmd.twist.angular.y = 0.0
-
-        if self.enable_following:
-            self.cmd_vel_pub.publish(vel_cmd)
+        """Deprecated - now using hover_search_behavior for all search operations"""
+        # All search functionality is now handled by hover_search_behavior
+        self.hover_search_behavior()
 
     def initiate_takeoff(self):
         """Initiate drone takeoff sequence using ROS service"""
@@ -521,7 +518,7 @@ class MultiCameraMotionDetectionNode(Node):
             vel_cmd.twist.linear.z = 0.0
             vel_cmd.twist.angular.x = 0.0
             vel_cmd.twist.angular.y = 0.0
-            vel_cmd.twist.angular.z = 0.6
+            vel_cmd.twist.angular.z = 0.3  # Reduced rotation speed
             self.cmd_vel_pub.publish(vel_cmd)
             self.get_logger().info('SLOW FORWARD SEARCH: Moving forward slowly while rotating to find target')
 
@@ -626,22 +623,30 @@ class MultiCameraMotionDetectionNode(Node):
             self.cmd_vel_pub.publish(vel_cmd)
 
     def control_loop(self):
+        """Simplified 4-state control loop: IDLE, TAKING_OFF, HOVERING, FOLLOWING"""
         dt = 0.067  # ~15Hz
 
+        # State 1: TAKING_OFF - wait for completion
         if self.drone_state == 'TAKING_OFF' and not self.takeoff_complete:
             return
 
-        if self.drone_state == 'SEARCHING':
-            self.search_for_lost_target()
-            return
-
+        # State 2: HOVERING - move in last direction then stay stationary
         if self.drone_state == 'HOVERING':
             self.hover_search_behavior()
             return
 
+        # State 3: FOLLOWING - quick acceleration towards target
         if not self.following_active or not hasattr(self, 'target_person_data'):
             if self.takeoff_complete:
-                self.hover_drone()
+                # If no target and airborne, switch to hovering
+                if self.drone_state != 'HOVERING':
+                    self.drone_state = 'HOVERING'
+                    # Reset hover timer when switching states
+                    if hasattr(self, 'hover_search_start_time'):
+                        delattr(self, 'hover_search_start_time')
+                    if hasattr(self, 'hover_stationary_logged'):
+                        delattr(self, 'hover_stationary_logged')
+                self.hover_search_behavior()
             return
 
         try:
@@ -708,32 +713,31 @@ class MultiCameraMotionDetectionNode(Node):
             vel_cmd.twist.angular.x = 0.0
             vel_cmd.twist.angular.y = 0.0
 
-            # Store last movement direction for hover search
+            # Store last movement direction for hover behavior
             self.last_movement_direction = forward_cmd
-            self.last_seen_target_yaw = world_yaw_angle
 
             self.publish_velocity_command(vel_cmd)
 
             # Logging
             if sum(self.camera_frame_counts.values()) % 60 == 0:
                 cam_name = self.camera_orientations[target_camera]['name']
-                self.get_logger().info(f'FAST FOLLOWING from {cam_name}: '
+                self.get_logger().info(f'FOLLOWING from {cam_name}: '
                                      f'dist={estimated_distance:.1f}m, '
                                      f'cmd=[forward:{forward_cmd:.2f}, yaw:{yaw_cmd:.2f}]')
 
         except Exception as e:
             self.get_logger().error(f'Control loop error: {e}')
-            self.hover_drone()
+            # On error, switch to hovering
+            self.drone_state = 'HOVERING'
+            if hasattr(self, 'hover_search_start_time'):
+                delattr(self, 'hover_search_start_time')
 
     def hover_search_behavior(self):
-        """New hover behavior: move straight towards last seen target, then rotate if not found"""
+        """Simplified hover behavior: move in last seen direction for 20 seconds, then stay stationary"""
         
         # Initialize hover search timer if not exists
         if not hasattr(self, 'hover_search_start_time'):
             self.hover_search_start_time = time.time()
-            self.hover_search_phase = 'MOVING'  # MOVING -> ROTATING
-            self.rotation_start_time = None
-            self.total_rotation = 0.0
             
             # Store last movement direction when entering hover
             if hasattr(self, 'last_movement_direction'):
@@ -741,69 +745,48 @@ class MultiCameraMotionDetectionNode(Node):
             else:
                 self.hover_forward_speed = 0.8
                 
-            self.get_logger().info(f'HOVER SEARCH: Starting forward movement at speed {self.hover_forward_speed:.2f}')
+            self.get_logger().info(f'HOVER: Starting movement in last direction at speed {self.hover_forward_speed:.2f}')
 
         current_time = time.time()
         search_duration = current_time - self.hover_search_start_time
 
         vel_cmd = VelCmd()
         
-        if self.hover_search_phase == 'MOVING' and search_duration < 20.0:
-            # Phase 1: Move straight forward for up to 20 seconds
-            vel_cmd.twist.linear.x = self.hover_forward_speed  # Move forward
-            vel_cmd.twist.linear.y = 0.0  # Y unchanged
-            vel_cmd.twist.linear.z = 0.0  # Z unchanged
-            vel_cmd.twist.angular.z = 0.0  # No rotation
+        if search_duration < 20.0:
+            # First 20 seconds: Move in last seen target direction
+            vel_cmd.twist.linear.x = self.hover_forward_speed
+            vel_cmd.twist.linear.y = 0.0
+            vel_cmd.twist.linear.z = 0.0
+            vel_cmd.twist.angular.z = 0.0
             vel_cmd.twist.angular.x = 0.0
             vel_cmd.twist.angular.y = 0.0
             
-            if search_duration > 19.0:  # Warn before switching
-                self.get_logger().info('HOVER SEARCH: Switching to rotation phase')
+            # Log countdown for last 5 seconds
+            if search_duration > 15.0:
+                remaining = 20.0 - search_duration
+                self.get_logger().info(f'HOVER: Switching to stationary in {remaining:.1f} seconds')
             
         else:
-            # Phase 2: Stop and rotate 360 degrees
-            if self.hover_search_phase == 'MOVING':
-                self.hover_search_phase = 'ROTATING'
-                self.rotation_start_time = current_time
-                self.total_rotation = 0.0
-                self.get_logger().info('HOVER SEARCH: Starting 360° rotation')
-            
-            rotation_speed = 0.8  # rad/s
-            vel_cmd.twist.linear.x = 0.0  # X unchanged during rotation
-            vel_cmd.twist.linear.y = 0.0  # Y unchanged
-            vel_cmd.twist.linear.z = 0.0  # Z unchanged
-            vel_cmd.twist.angular.z = rotation_speed
+            # After 20 seconds: Stay stationary (idle)
+            vel_cmd.twist.linear.x = 0.0
+            vel_cmd.twist.linear.y = 0.0
+            vel_cmd.twist.linear.z = 0.0
+            vel_cmd.twist.angular.z = 0.0
             vel_cmd.twist.angular.x = 0.0
             vel_cmd.twist.angular.y = 0.0
             
-            # Track rotation progress
-            if self.rotation_start_time:
-                rotation_duration = current_time - self.rotation_start_time
-                self.total_rotation = rotation_speed * rotation_duration
-                
-                # Complete 360 degrees (2π radians)
-                if self.total_rotation >= 2 * math.pi:
-                    self.get_logger().info('HOVER SEARCH: Completed 360° rotation, stopping')
-                    # Reset for next search cycle
-                    self.hover_search_start_time = current_time
-                    self.hover_search_phase = 'MOVING'
-                    self.rotation_start_time = None
+            # Log once when switching to stationary
+            if not hasattr(self, 'hover_stationary_logged'):
+                self.hover_stationary_logged = True
+                self.get_logger().info('HOVER: Now stationary - waiting for target')
 
         if self.enable_following:
             self.cmd_vel_pub.publish(vel_cmd)
 
     def search_for_lost_target(self):
-        """Simplified search - just rotate in place"""
-        vel_cmd = VelCmd()
-        vel_cmd.twist.linear.x = 0.0
-        vel_cmd.twist.linear.y = 0.0
-        vel_cmd.twist.linear.z = 0.0
-        vel_cmd.twist.angular.z = 0.8  # Rotate to search
-        vel_cmd.twist.angular.x = 0.0
-        vel_cmd.twist.angular.y = 0.0
-
-        if self.enable_following:
-            self.cmd_vel_pub.publish(vel_cmd)
+        """Deprecated - redirects to hover_search_behavior"""
+        # All search functionality consolidated into hover_search_behavior
+        self.hover_search_behavior()
 
     def initialize_detection_systems(self):
         """Initialize YOLOv7 + DeepSORT system"""
