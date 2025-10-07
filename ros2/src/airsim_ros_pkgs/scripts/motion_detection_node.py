@@ -44,7 +44,7 @@ class MultiCameraMotionDetectionNode(Node):
 
         # ROS 2 Parameters Declaration and Retrieval
         self.declare_parameter('vehicle_name', 'Drone1')
-        self.declare_parameter('confidence_threshold', 0.15)
+        self.declare_parameter('confidence_threshold', 0.08)
         self.declare_parameter('iou_threshold', 0.45)
         self.declare_parameter('motion_threshold', 15.0)
         self.declare_parameter('enable_visualization', True)
@@ -110,7 +110,7 @@ class MultiCameraMotionDetectionNode(Node):
         self.target_person_position = None
         self.target_locked = False
         self.target_lock_confidence = 0.0
-        self.target_lock_threshold = 0.7
+        self.target_lock_threshold = 0.4
 
         # Target position smoothing (simplified)
         self.target_position_buffer = deque(maxlen=5)
@@ -121,7 +121,7 @@ class MultiCameraMotionDetectionNode(Node):
         self.takeoff_complete = False
         self.current_altitude = 0.0
         self.takeoff_start_time = None
-        self.last_movement_direction = 0.0  # Simple float instead of dictionary
+        self.last_movement_direction = 0.0
         self.target_person_data = None
         self.initialize_detection_systems()
         self.background_subtractor = None
