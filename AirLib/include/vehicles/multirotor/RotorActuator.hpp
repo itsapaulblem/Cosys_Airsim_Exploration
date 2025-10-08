@@ -62,9 +62,12 @@ namespace airlib
             control_signal_filter_.setInput(Utils::clip(control_signal, 0.0f, 1.0f));
         }
 
-        Output getOutput() const
+        const Output& getOutput() const
         {
-            return output_;
+            Output modified_output = output_;
+            modified_output.thrust *= weather_efficiency_factor_;
+            modified_output.torque_scaler *= weather_efficiency_factor_;
+            return modified_output;
         }
 
         //*** Start: UpdatableState implementation ***//
@@ -104,6 +107,13 @@ namespace airlib
             reporter.writeValue("thrust", output_.thrust);
             reporter.writeValue("torque", output_.torque_scaler);
         }
+
+        void setWeatherEfficiencyFactor(real_T efficiency)
+        {
+           weather_efficiency_factor_ = std::clamp(efficiency, 0.5f, 1.0f);
+        }
+
+
         //*** End: UpdatableState implementation ***//
 
     protected:
@@ -134,6 +144,7 @@ namespace airlib
         }
 
     private: //fields
+        real_T weather_efficiency_factor_ = 1.0f;
         uint id_; //only used for debug messages
         RotorTurningDirection turning_direction_;
         RotorParams params_;

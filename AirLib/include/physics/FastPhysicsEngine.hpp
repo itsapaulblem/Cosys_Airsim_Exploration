@@ -334,7 +334,6 @@ namespace airlib
                                                  Kinematics::State& next, Wrench& next_wrench, const Vector3r& wind, const Vector3r& ext_force)
         {
             const real_T dt_real = static_cast<real_T>(dt);
-
             Vector3r avg_linear = Vector3r::Zero();
             Vector3r avg_angular = Vector3r::Zero();
 
@@ -368,7 +367,12 @@ namespace airlib
                 Wrench ext_force_wrench = Wrench::zero();
                 ext_force_wrench.force = ext_force;
 
-                next_wrench = body_wrench + drag_wrench + ext_force_wrench;
+                Wrench weather_wrench = Wrench::zero();
+                if (auto* multirotor_body = dynamic_cast<const MultiRotorPhysicsBody*>(&body)) {
+                    weather_wrench.force = multirotor_body->getExternalWeatherForce();
+                }
+
+                next_wrench = body_wrench + drag_wrench + ext_force_wrench + weather_wrench;
 
                 //Utils::log(Utils::stringf("B-WRN %s: ", VectorMath::toString(body_wrench.force).c_str()));
                 //Utils::log(Utils::stringf("D-WRN %s: ", VectorMath::toString(drag_wrench.force).c_str()));

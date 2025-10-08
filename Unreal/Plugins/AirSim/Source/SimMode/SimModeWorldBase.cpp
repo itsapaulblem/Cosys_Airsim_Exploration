@@ -3,6 +3,7 @@
 #include "physics/ExternalPhysicsEngine.hpp"
 #include <exception>
 #include "AirBlueprintLib.h"
+#include "api/WeatherApi.hpp"
 
 void ASimModeWorldBase::BeginPlay()
 {
@@ -182,4 +183,67 @@ void ASimModeWorldBase::reset()
 std::string ASimModeWorldBase::getDebugReport()
 {
     return physics_world_->getDebugReport();
+}
+
+// Weather control implementation
+void ASimModeWorldBase::SetWeatherEffect(const FString& WeatherType, float Intensity)
+{
+    std::string weather_type = TCHAR_TO_UTF8(*WeatherType);
+    updateEnvironmentWeather(weather_type, Intensity);
+}
+
+void ASimModeWorldBase::updateEnvironmentWeather(const std::string& weather_type, float intensity)
+{
+    if (!physics_world_) return;
+
+    // Get the WeatherApi instance and update all registered environments
+    auto& weather_api = msr::airlib::WeatherApi::getInstance();
+    
+    // Update weather parameters based on type
+    if (weather_type == "rain") {
+        weather_api.setWeatherFromUI(intensity, 0.0f, 0.0f, 0.0f, 0.0f);
+    }
+    else if (weather_type == "snow") {
+        weather_api.setWeatherFromUI(0.0f, intensity, 0.0f, 0.0f, 0.0f);
+    }
+    else if (weather_type == "dust") {
+        weather_api.setWeatherFromUI(0.0f, 0.0f, intensity, 0.0f, 0.0f);
+    }
+    else if (weather_type == "fog") {
+        weather_api.setWeatherFromUI(0.0f, 0.0f, 0.0f, intensity, 0.0f);
+    }
+    else if (weather_type == "leaves") {
+        weather_api.setWeatherFromUI(0.0f, 0.0f, 0.0f, 0.0f, intensity);
+    }
+
+    // Alternative direct approach - get all vehicle environments and update them directly
+    auto api_provider = getApiProvider();
+    if (api_provider) {
+        auto vehicle_apis = api_provider->getVehicleSimApis();
+        for (auto& pair : vehicle_apis) {
+            auto* vehicle_sim_api = pair.second;
+            if (vehicle_sim_api) {
+                auto* physics_body = vehicle_sim_api->getPhysicsBody();
+                if (physics_body && physics_body->hasEnvironment()) {
+                    auto& environment = physics_body->getEnvironment();
+                    
+                    if (weather_type == "rain") {
+                        environment.setRainIntensity(intensity);
+                    }
+                    else if (weather_type == "snow") {
+                        environment.setSnowIntensity(intensity);
+                    }
+                    else if (weather_type == "dust") {
+                        environment.setDustIntensity(intensity);
+                    }
+                    else if (weather_type == "fog") {
+                        environment.setFogIntensity(intensity);
+                    }
+                    else if (weather_type == "leaves") {
+                        environment.setFallingLeavesIntensity(intensity);
+                    }
+                }
+            }
+        }
+    }
 }

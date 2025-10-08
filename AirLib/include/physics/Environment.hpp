@@ -30,6 +30,16 @@ namespace airlib
             real_T temperature;
             real_T air_density;
 
+            // Weather physics fields
+            Vector3r wind_velocity = Vector3r::Zero();
+            real_T wind_turbulence = 0.0f;
+            real_T precipitation_rate = 0.0f;
+            real_T dust_density = 0.0f;
+            real_T fog_density = 0.0f;
+            real_T falling_leaves_density = 0.0f;
+            real_T visibility = 10000.0f;
+            real_T humidity = 0.5f;
+
             State()
             {
             }
@@ -38,6 +48,48 @@ namespace airlib
             {
             }
         };
+
+        void setWeatherConditions(real_T rain, real_T snow, real_T dust, real_T fog) {
+            current_.precipitation_rate = std::max(rain, snow);
+            current_.dust_density = dust;
+            current_.fog_density = fog;
+
+            real_T base_visibility = 10000.0f;
+            base_visibility *= (1.0f - current_.precipitation_rate * 0.8f);
+            base_visibility *= (1.0f - current_.dust_density * 0.9f);
+            base_visibility *= (1.0f - current_.fog_density * 0.95f);
+            current_.visibility = std::max(base_visibility, 50.0f);
+        }
+
+        Vector3r getWindVelocity() const
+        {
+            return current_.wind_velocity;
+        }
+
+        real_T getWindTurbulence() const
+        {
+            return current_.wind_turbulence;
+        }
+
+        real_T getPrecipitationRate() const
+        {
+            return current_.precipitation_rate;
+        }
+
+        real_T getDustDensity() const
+        {
+            return current_.dust_density;
+        }
+
+        real_T getFogDensity() const
+        {
+            return current_.fog_density;
+        }
+
+        real_T getVisibility() const
+        {
+            return current_.visibility;
+        }
 
     public:
         Environment()
@@ -93,6 +145,35 @@ namespace airlib
             updateState(current_);
         }
 
+        // Weather control methods
+        void setRainIntensity(real_T intensity) {
+            current_.precipitation_rate = std::max(current_.precipitation_rate, intensity);
+        }
+
+        void setSnowIntensity(real_T intensity) {
+            current_.precipitation_rate = std::max(current_.precipitation_rate, intensity);
+        }
+
+        void setDustIntensity(real_T intensity) {
+            current_.dust_density = intensity;
+        }
+
+        void setFogIntensity(real_T intensity) {
+            current_.fog_density = intensity;
+        }
+
+        void setFallingLeavesIntensity(real_T intensity) {
+            current_.falling_leaves_density = intensity;
+        }
+
+        void setWindVelocity(const Vector3r& wind_velocity) {
+            current_.wind_velocity = wind_velocity;
+        }
+
+        void setTurbulenceIntensity(real_T intensity) {
+            current_.wind_turbulence = intensity;
+        }
+
     protected:
         virtual void resetImplementation() override
         {
@@ -118,6 +199,21 @@ namespace airlib
             state.air_pressure = EarthUtils::getStandardPressure(geo_pot, state.temperature);
             state.air_density = EarthUtils::getAirDensity(state.air_pressure, state.temperature);
 
+            if (state.humidity > 0) {
+                real_T humidity_factor = 1.0f - (state.humidity * 0.025f);
+                state.air_density *= humidity_factor;
+            }
+
+            if (state.dust_density > 0) {
+                real_T dust_factor = 1.0f + (state.dust_density * 0.03f);
+                state.air_density *= dust_factor;
+            }
+
+            if (state.precipitation_rate > 0) {
+                real_T rain_factor = 1.0f + (state.precipitation_rate * 0.015f);
+                state.air_density *= rain_factor;
+            }
+            
             //TODO: avoid recalculating square roots
             state.gravity = Vector3r(0, 0, EarthUtils::getGravity(state.geo_point.altitude));
         }

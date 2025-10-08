@@ -567,6 +567,23 @@ namespace airlib
             bool move_sun = true;
         };
 
+        struct WeatherSetting
+        {
+            bool enable_physics = true;
+            real_T default_wind_speed = 0.0f;
+            real_T default_wind_direction = 0.0f;  // degrees
+            real_T turbulence_factor = 1.0f;
+            real_T rain_physics_intensity = 0.0f;
+            real_T snow_physics_intensity = 0.0f;
+            real_T dust_physics_intensity = 0.0f;
+            real_T fog_physics_intensity = 0.0f;
+            bool auto_generate_wind = true; // Generate wind based on weather conditions
+            
+            WeatherSetting()
+            {
+            }
+        };
+
     private: //fields
         float settings_version_actual;
         float settings_version_minimum = 2.0f;
@@ -612,6 +629,9 @@ namespace airlib
         Vector3r ext_force = Vector3r::Zero();
         std::string material_list_file = "";
         std::string settings_text_ = "";
+        
+        // Weather physics configuration
+        WeatherSetting weather_setting;
 
     public: //methods
         static AirSimSettings& singleton()
@@ -1698,6 +1718,22 @@ namespace airlib
                 Settings child_json;
                 if (settings_json.getChild("ExternalForce", child_json)) {
                     ext_force = createVectorSetting(child_json, ext_force);
+                }
+            }
+
+            {
+                // Weather physics settings
+                Settings weather_settings_json;
+                if (settings_json.getChild("WeatherPhysics", weather_settings_json)) {
+                    weather_setting.enable_physics = weather_settings_json.getBool("EnablePhysics", weather_setting.enable_physics);
+                    weather_setting.default_wind_speed = weather_settings_json.getFloat("DefaultWindSpeed", weather_setting.default_wind_speed);
+                    weather_setting.default_wind_direction = weather_settings_json.getFloat("DefaultWindDirection", weather_setting.default_wind_direction);
+                    weather_setting.turbulence_factor = weather_settings_json.getFloat("TurbulenceFactor", weather_setting.turbulence_factor);
+                    weather_setting.rain_physics_intensity = weather_settings_json.getFloat("RainPhysicsIntensity", weather_setting.rain_physics_intensity);
+                    weather_setting.snow_physics_intensity = weather_settings_json.getFloat("SnowPhysicsIntensity", weather_setting.snow_physics_intensity);
+                    weather_setting.dust_physics_intensity = weather_settings_json.getFloat("DustPhysicsIntensity", weather_setting.dust_physics_intensity);
+                    weather_setting.fog_physics_intensity = weather_settings_json.getFloat("FogPhysicsIntensity", weather_setting.fog_physics_intensity);
+                    weather_setting.auto_generate_wind = weather_settings_json.getBool("AutoGenerateWind", weather_setting.auto_generate_wind);
                 }
             }
         }

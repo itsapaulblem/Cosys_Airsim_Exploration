@@ -1,4 +1,5 @@
 // Fill out your copyright notice in the Description page of Project Settings.
+#include "api/WeatherApi.hpp"
 #include "WeatherLib.h"
 #include "Materials/MaterialParameterCollection.h"
 #include "Runtime/Engine/Classes/Kismet/GameplayStatics.h"
@@ -88,6 +89,14 @@ void UWeatherLib::setWeatherParamScalar(UWorld* World, EWeatherParamScalar Param
             WeatherMaterialCollectionInstance->SetScalarParameterValue(ParamName, 0.0f);
         }
 
+        msr::airlib::WeatherApi& weather_api = msr::airlib::WeatherApi::getInstance();
+        
+        float rain = getWeatherParamScalar(World, EWeatherParamScalar::WEATHER_PARAM_SCALAR_RAIN);
+        float snow = getWeatherParamScalar(World, EWeatherParamScalar::WEATHER_PARAM_SCALAR_SNOW);
+        float dust = getWeatherParamScalar(World, EWeatherParamScalar::WEATHER_PARAM_SCALAR_DUST);
+        float fog = getWeatherParamScalar(World, EWeatherParamScalar::WEATHER_PARAM_SCALALR_FOG);
+
+        weather_api.setWeatherFromUI(rain, snow, dust, fog);
         if (weather_fog_) {
             weather_fog_->GetRootComponent()->SetVisibility(true);
         }

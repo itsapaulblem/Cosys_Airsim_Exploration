@@ -37,6 +37,46 @@ if [ ! -d "./external/rpclib/$RPC_VERSION_FOLDER" ]; then
     exit 1
 fi
 
+# FIXED: Complete rpclib setup with all required files
+echo "Setting up rpclib files for CMake..."
+pushd "./external/rpclib" >/dev/null
+
+# Remove any existing symlinks first
+find . -maxdepth 1 -type l -delete 2>/dev/null || true
+
+# Create any missing files that CMake expects FIRST
+if [ ! -f "$RPC_VERSION_FOLDER/doc/pages/versions.md.in" ]; then
+    mkdir -p "$RPC_VERSION_FOLDER/doc/pages"
+    echo "# RPC Library Version @RPCLIB_VERSION@" > "$RPC_VERSION_FOLDER/doc/pages/versions.md.in"
+    echo "Created missing versions.md.in file"
+fi
+
+# Create symlinks to all files and directories from rpclib-2.3.1
+ln -sf "$RPC_VERSION_FOLDER/CMakeLists.txt" CMakeLists.txt
+ln -sf "$RPC_VERSION_FOLDER/cmake" cmake
+ln -sf "$RPC_VERSION_FOLDER/include" include
+ln -sf "$RPC_VERSION_FOLDER/lib" lib
+ln -sf "$RPC_VERSION_FOLDER/dependencies" dependencies
+ln -sf "$RPC_VERSION_FOLDER/doc" doc
+ln -sf "$RPC_VERSION_FOLDER/examples" examples
+ln -sf "$RPC_VERSION_FOLDER/tests" tests
+
+# Link additional files
+if [ -f "$RPC_VERSION_FOLDER/rpclib.pc.in" ]; then
+    ln -sf "$RPC_VERSION_FOLDER/rpclib.pc.in" rpclib.pc.in
+fi
+
+# Link any other files in the root directory
+for file in "$RPC_VERSION_FOLDER"/*; do
+    filename=$(basename "$file")
+    if [ -f "$file" ] && [ ! -L "$filename" ] && [ ! -f "$filename" ]; then
+        ln -sf "$RPC_VERSION_FOLDER/$filename" "$filename"
+    fi
+done
+
+popd >/dev/null
+echo "rpclib setup completed successfully."
+
 # check for local cmake build created by setup.sh
 if [ -d "./cmake_build" ]; then
     if [ "$(uname)" == "Darwin" ]; then
@@ -111,7 +151,7 @@ pushd $build_dir  >/dev/null
 # final linking of the binaries can fail due to a missing libc++abi library
 # (happens on Fedora, see https://bugzilla.redhat.com/show_bug.cgi?id=1332306).
 # So we only build the libraries here for now
-make -j"$(nproc)"
+make -lc++fs -j"$(nproc)"
 popd >/dev/null
 
 mkdir -p AirLib/lib/x64/$folder_name
@@ -123,7 +163,7 @@ cp $build_dir/output/lib/librpc.a AirLib/deps/rpclib/lib/librpc.a
 
 # Update AirLib/lib, AirLib/deps, Plugins folders with new binaries
 rsync -a --delete $build_dir/output/lib/ AirLib/lib/x64/$folder_name
-rsync -a --delete external/rpclib/include AirLib/deps/rpclib
+rsync -a --delete external/rpclib/$RPC_VERSION_FOLDER/include AirLib/deps/rpclib
 rsync -a --delete MavLinkCom/include AirLib/deps/MavLinkCom
 rsync -a --delete AirLib Unreal/Plugins/AirSim/Source
 rm -rf Unreal/Plugins/AirSim/Source/AirLib/src

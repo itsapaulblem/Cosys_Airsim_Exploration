@@ -15,6 +15,7 @@
 #include <memory>
 #include "vehicles/multirotor/api/MultirotorRpcLibServer.hpp"
 #include "common/SteppableClock.hpp"
+#include "api/WeatherApi.hpp"
 
 void ASimModeWorldMultiRotor::BeginPlay()
 {
@@ -128,6 +129,18 @@ std::unique_ptr<PawnSimApi> ASimModeWorldMultiRotor::createVehicleSimApi(
 {
     auto vehicle_sim_api = std::unique_ptr<PawnSimApi>(new MultirotorPawnSimApi(pawn_sim_api_params));
     vehicle_sim_api->initialize();
+
+    auto* multirotor_sim_api = static_cast<MultirotorPawnSimApi*>(vehicle_sim_api.get());
+    if (multirotor_sim_api && multirotor_sim_api->getVehicleApi()) {
+        auto* vehicle_api = multirotor_sim_api->getVehicleApi();
+
+        if (auto* physics_body = vehicle_api->getPhysicsBody()) {
+            msr::airlib::WeatherApi::getInstance().registerEnvironment(
+                pawn_sim_api_params.vehicle_name,
+                &physics_body->getEnvironment()
+            );
+        }
+    }
     //For multirotors the vehicle_sim_api are in PhysicsWOrld container and then get reseted when world gets reseted
     //vehicle_sim_api->reset();
     return vehicle_sim_api;

@@ -575,8 +575,6 @@ class MultiCameraMotionDetectionNode(Node):
             # Calculate camera offset for multi-camera support
             cam_yaw_offset = math.radians(self.camera_orientations[target_camera]['yaw'])
             world_yaw_angle = yaw_angle + cam_yaw_offset
-
-            # SIMPLIFIED FOLLOWING CONTROL: Fast acceleration towards target
             
             # YAW Control - turn to face target
             yaw_deadband = math.radians(10)  # Smaller deadband for more responsive turning
@@ -585,53 +583,59 @@ class MultiCameraMotionDetectionNode(Node):
             else:
                 yaw_cmd = 0.0
 
-            # X Control - FAST acceleration towards target
+            # Multi-directional movement based on which camera sees target
             distance_error = estimated_distance - self.follow_distance
             
-            if distance_error > 2.0:  # Far away - accelerate fast
-                forward_cmd = 2.5
-            elif distance_error > 1.0:  # Medium distance - fast approach
-                forward_cmd = 2.0
-            elif distance_error > 0.5:  # Getting closer - moderate speed
-                forward_cmd = 1.5
-            elif distance_error > 0.2:  # Close - slow approach
-                forward_cmd = 0.8
-            elif distance_error < -0.5:  # Too close - back away fast
-                forward_cmd = -1.0
-            else:  # Perfect distance - maintain position
-                forward_cmd = 0.2
+            # Calculate base movement speed
+            if distance_error > 2.0:
+                move_speed = 2.5
+            elif distance_error > 1.0:
+                move_speed = 2.0
+            elif distance_error > 0.5:
+                move_speed = 1.5
+            elif distance_error > 0.2:
+                move_speed = 0.8
+            elif distance_error < -0.5:
+                move_speed = -1.0
+            else:
+                move_speed = 0.2
 
-            # Y and Z commands are ZERO as requested
-            side_cmd = 0.0
-            height_cmd = 0.0
-
-            # Transform for non-front cameras
-            if target_camera != self.primary_camera:
-                cos_offset = math.cos(cam_yaw_offset)
-                sin_offset = math.sin(cam_yaw_offset)
-                transformed_forward = forward_cmd * cos_offset
-                forward_cmd = transformed_forward
+            if target_camera == 0:  # Front camera
+                forward_cmd = move_speed
+                side_cmd = 0.0
+            elif target_camera == 1:  # Right camera  
+                forward_cmd = 0.0
+                side_cmd = -move_speed  # Move right (negative Y)
+            elif target_camera == 2:  # Back camera
+                forward_cmd = -move_speed  # Move backward
+                side_cmd = 0.0
+            elif target_camera == 3:  # Left camera
+                forward_cmd = 0.0  
+                side_cmd = move_speed   # Move left (positive Y)
+            else:
+                forward_cmd = move_speed  # Default to forward
+                side_cmd = 0.0
 
             # Create and publish velocity command
             vel_cmd = VelCmd()
             vel_cmd.twist.linear.x = forward_cmd
-            vel_cmd.twist.linear.y = 0.0  
+            vel_cmd.twist.linear.y = side_cmd 
             vel_cmd.twist.linear.z = 0.0  
             vel_cmd.twist.angular.z = yaw_cmd
             vel_cmd.twist.angular.x = 0.0
             vel_cmd.twist.angular.y = 0.0
 
             # Store last movement direction for hover behavior
-            self.last_movement_direction = forward_cmd
+            self.last_movement_direction = max(abs(forward_cmd), abs(side_cmd))
 
             self.publish_velocity_command(vel_cmd)
 
-            # Logging
+            # Enhanced logging
+            cam_name = self.camera_orientations[target_camera]['name']
             if sum(self.camera_frame_counts.values()) % 60 == 0:
-                cam_name = self.camera_orientations[target_camera]['name']
                 self.get_logger().info(f'FOLLOWING from {cam_name}: '
                                      f'dist={estimated_distance:.1f}m, '
-                                     f'cmd=[forward:{forward_cmd:.2f}, yaw:{yaw_cmd:.2f}]')
+                                     f'cmd=[x:{forward_cmd:.2f}, y:{side_cmd:.2f}, yaw:{yaw_cmd:.2f}]')
 
         except Exception as e:
             self.get_logger().error(f'Control loop error: {e}')
