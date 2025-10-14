@@ -29,6 +29,7 @@ STRICT_MODE_OFF
 #include "common/common_utils/WindowsApisCommonPost.hpp"
 
 #include "api/RpcLibAdaptorsBase.hpp"
+#include "api/WeatherApi.hpp"
 #include <functional>
 #include <thread>
 
@@ -38,6 +39,46 @@ namespace msr
 {
 namespace airlib
 {
+    // Implement missing virtual methods
+    VehicleApiBase* RpcLibServerBase::getVehicleApi(const std::string& vehicle_name)
+    {
+        auto* api = api_provider_->getVehicleApi(vehicle_name);
+        if (api)
+            return api;
+        else
+            throw ApiNotSupported("Vehicle API for '" + vehicle_name + "' is not available. This could either because this is simulation-only API or this vehicle does not exist");
+    }
+
+    VehicleSimApiBase* RpcLibServerBase::getVehicleSimApi(const std::string& vehicle_name)
+    {
+        auto* api = api_provider_->getVehicleSimApi(vehicle_name);
+        if (api)
+            return api;
+        else
+            throw ApiNotSupported("Vehicle Sim-API for '" + vehicle_name + "' is not available. This could either because this is not a simulation or this vehicle does not exist");
+    }
+
+    WorldSimApiBase* RpcLibServerBase::getWorldSimApi()
+    {
+        auto* api = api_provider_->getWorldSimApi();
+        if (api)
+            return api;
+        else
+            throw ApiNotSupported("World-Sim API ' is not available. This could be because this is not a simulation");
+    }
+
+    // Wind physics API
+    void RpcLibServerBase::setWind(const msr::airlib::Vector3r& wind)
+    {
+        getWorldSimApi()->setWind(wind);
+    }
+
+    msr::airlib::Vector3r RpcLibServerBase::getWind() const
+    {
+        // Return current wind from WeatherApi
+        const auto& weather_api = msr::airlib::WeatherApi::getInstance();
+        return weather_api.getCurrentWeather().wind_velocity;
+    }
 
     struct RpcLibServerBase::impl
     {
@@ -653,6 +694,39 @@ namespace airlib
     void* RpcLibServerBase::getServer() const
     {
         return &pimpl_->server;
+    }
+
+    void RpcLibServerBase::registerWeatherWindCallback()
+    {
+        msr::airlib::WeatherApi& weather_api = msr::airlib::WeatherApi::getInstance();
+        
+        // Register wind callback for simSetWind API
+        weather_api.registerWindCallback([this](const msr::airlib::Vector3r& wind) {
+            try {
+                auto* world_sim_api = getWorldSimApi();
+                if (world_sim_api) {
+                    world_sim_api->setWind(wind);
+                }
+            } catch (...) {
+                // Silently handle errors
+            }
+        });
+
+        // Register weather physics callback for comprehensive weather effects
+        weather_api.registerWeatherPhysicsCallback([this](const msr::airlib::WeatherApi::WeatherParams& weather) {
+            try {
+                auto* world_sim_api = getWorldSimApi();
+                if (world_sim_api) {
+                    // Apply wind effects
+                    world_sim_api->setWind(weather.wind_velocity);
+                    
+                    // Note: Additional physics effects are handled by the physics bodies themselves
+                    // through the Environment class integration
+                }
+            } catch (...) {
+                // Silently handle errors
+            }
+        });
     }
 }
 } //namespace

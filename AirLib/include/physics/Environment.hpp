@@ -63,12 +63,24 @@ namespace airlib
 
         Vector3r getWindVelocity() const
         {
-            return current_.wind_velocity;
+            return wind_velocity_;
+        }
+
+        float getRainIntensity() const {
+            return rain_intensity_;
+        }
+
+        float getSnowIntensity() const {
+            return snow_intensity_;
+        }
+
+        float getTurbulenceIntensity() const {
+            return turbulence_factor_;
         }
 
         real_T getWindTurbulence() const
         {
-            return current_.wind_turbulence;
+            return turbulence_factor_;
         }
 
         real_T getPrecipitationRate() const
@@ -76,19 +88,31 @@ namespace airlib
             return current_.precipitation_rate;
         }
 
-        real_T getDustDensity() const
+        real_T getDustIntensity() const
         {
-            return current_.dust_density;
+            return dust_intensity_;
         }
 
         real_T getFogDensity() const
         {
-            return current_.fog_density;
+            return fog_intensity_;
         }
 
         real_T getVisibility() const
         {
             return current_.visibility;
+        }
+
+        void setWindVelocity(const Vector3r& wind_velocity)
+        {
+            wind_velocity_ = wind_velocity;
+            current_.wind_velocity = wind_velocity;
+        }
+
+        void setTurbulenceIntensity(real_T turbulence)
+        {
+            turbulence_factor_ = std::max(0.0f, std::min(1.0f, static_cast<float>(turbulence)));
+            current_.wind_turbulence = turbulence_factor_;
         }
 
     public:
@@ -146,33 +170,32 @@ namespace airlib
         }
 
         // Weather control methods
-        void setRainIntensity(real_T intensity) {
-            current_.precipitation_rate = std::max(current_.precipitation_rate, intensity);
-        }
 
-        void setSnowIntensity(real_T intensity) {
-            current_.precipitation_rate = std::max(current_.precipitation_rate, intensity);
-        }
+            // Clamp helper for C++11
+            template <typename T>
+            static T clamp(T val, T min_val, T max_val) {
+                return std::max(min_val, std::min(val, max_val));
+            }
 
-        void setDustIntensity(real_T intensity) {
-            current_.dust_density = intensity;
-        }
+            void setRainIntensity(real_T intensity) {
+                rain_intensity_ = clamp(intensity, 0.0f, 1.0f);
+            }
 
-        void setFogIntensity(real_T intensity) {
-            current_.fog_density = intensity;
-        }
+            void setSnowIntensity(real_T intensity) {
+                snow_intensity_ = clamp(intensity, 0.0f, 1.0f);
+            }
 
-        void setFallingLeavesIntensity(real_T intensity) {
-            current_.falling_leaves_density = intensity;
-        }
+            void setDustIntensity(real_T intensity) {
+                dust_intensity_ = clamp(intensity, 0.0f, 1.0f);
+            }
 
-        void setWindVelocity(const Vector3r& wind_velocity) {
-            current_.wind_velocity = wind_velocity;
-        }
+            void setFogIntensity(real_T intensity) {
+                fog_intensity_ = clamp(intensity, 0.0f, 1.0f);
+            }
 
-        void setTurbulenceIntensity(real_T intensity) {
-            current_.wind_turbulence = intensity;
-        }
+            void setFallingLeavesIntensity(real_T intensity) {
+                current_.falling_leaves_density = intensity;
+            }
 
     protected:
         virtual void resetImplementation() override
@@ -190,6 +213,34 @@ namespace airlib
         }
 
     private:
+        Vector3r wind_velocity_{0, 0, 0};
+        float rain_intensity_{0.0f};
+        float snow_intensity_{0.0f};
+        float fog_intensity_{0.0f};
+        float dust_intensity_{0.0f};
+        float turbulence_factor_{1.0f};
+
+        void updateWeatherPhysics() {
+            // Modify air density based on weather conditions
+            if (current_.air_density > 0) {
+                real_T weather_density_modifier = 1.0f;
+                
+                // Rain increases air density
+                weather_density_modifier += rain_intensity_ * 0.08f;
+                
+                // Snow increases air density more
+                weather_density_modifier += snow_intensity_ * 0.12f;
+                
+                // Dust increases air density
+                weather_density_modifier += dust_intensity_ * 0.05f;
+                
+                // Fog increases air density
+                weather_density_modifier += fog_intensity_ * 0.06f;
+                
+                current_.air_density *= weather_density_modifier;
+            }
+        }
+
         void updateState(State& state)
         {
             geodetic_converter_.ned2Geodetic(state.position, state.geo_point);
@@ -198,6 +249,9 @@ namespace airlib
             state.temperature = EarthUtils::getStandardTemperature(geo_pot);
             state.air_pressure = EarthUtils::getStandardPressure(geo_pot, state.temperature);
             state.air_density = EarthUtils::getAirDensity(state.air_pressure, state.temperature);
+
+            // Apply weather modifications to air density
+            updateWeatherPhysics();
 
             if (state.humidity > 0) {
                 real_T humidity_factor = 1.0f - (state.humidity * 0.025f);

@@ -494,6 +494,15 @@ void WorldSimApi::enableWeather(bool enable)
 {
     UAirBlueprintLib::RunCommandOnGameThread([this, enable]() {
         UWeatherLib::setWeatherEnabled(simmode_->GetWorld(), enable);
+        
+        // Weather physics handled directly in WeatherLib now
+        if (enable) {
+            UE_LOG(LogTemp, Warning, TEXT("Weather Physics Enabled - Wind effects will be applied"));
+        } else {
+            // Clear wind when weather disabled
+            setWind(msr::airlib::Vector3r(0, 0, 0));
+            UE_LOG(LogTemp, Warning, TEXT("Weather Physics Disabled - Wind cleared"));
+        }
     },
                                              true);
 }
@@ -503,8 +512,11 @@ void WorldSimApi::setWeatherParameter(WeatherParameter param, float val)
     unsigned char param_n = static_cast<unsigned char>(msr::airlib::Utils::toNumeric<WeatherParameter>(param));
     EWeatherParamScalar param_e = msr::airlib::Utils::toEnum<EWeatherParamScalar>(param_n);
 
-    UAirBlueprintLib::RunCommandOnGameThread([this, param_e, val]() {
+    UAirBlueprintLib::RunCommandOnGameThread([this, param_e, val, param]() {
         UWeatherLib::setWeatherParamScalar(simmode_->GetWorld(), param_e, val);
+        
+        // Weather physics handled directly in WeatherLib setWeatherParamScalar
+        UE_LOG(LogTemp, Log, TEXT("Weather Parameter Updated: %d=%.2f"), (int)param, val);
     },
                                              true);
 }

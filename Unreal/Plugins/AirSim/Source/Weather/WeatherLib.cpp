@@ -5,6 +5,8 @@
 #include "Runtime/Engine/Classes/Kismet/GameplayStatics.h"
 #include "Blueprint/UserWidget.h"
 #include "Blueprint/WidgetBlueprintLibrary.h"
+#include "SimMode/SimModeBase.h"
+#include "api/ApiProvider.hpp"
 
 AExponentialHeightFog* UWeatherLib::weather_fog_ = nullptr;
 
@@ -89,17 +91,82 @@ void UWeatherLib::setWeatherParamScalar(UWorld* World, EWeatherParamScalar Param
             WeatherMaterialCollectionInstance->SetScalarParameterValue(ParamName, 0.0f);
         }
 
-        msr::airlib::WeatherApi& weather_api = msr::airlib::WeatherApi::getInstance();
-        
+        // SIMPLE WIND-BASED WEATHER PHYSICS
         float rain = getWeatherParamScalar(World, EWeatherParamScalar::WEATHER_PARAM_SCALAR_RAIN);
         float snow = getWeatherParamScalar(World, EWeatherParamScalar::WEATHER_PARAM_SCALAR_SNOW);
         float dust = getWeatherParamScalar(World, EWeatherParamScalar::WEATHER_PARAM_SCALAR_DUST);
-        float fog = getWeatherParamScalar(World, EWeatherParamScalar::WEATHER_PARAM_SCALALR_FOG);
+        float fog = getWeatherParamScalar(World, EWeatherParamScalar::WEATHER_PARAM_SCALAR_FOG);
 
-        weather_api.setWeatherFromUI(rain, snow, dust, fog);
-        if (weather_fog_) {
+        // Calculate wind based on weather intensity
+        float total_weather = rain + snow + dust + fog;
+        
+        if (total_weather > 0.01f) {
+            // Generate random wind direction
+            float wind_direction = FMath::RandRange(0.0f, 2.0f * PI);
+            
+            // Calculate wind strength based on weather type and intensity
+            float base_wind_speed = 0.0f;
+            
+            // Different weather types create different wind patterns
+            if (rain > 0.01f) {
+                base_wind_speed += rain * 25.0f; // Rain creates moderate to strong winds
+            }
+            if (snow > 0.01f) {
+                base_wind_speed += snow * 35.0f; // Snow creates stronger winds
+            }
+            if (dust > 0.01f) {
+                base_wind_speed += dust * 40.0f; // Dust storms have very strong winds
+            }
+            if (fog > 0.01f) {
+                base_wind_speed += fog * 15.0f; // Fog has lighter winds
+            }
+            
+            // Add turbulence variation (±50% variation)
+            float turbulence_factor = FMath::RandRange(0.5f, 1.5f);
+            float final_wind_speed = base_wind_speed * turbulence_factor;
+            
+            // Calculate wind components
+            float wind_x = final_wind_speed * FMath::Cos(wind_direction);
+            float wind_y = final_wind_speed * FMath::Sin(wind_direction);
+            float wind_z = final_wind_speed * 0.3f * FMath::RandRange(-1.0f, 1.0f); // Vertical component
+            
+            // Apply wind using AirSim's existing wind system
+            try {
+                // Get the SimMode and apply wind through the API
+                ASimModeBase* SimMode = ASimModeBase::getSimMode();
+                if (SimMode) {
+                    // Use the existing wind API that we know works
+                    SimMode->getApiProvider()->getWorldSimApi()->setWind(msr::airlib::Vector3r(wind_x, wind_y, wind_z));
+                    
+                    UE_LOG(LogTemp, Warning, TEXT("Weather Wind Applied: X=%.2f Y=%.2f Z=%.2f (Total Weather=%.2f)"), 
+                           wind_x, wind_y, wind_z, total_weather);
+                }
+            } catch (...) {
+                UE_LOG(LogTemp, Error, TEXT("Failed to apply weather wind"));
+            }
+        } else {
+            // No weather - clear the wind
+            try {
+                ASimModeBase* SimMode = ASimModeBase::getSimMode();
+                if (SimMode) {
+                    SimMode->getApiProvider()->getWorldSimApi()->setWind(msr::airlib::Vector3r(0, 0, 0));
+                    UE_LOG(LogTemp, Log, TEXT("Weather cleared - Wind reset to zero"));
+                }
+            } catch (...) {
+                UE_LOG(LogTemp, Error, TEXT("Failed to clear weather wind"));
+            }
+        }
+        
+        // Show fog actor if weather is active
+        if (weather_fog_ && total_weather > 0.1f) {
             weather_fog_->GetRootComponent()->SetVisibility(true);
         }
+        else if (weather_fog_) {
+            weather_fog_->GetRootComponent()->SetVisibility(false);
+        }
+        
+        UE_LOG(LogTemp, Log, TEXT("Weather Visual + Wind Physics Applied: Rain=%.2f, Snow=%.2f, Dust=%.2f, Fog=%.2f"), 
+               rain, snow, dust, fog);
     }
     else {
         UE_LOG(LogTemp, Warning, TEXT("Warning, WeatherAPI could NOT get MaterialCollectionInstance!"));

@@ -274,6 +274,7 @@ install(TARGETS
 # Install Python scripts
 install(PROGRAMS
   scripts/motion_detection_node.py
+  scripts/generalised_object_tracking_node.py
   DESTINATION lib/${PROJECT_NAME}
 )
 

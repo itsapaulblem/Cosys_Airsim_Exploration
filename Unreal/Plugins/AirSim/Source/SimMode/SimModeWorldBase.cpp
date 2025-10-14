@@ -163,60 +163,32 @@ void ASimModeWorldBase::Tick(float DeltaSeconds)
         physics_world_->unlock();
     }
 
+    // Update weather physics every frame
+    updateWeatherPhysics();
+
     //perform any expensive rendering update outside of lock region
     for (auto& api : getApiProvider()->getVehicleSimApis())
         api->updateRendering(DeltaSeconds);
 
     Super::Tick(DeltaSeconds);
-}
-
-void ASimModeWorldBase::reset()
+// --- Physics-based weather sync ---
+void ASimModeWorldBase::updateWeatherPhysics()
 {
-    UAirBlueprintLib::RunCommandOnGameThread([this]() {
-        physics_world_->reset();
-    },
-                                             true);
+    // Get current weather parameters from UE5 weather system
+    float rain = getWeatherParamScalar(EWeatherParamScalar::Rain);
+    float snow = getWeatherParamScalar(EWeatherParamScalar::Snow);
+    float fog = getWeatherParamScalar(EWeatherParamScalar::Fog);
+    float dust = getWeatherParamScalar(EWeatherParamScalar::Dust);
+    float wind_speed = getWeatherParamScalar(EWeatherParamScalar::WindSpeed);
+    FVector wind_direction = getWeatherParamVector(EWeatherParamVector::WindDirection);
 
-    //no need to call base reset because of our custom implementation
-}
+    msr::airlib::Vector3r wind_velocity(
+        wind_direction.X * wind_speed,
+        wind_direction.Y * wind_speed,
+        wind_direction.Z * wind_speed
+    );
 
-std::string ASimModeWorldBase::getDebugReport()
-{
-    return physics_world_->getDebugReport();
-}
-
-// Weather control implementation
-void ASimModeWorldBase::SetWeatherEffect(const FString& WeatherType, float Intensity)
-{
-    std::string weather_type = TCHAR_TO_UTF8(*WeatherType);
-    updateEnvironmentWeather(weather_type, Intensity);
-}
-
-void ASimModeWorldBase::updateEnvironmentWeather(const std::string& weather_type, float intensity)
-{
-    if (!physics_world_) return;
-
-    // Get the WeatherApi instance and update all registered environments
-    auto& weather_api = msr::airlib::WeatherApi::getInstance();
-    
-    // Update weather parameters based on type
-    if (weather_type == "rain") {
-        weather_api.setWeatherFromUI(intensity, 0.0f, 0.0f, 0.0f, 0.0f);
-    }
-    else if (weather_type == "snow") {
-        weather_api.setWeatherFromUI(0.0f, intensity, 0.0f, 0.0f, 0.0f);
-    }
-    else if (weather_type == "dust") {
-        weather_api.setWeatherFromUI(0.0f, 0.0f, intensity, 0.0f, 0.0f);
-    }
-    else if (weather_type == "fog") {
-        weather_api.setWeatherFromUI(0.0f, 0.0f, 0.0f, intensity, 0.0f);
-    }
-    else if (weather_type == "leaves") {
-        weather_api.setWeatherFromUI(0.0f, 0.0f, 0.0f, 0.0f, intensity);
-    }
-
-    // Alternative direct approach - get all vehicle environments and update them directly
+    // Update environment for all vehicles
     auto api_provider = getApiProvider();
     if (api_provider) {
         auto vehicle_apis = api_provider->getVehicleSimApis();
@@ -226,24 +198,32 @@ void ASimModeWorldBase::updateEnvironmentWeather(const std::string& weather_type
                 auto* physics_body = vehicle_sim_api->getPhysicsBody();
                 if (physics_body && physics_body->hasEnvironment()) {
                     auto& environment = physics_body->getEnvironment();
-                    
-                    if (weather_type == "rain") {
-                        environment.setRainIntensity(intensity);
-                    }
-                    else if (weather_type == "snow") {
-                        environment.setSnowIntensity(intensity);
-                    }
-                    else if (weather_type == "dust") {
-                        environment.setDustIntensity(intensity);
-                    }
-                    else if (weather_type == "fog") {
-                        environment.setFogIntensity(intensity);
-                    }
-                    else if (weather_type == "leaves") {
-                        environment.setFallingLeavesIntensity(intensity);
-                    }
+                    environment.setWindVelocity(wind_velocity);
+                    environment.setRainIntensity(rain);
+                    environment.setSnowIntensity(snow);
+                    environment.setFogIntensity(fog);
+                    environment.setDustIntensity(dust);
+                    environment.setTurbulenceIntensity(wind_speed); // Optionally scale turbulence with wind
                 }
             }
         }
     }
 }
+// --- End physics-based weather sync ---
+}
+
+void ASimModeWorldBase::reset()
+{
+    UAirBlueprintLib::RunCommandOnGameThread([this]() {
+        physics_world_->reset();
+    },
+    true);
+
+    //no need to call base reset because of our custom implementation
+}
+
+std::string ASimModeWorldBase::getDebugReport()
+{
+    return physics_world_->getDebugReport();
+}
+

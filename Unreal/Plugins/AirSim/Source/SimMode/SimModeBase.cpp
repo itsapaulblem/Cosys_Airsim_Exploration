@@ -174,6 +174,14 @@ void ASimModeBase::BeginPlay()
     InitializeInstanceSegmentation();
 
     InitializeAnnotation();
+
+    // Register weather wind callback
+    if (getApiProvider() && getApiProvider()->hasApiServer()) {
+        auto* rpc_server = static_cast<msr::airlib::RpcLibServerBase*>(getApiProvider()->getApiServer());
+        if (rpc_server) {
+            rpc_server->registerWeatherWindCallback();
+        }
+    }
 }
 
 const NedTransform& ASimModeBase::getGlobalNedTransform()

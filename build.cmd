@@ -47,7 +47,7 @@ echo found pwsh && goto start
 :nopwsh
 echo Powershell or pwsh not found, please install it.
 goto :eof
-
+  
 :start
 chdir /d %ROOT_DIR% 
 
