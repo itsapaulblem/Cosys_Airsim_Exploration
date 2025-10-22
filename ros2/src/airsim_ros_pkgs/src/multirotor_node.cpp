@@ -93,12 +93,13 @@ MultirotorNode::MultirotorNode(const std::string& vehicle_name,
                     static_transforms_published_ = true;
                 }
                 
-                // Process sensor data
-                process_images();
-                process_lidar();
-                process_gpulidar();
-                process_echo();
+                // REMOVED: Heavy sensor processing moved to isolated timers
+                // process_images();     // Now handled by base class image_timer_
+                // process_lidar();      // Now handled by base class lidar_timer_
+                // process_gpulidar();   // Now handled by base class gpulidar_timer_
+                // process_echo();       // Now handled by base class echo_timer_
                 
+                // Keep lightweight sensor publishing in main timer
                 publish_imu_data();
                 publish_magnetometer_data();
                 publish_barometer_data();
@@ -109,7 +110,8 @@ MultirotorNode::MultirotorNode(const std::string& vehicle_name,
             } catch (const rpc::rpc_error& e) {
                 handle_rpc_error(e, "main timer callback");
             }
-        }
+        },
+        state_callback_group_  // Bind to state callback group to avoid blocking sensor group
     );
 
     initialize_common();
