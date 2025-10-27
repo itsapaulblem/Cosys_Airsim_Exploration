@@ -317,6 +317,10 @@ namespace airlib
                 wrench.torque += turbulence_torque * turbulence_factor * 50.0f;  // 5x stronger rotation
             }
 
+            // --- ADD WIND FORCE DIRECTLY ---
+            // Apply wind as a force proportional to mass
+            wrench.force += wind_world * body.getMass();
+
             //convert force to world frame, leave torque to local frame
             wrench.force = VectorMath::transformToWorldFrame(wrench.force, orientation);
 
