@@ -91,12 +91,29 @@ void UWeatherLib::setWeatherParamScalar(UWorld* World, EWeatherParamScalar Param
             WeatherMaterialCollectionInstance->SetScalarParameterValue(ParamName, 0.0f);
         }
 
-        // SIMPLE WIND-BASED WEATHER PHYSICS
+        // --- BEGIN: PHYSICS PROPAGATION ---
         float rain = getWeatherParamScalar(World, EWeatherParamScalar::WEATHER_PARAM_SCALAR_RAIN);
         float snow = getWeatherParamScalar(World, EWeatherParamScalar::WEATHER_PARAM_SCALAR_SNOW);
         float dust = getWeatherParamScalar(World, EWeatherParamScalar::WEATHER_PARAM_SCALAR_DUST);
         float fog = getWeatherParamScalar(World, EWeatherParamScalar::WEATHER_PARAM_SCALAR_FOG);
+        float leaves = getWeatherParamScalar(World, EWeatherParamScalar::WEATHER_PARAM_SCALAR_MAPLELEAF);
 
+        try {
+            ASimModeBase* SimMode = ASimModeBase::getSimMode();
+            if (SimMode) {
+                auto* api = SimMode->getApiProvider()->getWorldSimApi();
+                if (api) {
+                    api->setWeatherParameter(msr::airlib::WorldSimApiBase::WeatherParameter::Rain, rain);
+                    api->setWeatherParameter(msr::airlib::WorldSimApiBase::WeatherParameter::Snow, snow);
+                    api->setWeatherParameter(msr::airlib::WorldSimApiBase::WeatherParameter::Dust, dust);
+                    api->setWeatherParameter(msr::airlib::WorldSimApiBase::WeatherParameter::Fog, fog);
+                    api->setWeatherParameter(msr::airlib::WorldSimApiBase::WeatherParameter::MapleLeaf, leaves);
+                }
+            }
+        } catch (...) {
+            UE_LOG(LogTemp, Error, TEXT("Failed to propagate weather to physics"));
+        }
+        // --- END: PHYSICS PROPAGATION ---
         // Calculate wind based on weather intensity
         float total_weather = rain + snow + dust + fog;
         

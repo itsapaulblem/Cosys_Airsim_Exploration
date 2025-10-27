@@ -204,6 +204,35 @@ void ASimModeWorldBase::updateWeatherPhysics()
                     environment.setFogIntensity(fog);
                     environment.setDustIntensity(dust);
                     environment.setTurbulenceIntensity(wind_speed); // Optionally scale turbulence with wind
+
+                    msr::airlib::Vector3r wind_force = wind_velocity * physics_body->getMass();
+
+                    msr::airlib::Vector3r rain_force(
+                        FMath::FRandRange(-1.0f, 1.0f) * rain * 8.0f * physics_body->getMass(),
+                        FMath::FRandRange(-1.0f, 1.0f) * rain * 8.0f * physics_body->getMass(),
+                        0.0f
+                    );
+
+                    msr::airlib::Vector3r snow_force(
+                        FMath::FRandRange(-0.5f, 0.5f) * snow * 5.0f * physics_body->getMass(),
+                        FMath::FRandRange(-0.5f, 0.5f) * snow * 5.0f * physics_body->getMass(),
+                        FMath::FRandRange(-0.2f, 0.2f) * snow * 3.0f * physics_body->getMass()
+                    );
+
+                    msr::airlib::Vector3r dust_force(
+                        FMath::FRandRange(-0.3f, 0.3f) * dust * 4.0f * physics_body->getMass(),
+                        FMath::FRandRange(-0.3f, 0.3f) * dust * 4.0f * physics_body->getMass(),
+                        0.0f
+                    );
+
+                    float drag_factor = 1.0f - (rain * 0.15f + snow * 0.25f + dust * 0.1f);
+                    drag_factor = FMath::Clamp(drag_factor, 0.5f, 1.0f);
+                    
+                    msr::airlib::Vector3r total_force = wind_force + rain_force + snow_force + dust_force;
+
+                    physics_body->setExternalForce(total_force);
+                    physics_body->setDragFactor(drag_factor);
+
                 }
             }
         }
