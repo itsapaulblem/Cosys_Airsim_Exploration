@@ -12,6 +12,7 @@
 #include "common/StateReporterWrapper.hpp"
 #include "api/ApiServerBase.hpp"
 #include "SimModeBase.h"
+#include "WeatherPhysicsBridge.h"
 #include "SimModeWorldBase.generated.h"
 
 extern CORE_API uint32 GFrameNumber;
@@ -37,14 +38,11 @@ public:
     virtual void setWind(const msr::airlib::Vector3r& wind) const override;
     virtual void setExtForce(const msr::airlib::Vector3r& ext_force) const override;
 
-    // Add weather control methods
-    UFUNCTION(BlueprintCallable, Category = "Weather")
-    void SetWeatherEffect(const FString& WeatherType, float Intensity);
-
 protected:
     void startAsyncUpdator();
     void stopAsyncUpdator();
     virtual void updateDebugReport(msr::airlib::StateReporterWrapper& debug_reporter) override;
+    void updateWeatherPhysics(float DeltaSeconds);
 
     //should be called by derived class once all api_provider_ is ready to use
     void initializeForPlay();
@@ -54,9 +52,6 @@ protected:
 
     long long getPhysicsLoopPeriod() const;
     void setPhysicsLoopPeriod(long long period);
-
-    // Weather control helper
-    void updateEnvironmentWeather(const std::string& weather_type, float intensity);
 
 private:
     typedef msr::airlib::UpdatableObject UpdatableObject;

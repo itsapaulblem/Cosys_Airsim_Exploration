@@ -6,6 +6,7 @@
 #include "SimMode/SimModeBase.h"
 #include "PIPCamera.h"
 #include "api/ApiServerBase.hpp"
+#include "Weather/WeatherLib.h"
 #include <memory>
 #include "SimHUD.generated.h"
 
@@ -33,6 +34,7 @@ public:
     void inputEventToggleSubwindow1();
     void inputEventToggleSubwindow2();
     void inputEventToggleAll();
+    void inputEventToggleWeatherMenu();
 
     ASimHUD();
     virtual void BeginPlay() override;

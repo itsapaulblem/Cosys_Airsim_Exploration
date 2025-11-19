@@ -3,7 +3,9 @@
 #include "physics/ExternalPhysicsEngine.hpp"
 #include <exception>
 #include "AirBlueprintLib.h"
-#include "api/WeatherApi.hpp"
+#include "WeatherPhysicsBridge.h"
+#include "common/Common.hpp"
+#include "physics/WeatherPhysics.hpp"
 
 void ASimModeWorldBase::BeginPlay()
 {
@@ -76,6 +78,8 @@ std::unique_ptr<ASimModeWorldBase::PhysicsEngineBase> ASimModeWorldBase::createP
 
         physics_engine->setWind(getSettings().wind);
         physics_engine->setExtForce(getSettings().ext_force);
+
+        physics_engine->enableWeatherEffects(true);
     }
     else if (physics_engine_name == "ExternalPhysicsEngine") {
         physics_engine.reset(new msr::airlib::ExternalPhysicsEngine());
@@ -151,6 +155,9 @@ void ASimModeWorldBase::updateDebugReport(msr::airlib::StateReporterWrapper& deb
 
 void ASimModeWorldBase::Tick(float DeltaSeconds)
 {
+    // Update weather physics integration
+    updateWeatherPhysics(DeltaSeconds);
+    
     { //keep this lock as short as possible
         physics_world_->lock();
 
@@ -163,82 +170,45 @@ void ASimModeWorldBase::Tick(float DeltaSeconds)
         physics_world_->unlock();
     }
 
-    // Update weather physics every frame
-    updateWeatherPhysics();
-
     //perform any expensive rendering update outside of lock region
     for (auto& api : getApiProvider()->getVehicleSimApis())
         api->updateRendering(DeltaSeconds);
 
     Super::Tick(DeltaSeconds);
-// --- Physics-based weather sync ---
-void ASimModeWorldBase::updateWeatherPhysics()
-{
-    // Get current weather parameters from UE5 weather system
-    float rain = getWeatherParamScalar(EWeatherParamScalar::Rain);
-    float snow = getWeatherParamScalar(EWeatherParamScalar::Snow);
-    float fog = getWeatherParamScalar(EWeatherParamScalar::Fog);
-    float dust = getWeatherParamScalar(EWeatherParamScalar::Dust);
-    float wind_speed = getWeatherParamScalar(EWeatherParamScalar::WindSpeed);
-    FVector wind_direction = getWeatherParamVector(EWeatherParamVector::WindDirection);
-
-    msr::airlib::Vector3r wind_velocity(
-        wind_direction.X * wind_speed,
-        wind_direction.Y * wind_speed,
-        wind_direction.Z * wind_speed
-    );
-
-    // Update environment for all vehicles
-    auto api_provider = getApiProvider();
-    if (api_provider) {
-        auto vehicle_apis = api_provider->getVehicleSimApis();
-        for (auto& pair : vehicle_apis) {
-            auto* vehicle_sim_api = pair.second;
-            if (vehicle_sim_api) {
-                auto* physics_body = vehicle_sim_api->getPhysicsBody();
-                if (physics_body && physics_body->hasEnvironment()) {
-                    auto& environment = physics_body->getEnvironment();
-                    environment.setWindVelocity(wind_velocity);
-                    environment.setRainIntensity(rain);
-                    environment.setSnowIntensity(snow);
-                    environment.setFogIntensity(fog);
-                    environment.setDustIntensity(dust);
-                    environment.setTurbulenceIntensity(wind_speed); // Optionally scale turbulence with wind
-
-                    msr::airlib::Vector3r wind_force = wind_velocity * physics_body->getMass();
-
-                    msr::airlib::Vector3r rain_force(
-                        FMath::FRandRange(-1.0f, 1.0f) * rain * 8.0f * physics_body->getMass(),
-                        FMath::FRandRange(-1.0f, 1.0f) * rain * 8.0f * physics_body->getMass(),
-                        0.0f
-                    );
-
-                    msr::airlib::Vector3r snow_force(
-                        FMath::FRandRange(-0.5f, 0.5f) * snow * 5.0f * physics_body->getMass(),
-                        FMath::FRandRange(-0.5f, 0.5f) * snow * 5.0f * physics_body->getMass(),
-                        FMath::FRandRange(-0.2f, 0.2f) * snow * 3.0f * physics_body->getMass()
-                    );
-
-                    msr::airlib::Vector3r dust_force(
-                        FMath::FRandRange(-0.3f, 0.3f) * dust * 4.0f * physics_body->getMass(),
-                        FMath::FRandRange(-0.3f, 0.3f) * dust * 4.0f * physics_body->getMass(),
-                        0.0f
-                    );
-
-                    float drag_factor = 1.0f - (rain * 0.15f + snow * 0.25f + dust * 0.1f);
-                    drag_factor = FMath::Clamp(drag_factor, 0.5f, 1.0f);
-                    
-                    msr::airlib::Vector3r total_force = wind_force + rain_force + snow_force + dust_force;
-
-                    physics_body->setExternalForce(total_force);
-                    physics_body->setDragFactor(drag_factor);
-
-                }
-            }
-        }
-    }
 }
-// --- End physics-based weather sync ---
+
+void ASimModeWorldBase::updateWeatherPhysics(float DeltaSeconds)
+{
+    // Get weather forces from the bridge
+    auto unreal_weather_forces = UWeatherPhysicsBridge::GetWeatherForces(
+        GetWorld(), 
+        FVector::ZeroVector,  // Position (could be improved)
+        FVector::ZeroVector,  // Velocity (could be improved) 
+        DeltaSeconds
+    );
+    
+    // Convert Unreal format to AirLib format
+    msr::airlib::WeatherPhysics::WeatherForces airlib_forces;
+    
+    // Convert from Unreal units (cm) to meters
+    airlib_forces.turbulence_force = msr::airlib::Vector3r(
+        unreal_weather_forces.TurbulenceForce.X * 0.01f,
+        unreal_weather_forces.TurbulenceForce.Y * 0.01f,
+        unreal_weather_forces.TurbulenceForce.Z * 0.01f
+    );
+    
+    airlib_forces.wind_gust = msr::airlib::Vector3r(
+        unreal_weather_forces.WindGust.X * 0.01f,
+        unreal_weather_forces.WindGust.Y * 0.01f,
+        unreal_weather_forces.WindGust.Z * 0.01f
+    );
+    
+    airlib_forces.drag_multiplier = unreal_weather_forces.DragMultiplier;
+    airlib_forces.air_density_multiplier = unreal_weather_forces.AirDensityMultiplier;
+    airlib_forces.has_effects = unreal_weather_forces.HasEffects;
+    
+    // Set the weather forces in the physics engine
+    msr::airlib::FastPhysicsEngine::setCurrentWeatherForces(airlib_forces);
 }
 
 void ASimModeWorldBase::reset()
@@ -246,7 +216,7 @@ void ASimModeWorldBase::reset()
     UAirBlueprintLib::RunCommandOnGameThread([this]() {
         physics_world_->reset();
     },
-    true);
+                                             true);
 
     //no need to call base reset because of our custom implementation
 }
@@ -255,4 +225,3 @@ std::string ASimModeWorldBase::getDebugReport()
 {
     return physics_world_->getDebugReport();
 }
-

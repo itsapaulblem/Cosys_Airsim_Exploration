@@ -233,6 +233,7 @@ void ASimHUD::setupInputBindings()
     UAirBlueprintLib::BindActionToKey("InputEventToggleSubwindow1", EKeys::Two, this, &ASimHUD::inputEventToggleSubwindow1);
     UAirBlueprintLib::BindActionToKey("InputEventToggleSubwindow2", EKeys::Three, this, &ASimHUD::inputEventToggleSubwindow2);
     UAirBlueprintLib::BindActionToKey("InputEventToggleAll", EKeys::Zero, this, &ASimHUD::inputEventToggleAll);
+	UAirBlueprintLib::BindActionToKey("InputEventToggleWeatherMenu", EKeys::F10, this, &ASimHUD::inputEventToggleWeatherMenu);
 }
 
 void ASimHUD::initializeSettings()
@@ -407,4 +408,9 @@ bool ASimHUD::readSettingsTextFromFile(const FString& settingsFilepath, std::str
     }
 
     return found;
+}
+
+void ASimHUD::inputEventToggleWeatherMenu()
+{
+    UWeatherLib::toggleWeatherMenu(GetWorld());
 }

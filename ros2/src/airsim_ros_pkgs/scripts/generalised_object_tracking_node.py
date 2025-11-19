@@ -1397,21 +1397,21 @@ class GeneralisedObjectTrackingNode(Node):
                         world_pos = getattr(self, 'target_position', [0.0, 0.0])
 
                         # Display target pixel location
-                        cv2.putText(vis_image, f"TARGET POS: ({int(target_center[0])}, {int(target_center[1])})", 
+                        cv2.putText(vis_image, f"TARGET PIXEL: ({int(target_center[0])}, {int(target_center[1])})", 
                                    (10, 140), cv2.FONT_HERSHEY_SIMPLEX, font_scale * 0.7, (0, 255, 255), thickness)
 
                         # Display estimated distance
-                        cv2.putText(vis_image, f"DISTANCE: {estimated_distance:.2f}m", 
+                        cv2.putText(vis_image, f"EST. DISTANCE: {estimated_distance:.2f}m", 
                                    (10, 165), cv2.FONT_HERSHEY_SIMPLEX, font_scale * 0.7, (0, 255, 255), thickness)
 
                         # Display world coordinates
-                        cv2.putText(vis_image, f"WORLD: ({world_pos[0]:.2f}, {world_pos[1]:.2f})", 
+                        cv2.putText(vis_image, f"WORLD POS: ({world_pos[0]:.2f}, {world_pos[1]:.2f})", 
                                    (10, 190), cv2.FONT_HERSHEY_SIMPLEX, font_scale * 0.7, (0, 255, 255), thickness)
 
                         # Display bounding box size
                         bbox_width = int(target_bbox[2]) if len(target_bbox) > 2 else 0
                         bbox_height = int(target_bbox[3]) if len(target_bbox) > 3 else 0
-                        cv2.putText(vis_image, f"BBOX: {bbox_width}x{bbox_height}", 
+                        cv2.putText(vis_image, f"BBOX SIZE: {bbox_width}x{bbox_height}", 
                                    (10, 215), cv2.FONT_HERSHEY_SIMPLEX, font_scale * 0.7, (0, 255, 255), thickness)
 
                         # Draw crosshair at target position
@@ -1435,13 +1435,32 @@ class GeneralisedObjectTrackingNode(Node):
                 cv2.putText(vis_image, status, (10, 250), cv2.FONT_HERSHEY_SIMPLEX, 
                            font_scale, (255, 255, 0), thickness)
 
-            # Frame count and resolution info
+            # fps calculation
             frame_count = self.camera_frame_counts.get(camera_id, 0)
-            info_text = f"FRAME: {frame_count} | RES: {self.image_width}x{self.image_height}"
+            now = time.time()
+            if not hasattr(self, 'fps_times'):
+                self.fps_times = {}
+            if camera_id not in self.fps_times:
+                self.fps_times[camera_id] = deque(maxlen=30)
+            self.fps_times[camera_id].append(now)
+            fps = 0.0
+            times = self.fps_times[camera_id]
+            if len(times) > 1:
+                fps = len(times) / (times[-1] - times[0] + 1e-6)
+
+            info_text = f"FRAME COUNT: {frame_count} | RESOLUTION: {self.image_width}x{self.image_height}"
             # cv2.rectangle(vis_image, (5, 200), (500, 230), text_bg_color, -1)
             cv2.putText(vis_image, info_text, (10, 280), 
                        cv2.FONT_HERSHEY_SIMPLEX, font_scale * 0.7, (255, 255, 255), thickness)
 
+            # FPS in upper right corner
+            fps_text = f"FPS: {fps:.1f}"
+            text_size, _ = cv2.getTextSize(fps_text, cv2.FONT_HERSHEY_SIMPLEX, font_scale, thickness)
+            x_pos = self.image_width - text_size[0] - 20
+            y_pos = 30
+            cv2.putText(vis_image, fps_text, (x_pos, y_pos), 
+                   cv2.FONT_HERSHEY_SIMPLEX, font_scale, (0, 255, 255), thickness)
+            
             # Draw enhanced crosshair at image center for reference
             center_x, center_y = self.image_width // 2, self.image_height // 2
             crosshair_size = max(30, self.image_width // 40)

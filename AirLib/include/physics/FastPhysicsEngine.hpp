@@ -6,6 +6,7 @@
 
 #include "common/Common.hpp"
 #include "physics/PhysicsEngineBase.hpp"
+#include "physics/WeatherPhysics.hpp"
 #include <iostream>
 #include <sstream>
 #include <fstream>
@@ -73,6 +74,20 @@ namespace airlib
         void setExtForce(const Vector3r& ext_force) override
         {
             ext_force_ = ext_force;
+        }
+
+        // Weather effects methods (override from base class)
+        void enableWeatherEffects(bool enable) override { weather_effects_enabled_ = enable; }
+        bool isWeatherEffectsEnabled() const override { return weather_effects_enabled_; }
+        
+        WeatherPhysics::WeatherForces getWeatherEffects(const PhysicsBody& body, real_T dt) override {
+            unused(body); unused(dt);
+            return current_weather_forces_;
+        }
+
+        // Static method to set weather forces from Unreal bridge
+        static void setCurrentWeatherForces(const WeatherPhysics::WeatherForces& forces) {
+			current_weather_forces_ = forces;
         }
 
     private:
@@ -270,12 +285,19 @@ namespace airlib
                                     const Quaternionr& orientation,
                                     const Vector3r& linear_vel,
                                     const Vector3r& angular_vel_body,
-                                    const Vector3r& wind_world,
-                                    float weather_drag_multiplier = 1.0f,
-                                    float turbulence_factor = 0.0f)
+                                    const Vector3r& wind_world)
         {
+            //add linear drag due to velocity we had since last dt seconds + wind
+            //drag vector magnitude is proportional to v^2, direction opposite of velocity
+            //total drag is b*v + c*v*v but we ignore the first term as b << c (pg 44, Classical Mechanics, John Taylor)
+            //To find the drag force, we find the magnitude in the body frame and unit vector direction in world frame
+            //http://physics.stackexchange.com/questions/304742/angular-drag-on-body
+            //similarly calculate angular drag
+            //note that angular velocity, acceleration, torque are already in body frame
+
             Wrench wrench = Wrench::zero();
-            const real_T air_density = body.getEnvironment().getState().air_density;
+            const real_T air_density = body.getEnvironment().getState().air_density * current_weather_forces_.air_density_multiplier;
+    //        const real_T air_density = body.getEnvironment().getState().air_density;
 
             // Use relative velocity of the body wrt wind
             const Vector3r relative_vel = linear_vel - wind_world;
@@ -285,41 +307,15 @@ namespace airlib
                 const auto& vertex = body.getDragVertex(vi);
                 const Vector3r vel_vertex = linear_vel_body + angular_vel_body.cross(vertex.getPosition());
                 const real_T vel_comp = vertex.getNormal().dot(vel_vertex);
-                
+                //if vel_comp is -ve then we cull the face. If velocity too low then drag is not generated
                 if (vel_comp > kDragMinVelocity) {
-                    // Apply weather-enhanced drag
-                    const Vector3r drag_force = vertex.getNormal() * 
-                        (-vertex.getDragFactor() * air_density * vel_comp * vel_comp * weather_drag_multiplier);
+                    const Vector3r drag_force = vertex.getNormal() * (-vertex.getDragFactor() * air_density * current_weather_forces_.drag_multiplier * vel_comp * vel_comp);
                     const Vector3r drag_torque = vertex.getPosition().cross(drag_force);
 
                     wrench.force += drag_force;
                     wrench.torque += drag_torque;
                 }
             }
-
-            // Add turbulence effects - MUCH MORE VISIBLE SHAKING
-            if (turbulence_factor > 0.0f) {
-                Vector3r turbulence_force(
-                    (static_cast<real_T>(rand()) / static_cast<real_T>(RAND_MAX)) * 2.0f - 1.0f,
-                    (static_cast<real_T>(rand()) / static_cast<real_T>(RAND_MAX)) * 2.0f - 1.0f,
-                    (static_cast<real_T>(rand()) / static_cast<real_T>(RAND_MAX)) * 2.0f - 1.0f
-                );
-                
-                turbulence_force = turbulence_force * turbulence_factor * 200.0f; // 4x stronger shaking
-                wrench.force += VectorMath::transformToWorldFrame(turbulence_force, orientation);
-                
-                // Add much stronger rotational turbulence for visible spinning/shaking
-                Vector3r turbulence_torque(
-                    (static_cast<real_T>(rand()) / static_cast<real_T>(RAND_MAX)) * 2.0f - 1.0f,
-                    (static_cast<real_T>(rand()) / static_cast<real_T>(RAND_MAX)) * 2.0f - 1.0f,
-                    (static_cast<real_T>(rand()) / static_cast<real_T>(RAND_MAX)) * 2.0f - 1.0f
-                );
-                wrench.torque += turbulence_torque * turbulence_factor * 50.0f;  // 5x stronger rotation
-            }
-
-            // --- ADD WIND FORCE DIRECTLY ---
-            // Apply wind as a force proportional to mass
-            wrench.force += wind_world * body.getMass();
 
             //convert force to world frame, leave torque to local frame
             wrench.force = VectorMath::transformToWorldFrame(wrench.force, orientation);
@@ -354,6 +350,7 @@ namespace airlib
                                                  Kinematics::State& next, Wrench& next_wrench, const Vector3r& wind, const Vector3r& ext_force)
         {
             const real_T dt_real = static_cast<real_T>(dt);
+
             Vector3r avg_linear = Vector3r::Zero();
             Vector3r avg_angular = Vector3r::Zero();
 
@@ -381,28 +378,19 @@ namespace airlib
                 //To find the drag force, we find the magnitude in the body frame and unit vector direction in world frame
                 avg_linear = current.twist.linear + current.accelerations.linear * (0.5f * dt_real);
                 avg_angular = current.twist.angular + current.accelerations.angular * (0.5f * dt_real);
-                
-                // Calculate weather effects
-                float weather_drag_multiplier = 1.0f;
-                float turbulence_factor = 0.0f;
-                
-                // Get weather effects from multirotor physics body if available - MUCH STRONGER
-                if (auto* multirotor_body = dynamic_cast<const MultiRotorPhysicsBody*>(&body)) {
-                    const Environment& env = body.getEnvironment();
-                    weather_drag_multiplier += env.getRainIntensity() * 1.5f;      // Rain adds 150% drag
-                    weather_drag_multiplier += env.getSnowIntensity() * 2.5f;      // Snow adds 250% drag  
-                    weather_drag_multiplier += env.getFogDensity() * 1.0f;         // Fog adds 100% drag
-                    weather_drag_multiplier += env.getDustIntensity() * 0.8f;      // Dust adds 80% drag
-                    turbulence_factor = env.getTurbulenceIntensity() * 2.0f;       // 2x stronger turbulence
-                }
-
-                const Wrench drag_wrench = getDragWrench(body, current.pose.orientation, avg_linear, avg_angular, wind, weather_drag_multiplier, turbulence_factor);
+                const Wrench drag_wrench = getDragWrench(body, current.pose.orientation, avg_linear, avg_angular, wind);
 
                 // ext_force is defined in world space
                 Wrench ext_force_wrench = Wrench::zero();
                 ext_force_wrench.force = ext_force;
 
-                next_wrench = body_wrench + drag_wrench + ext_force_wrench;
+                // Add weather turbulence and wind effects
+                Wrench weather_wrench = Wrench::zero();
+                if (current_weather_forces_.has_effects) {
+                    weather_wrench.force = current_weather_forces_.turbulence_force + current_weather_forces_.wind_gust;
+                }
+
+				next_wrench = body_wrench + drag_wrench + ext_force_wrench + weather_wrench;
 
                 //Utils::log(Utils::stringf("B-WRN %s: ", VectorMath::toString(body_wrench.force).c_str()));
                 //Utils::log(Utils::stringf("D-WRN %s: ", VectorMath::toString(drag_wrench.force).c_str()));
@@ -506,6 +494,9 @@ namespace airlib
         TTimePoint last_message_time;
         Vector3r wind_;
         Vector3r ext_force_;
+        bool weather_effects_enabled_ = false;
+		static WeatherPhysics::WeatherForces current_weather_forces_;
+
     };
 }
 } //namespace
