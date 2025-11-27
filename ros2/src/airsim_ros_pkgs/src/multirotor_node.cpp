@@ -109,19 +109,15 @@ void MultirotorNode::initialize_vehicle_client()
 {
     try {
         // Cast base client to multirotor client for vehicle-specific operations
-        airsim_client_ = std::make_unique<msr::airlib::MultirotorRpcLibClient>(host_ip_, host_port_);
-        airsim_client_images_ = std::make_unique<msr::airlib::MultirotorRpcLibClient>(host_ip_, host_port_);
-        airsim_client_lidar_ = std::make_unique<msr::airlib::MultirotorRpcLibClient>(host_ip_, host_port_);
-        airsim_client_echo_ = std::make_unique<msr::airlib::MultirotorRpcLibClient>(host_ip_, host_port_);
+        state_client_ = std::make_unique<msr::airlib::MultirotorRpcLibClient>(host_ip_, host_port_);
+        sensor_client_ = std::make_unique<msr::airlib::MultirotorRpcLibClient>(host_ip_, host_port_);
 
         // Confirm connections
-        static_cast<msr::airlib::MultirotorRpcLibClient*>(airsim_client_.get())->confirmConnection();
-        static_cast<msr::airlib::MultirotorRpcLibClient*>(airsim_client_images_.get())->confirmConnection();
-        static_cast<msr::airlib::MultirotorRpcLibClient*>(airsim_client_lidar_.get())->confirmConnection();
-        static_cast<msr::airlib::MultirotorRpcLibClient*>(airsim_client_echo_.get())->confirmConnection();
+        static_cast<msr::airlib::MultirotorRpcLibClient*>(state_client_.get())->confirmConnection();
+        static_cast<msr::airlib::MultirotorRpcLibClient*>(sensor_client_.get())->confirmConnection();
 
         // Enable API control
-        static_cast<msr::airlib::MultirotorRpcLibClient*>(airsim_client_.get())->enableApiControl(true, vehicle_name_);
+        static_cast<msr::airlib::MultirotorRpcLibClient*>(state_client_.get())->enableApiControl(true, vehicle_name_);
         
         RCLCPP_INFO(this->get_logger(), "Connected to AirSim with parallel RPC clients for vehicle: %s", vehicle_name_.c_str());
     }
@@ -178,12 +174,12 @@ void MultirotorNode::setup_vehicle_control_subscribers()
     
     vel_cmd_body_sub_ = this->create_subscription<airsim_interfaces::msg::VelCmd>(
         topic_prefix + "vel_cmd_body_frame", 1,
-        std::bind(&MultirotorNode::vel_cmd_body_callback, this, std::placeholders::_1),
+        std::bind(&MultirotorNode::vel_cmd_body_frame_callback, this, std::placeholders::_1),
         sub_options);
         
     vel_cmd_world_sub_ = this->create_subscription<airsim_interfaces::msg::VelCmd>(
         topic_prefix + "vel_cmd_world_frame", 1,
-        std::bind(&MultirotorNode::vel_cmd_world_callback, this, std::placeholders::_1),
+        std::bind(&MultirotorNode::vel_cmd_world_frame_callback, this, std::placeholders::_1),
         sub_options);
         
     RCLCPP_INFO(this->get_logger(), "Setup multirotor control subscribers for: %s", vehicle_name_.c_str());
@@ -219,7 +215,7 @@ void MultirotorNode::setup_vehicle_control_services()
 void MultirotorNode::update_vehicle_state()
 {
     std::lock_guard<std::mutex> lock(state_mutex_);
-    auto multirotor_client = static_cast<msr::airlib::MultirotorRpcLibClient*>(airsim_client_.get());
+    auto multirotor_client = static_cast<msr::airlib::MultirotorRpcLibClient*>(state_client_.get());
     vehicle_state_ = multirotor_client->getMultirotorState(vehicle_name_);
     stamp_ = this->get_clock()->now();
 }
@@ -229,17 +225,17 @@ void MultirotorNode::publish_vehicle_state()
     std::lock_guard<std::mutex> lock(state_mutex_);
     nav_msgs::msg::Odometry odom_msg = get_odom_from_multirotor_state(vehicle_state_);
     odom_msg.header.stamp = stamp_;
-    odom_msg.header.frame_id = world_frame_id_;
+    odom_msg.header.frame_id = odom_frame_id_;
     odom_msg.child_frame_id = vehicle_name_ + "_base_link";
     
     odom_pub_->publish(odom_msg);
     publish_odometry_tf(odom_msg);
 }
 
-void MultirotorNode::handle_vehicle_commands()
+void MultirotorNode::process_vehicle_commands()
 {
     std::lock_guard<std::mutex> cmd_lock(vel_cmd_mutex_);
-    auto multirotor_client = static_cast<msr::airlib::MultirotorRpcLibClient*>(airsim_client_.get());
+    auto multirotor_client = static_cast<msr::airlib::MultirotorRpcLibClient*>(state_client_.get());
     
     if (has_new_vel_cmd_body_frame_) {
         msr::airlib::Quaternionr current_orientation;
@@ -269,7 +265,7 @@ void MultirotorNode::handle_vehicle_commands()
 void MultirotorNode::process_images()
 {
     try {
-        auto multirotor_client_images = static_cast<msr::airlib::MultirotorRpcLibClient*>(airsim_client_images_.get());
+        auto multirotor_client_images = static_cast<msr::airlib::MultirotorRpcLibClient*>(sensor_client_.get());
         std::vector<msr::airlib::ImageCaptureBase::ImageRequest> requests;
 
         // Create requests for all 4 cameras
@@ -365,7 +361,7 @@ void MultirotorNode::process_lidar()
 {
     try {
         if (!lidar_pubs_.empty()) {
-            auto multirotor_client_lidar = static_cast<msr::airlib::MultirotorRpcLibClient*>(airsim_client_lidar_.get());
+            auto multirotor_client_lidar = static_cast<msr::airlib::MultirotorRpcLibClient*>(sensor_client_.get());
             auto lidar_data = multirotor_client_lidar->getLidarData("", vehicle_name_);
             
             sensor_msgs::msg::PointCloud2 lidar_msg;
@@ -423,7 +419,7 @@ void MultirotorNode::process_echo()
 {
     // Publish other sensor data in this method
     try {
-        // auto multirotor_client_echo = static_cast<msr::airlib::MultirotorRpcLibClient*>(airsim_client_echo_.get());
+        // auto multirotor_client_echo = static_cast<msr::airlib::MultirotorRpcLibClient*>(sensor_client_.get());
         
         rclcpp::Time current_stamp;
         {
@@ -453,7 +449,7 @@ bool MultirotorNode::takeoff_callback(
     try {
         RCLCPP_INFO(this->get_logger(), "Takeoff request received for %s", vehicle_name_.c_str());
         
-        auto multirotor_client = static_cast<msr::airlib::MultirotorRpcLibClient*>(airsim_client_.get());
+        auto multirotor_client = static_cast<msr::airlib::MultirotorRpcLibClient*>(state_client_.get());
         
         // Arm the vehicle
         multirotor_client->armDisarm(true, vehicle_name_);
@@ -482,7 +478,7 @@ bool MultirotorNode::land_callback(
     try {
         RCLCPP_INFO(this->get_logger(), "Land request received for %s", vehicle_name_.c_str());
         
-        auto multirotor_client = static_cast<msr::airlib::MultirotorRpcLibClient*>(airsim_client_.get());
+        auto multirotor_client = static_cast<msr::airlib::MultirotorRpcLibClient*>(state_client_.get());
         
         multirotor_client->landAsync(60.0f, vehicle_name_);
         
@@ -581,7 +577,7 @@ void MultirotorNode::publish_system_status()
 
 void MultirotorNode::publish_imu_data()
 {
-    auto multirotor_client = static_cast<msr::airlib::MultirotorRpcLibClient*>(airsim_client_echo_.get());
+    auto multirotor_client = static_cast<msr::airlib::MultirotorRpcLibClient*>(sensor_client_.get());
     auto imu_data = multirotor_client->getImuData("", vehicle_name_);
     
     sensor_msgs::msg::Imu imu_msg;
@@ -612,7 +608,7 @@ void MultirotorNode::publish_imu_data()
 
 void MultirotorNode::publish_magnetometer_data()
 {
-    auto multirotor_client = static_cast<msr::airlib::MultirotorRpcLibClient*>(airsim_client_echo_.get());
+    auto multirotor_client = static_cast<msr::airlib::MultirotorRpcLibClient*>(sensor_client_.get());
     auto mag_data = multirotor_client->getMagnetometerData("", vehicle_name_);
     
     sensor_msgs::msg::MagneticField mag_msg;
@@ -634,7 +630,7 @@ void MultirotorNode::publish_magnetometer_data()
 
 void MultirotorNode::publish_barometer_data()
 {
-    auto multirotor_client = static_cast<msr::airlib::MultirotorRpcLibClient*>(airsim_client_echo_.get());
+    auto multirotor_client = static_cast<msr::airlib::MultirotorRpcLibClient*>(sensor_client_.get());
     auto baro_data = multirotor_client->getBarometerData("", vehicle_name_);
     
     sensor_msgs::msg::Range baro_msg;
@@ -657,7 +653,7 @@ void MultirotorNode::publish_barometer_data()
 
 void MultirotorNode::publish_gps_data()
 {
-    auto multirotor_client = static_cast<msr::airlib::MultirotorRpcLibClient*>(airsim_client_echo_.get());
+    auto multirotor_client = static_cast<msr::airlib::MultirotorRpcLibClient*>(sensor_client_.get());
     auto gps_data = multirotor_client->getGpsData("", vehicle_name_);
     
     sensor_msgs::msg::NavSatFix gps_msg;
@@ -690,7 +686,7 @@ void MultirotorNode::publish_environment_data()
     }
     
     env_msg.header.stamp = current_stamp;
-    env_msg.header.frame_id = world_frame_id_;
+    env_msg.header.frame_id = odom_frame_id_;
     
     // Get environment data from AirSim
     env_msg.temperature = 20.0; // Celsius
@@ -715,7 +711,7 @@ void MultirotorNode::publish_tf_data()
     }
     
     tf_msg.header.stamp = current_stamp;
-    tf_msg.header.frame_id = world_frame_id_;
+    tf_msg.header.frame_id = odom_frame_id_;
     tf_msg.child_frame_id = vehicle_name_ + "_base_link";
     
     tf_msg.transform.translation.x = position.x();
@@ -741,7 +737,7 @@ bool MultirotorNode::gps_waypoint_callback(
             return false;
         }
         
-        auto multirotor_client = static_cast<msr::airlib::MultirotorRpcLibClient*>(airsim_client_.get());
+        auto multirotor_client = static_cast<msr::airlib::MultirotorRpcLibClient*>(state_client_.get());
         
         // Get current GPS position for home reference
         auto current_gps = multirotor_client->getGpsData("", vehicle_name_);
@@ -884,8 +880,49 @@ void MultirotorNode::setup_vehicle_services()
     // Add any multirotor-specific services here if needed in the future
 }
 
-void MultirotorNode::process_images()
+// Virtual method implementations required by base class
+nav_msgs::msg::Odometry MultirotorNode::get_vehicle_odometry()
 {
-    // Call base class implementation which handles camera processing
-    VehicleNodeBase::process_images();
+    nav_msgs::msg::Odometry odom_msg;
+    
+    // Get current vehicle state
+    {
+        std::lock_guard<std::mutex> lock(state_mutex_);
+        
+        // Fill header
+        odom_msg.header.stamp = stamp_;
+        odom_msg.header.frame_id = odom_frame_id_;
+        odom_msg.child_frame_id = base_link_frame_id_;
+        
+        // Fill pose
+        odom_msg.pose.pose.position.x = vehicle_state_.kinematics_estimated.pose.position.x();
+        odom_msg.pose.pose.position.y = -vehicle_state_.kinematics_estimated.pose.position.y();
+        odom_msg.pose.pose.position.z = -vehicle_state_.kinematics_estimated.pose.position.z();
+        
+        odom_msg.pose.pose.orientation.x = vehicle_state_.kinematics_estimated.pose.orientation.x();
+        odom_msg.pose.pose.orientation.y = -vehicle_state_.kinematics_estimated.pose.orientation.y();
+        odom_msg.pose.pose.orientation.z = -vehicle_state_.kinematics_estimated.pose.orientation.z();
+        odom_msg.pose.pose.orientation.w = vehicle_state_.kinematics_estimated.pose.orientation.w();
+        
+        // Fill twist
+        odom_msg.twist.twist.linear.x = vehicle_state_.kinematics_estimated.twist.linear.x();
+        odom_msg.twist.twist.linear.y = -vehicle_state_.kinematics_estimated.twist.linear.y();
+        odom_msg.twist.twist.linear.z = -vehicle_state_.kinematics_estimated.twist.linear.z();
+        
+        odom_msg.twist.twist.angular.x = vehicle_state_.kinematics_estimated.twist.angular.x();
+        odom_msg.twist.twist.angular.y = -vehicle_state_.kinematics_estimated.twist.angular.y();
+        odom_msg.twist.twist.angular.z = -vehicle_state_.kinematics_estimated.twist.angular.z();
+    }
+    
+    return odom_msg;
+}
+
+msr::airlib::LidarData MultirotorNode::get_lidar_data_for_sensor(const std::string& sensor_name, const std::string& vehicle_name)
+{
+    if (!sensor_client_) {
+        throw std::runtime_error("Sensor client not initialized for lidar data retrieval");
+    }
+    
+    auto multirotor_client = static_cast<msr::airlib::MultirotorRpcLibClient*>(sensor_client_.get());
+    return multirotor_client->getLidarData(sensor_name, vehicle_name);
 }

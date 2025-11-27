@@ -34,19 +34,3 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "srv/AssignSearchZone.srv"
   "srv/GetMissionStatus.srv"
   "srv/GetVehicleCapabilities.srv"
-  "srv/PlanMission.srv"
-  "srv/SetSearchPattern.srv"
-  "srv/ValidateSearchArea.srv"
-  DEPENDENCIES builtin_interfaces geometry_msgs std_msgs sensor_msgs nav_msgs
-)
-
-# Export dependencies
-ament_export_dependencies(rosidl_default_runtime)
-
-# Testing
-if(BUILD_TESTING)
-  find_package(ament_lint_auto REQUIRED)
-  ament_lint_auto_find_test_dependencies()
-endif()
-
-ament_package()

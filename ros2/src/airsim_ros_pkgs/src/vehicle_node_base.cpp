@@ -103,58 +103,29 @@ VehicleNodeBase::VehicleNodeBase(const std::string& vehicle_name,
     this->declare_parameter("gpulidar_timer_freq", gpulidar_timer_freq_);
     this->declare_parameter("echo_timer_freq", echo_timer_freq_);
     
-<<<<<<< HEAD
-    // Get parameters
-=======
     // Dual-client timeout parameters
     this->declare_parameter("sensor_rpc_timeout_ms", sensor_rpc_timeout_ms_);
     this->declare_parameter("state_rpc_timeout_ms", state_rpc_timeout_ms_);
     
     // Get parameters
     this->get_parameter("vehicle_name", vehicle_name_);
->>>>>>> main
     this->get_parameter("host_ip", host_ip_);
     int port_param = static_cast<int>(host_port_);
     this->get_parameter("host_port", port_param);
     host_port_ = static_cast<uint16_t>(port_param);
-<<<<<<< HEAD
-    this->get_parameter("world_frame_id", world_frame_id_);
-    this->get_parameter("odom_frame_id", odom_frame_id_);
-=======
     this->get_parameter("map_frame_id", map_frame_id_);
     this->get_parameter("odom_frame_id", odom_frame_id_);
     this->get_parameter("base_link_frame_id", base_link_frame_id_);
->>>>>>> main
     
     this->get_parameter("state_timer_freq", state_timer_freq_);
     this->get_parameter("image_timer_freq", image_timer_freq_);
     this->get_parameter("lidar_timer_freq", lidar_timer_freq_);
     this->get_parameter("gpulidar_timer_freq", gpulidar_timer_freq_);
     this->get_parameter("echo_timer_freq", echo_timer_freq_);
-<<<<<<< HEAD
-
-    // Phase 2.2: Set up isolated callback groups
-    setup_callback_groups();
-
-    // Phase 2.1: Initialize independent RPC clients per vehicle
-    airsim_client_images_ = std::make_unique<msr::airlib::RpcLibClientBase>(host_ip_, host_port_);
-    airsim_client_lidar_ = std::make_unique<msr::airlib::RpcLibClientBase>(host_ip_, host_port_);
-    airsim_client_gpulidar_ = std::make_unique<msr::airlib::RpcLibClientBase>(host_ip_, host_port_);
-    airsim_client_echo_ = std::make_unique<msr::airlib::RpcLibClientBase>(host_ip_, host_port_);
     
-    RCLCPP_INFO(this->get_logger(), "Created vehicle node for: %s", vehicle_name_.c_str());
-}
-
-// Phase 2.2: Isolated Callback Groups Setup
-void VehicleNodeBase::setup_callback_groups()
-{
-    state_callback_group_ = this->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
-    sensor_callback_group_ = this->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
-    lidar_callback_group_ = this->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
-    gpulidar_callback_group_ = this->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
-    echo_callback_group_ = this->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
-}
-=======
+    // Get dual-client timeout parameters
+    this->get_parameter("sensor_rpc_timeout_ms", sensor_rpc_timeout_ms_);
+    this->get_parameter("state_rpc_timeout_ms", state_rpc_timeout_ms_);
     
     // Get dual-client timeout parameters
     this->get_parameter("sensor_rpc_timeout_ms", sensor_rpc_timeout_ms_);
@@ -244,29 +215,11 @@ void VehicleNodeBase::setup_callback_groups()
     RCLCPP_INFO(this->get_logger(), "Vehicle node constructor completed for: %s", vehicle_name_.c_str());
 }
 
->>>>>>> main
-
 void VehicleNodeBase::initialize_common()
 {
     tf_broadcaster_ = std::make_shared<tf2_ros::TransformBroadcaster>(*this);
     static_tf_pub_ = std::make_shared<tf2_ros::StaticTransformBroadcaster>(*this);
     
-<<<<<<< HEAD
-    if (!establish_connections()) {
-        RCLCPP_ERROR(this->get_logger(), "Failed to establish connections for vehicle: %s", vehicle_name_.c_str());
-        return;
-    }
-    
-    // Initialize vehicle-specific client
-    initialize_vehicle_client();
-    
-    // Setup ROS components
-    setup_publishers();
-    setup_services();
-    setup_timers();
-    
-    RCLCPP_INFO(this->get_logger(), "Vehicle node initialized successfully: %s", vehicle_name_.c_str());
-=======
     // Initialize image transport (needed for camera publishers)
     try {
         image_transport_ = std::make_unique<image_transport::ImageTransport>(shared_from_this());
@@ -731,19 +684,10 @@ void VehicleNodeBase::setup_object_transforms_publisher(const std::string& topic
         topic_prefix + "object_transforms", qos_settings);
     
     RCLCPP_INFO(this->get_logger(), "Setup object transforms publisher");
->>>>>>> main
 }
 
 bool VehicleNodeBase::establish_connections()
 {
-<<<<<<< HEAD
-    try {
-        // Phase 2.1: Independent connection management per vehicle, isolated failure handling
-        airsim_client_images_->confirmConnection();
-        airsim_client_lidar_->confirmConnection();
-        airsim_client_gpulidar_->confirmConnection();
-        airsim_client_echo_->confirmConnection();
-=======
     RCLCPP_INFO(this->get_logger(), "Establishing connections to the clients now...");
     
     // Base class doesn't create clients - this is handled by derived classes
@@ -761,7 +705,6 @@ bool VehicleNodeBase::establish_connections()
         // state_client_lidar_->confirmConnection();
         // state_client_gpulidar_->confirmConnection();
         // state_client_echo_->confirmConnection();
->>>>>>> main
         
         RCLCPP_INFO(this->get_logger(), "RPC connections established for vehicle: %s", vehicle_name_.c_str());
         return true;
@@ -770,74 +713,23 @@ bool VehicleNodeBase::establish_connections()
         handle_rpc_error(e, "connection establishment");
         return false;
     }
-<<<<<<< HEAD
-}
-
-void VehicleNodeBase::setup_publishers()
-{
-    // Common publishers for all vehicle types
-    odom_pub_ = this->create_publisher<nav_msgs::msg::Odometry>("odom", 10);
-    gps_pub_ = this->create_publisher<sensor_msgs::msg::NavSatFix>("gps", 10);
-    env_pub_ = this->create_publisher<airsim_interfaces::msg::Environment>("environment", 10);
-    
-    // Call virtual method for vehicle-specific publishers
-    setup_vehicle_publishers();
-=======
     
     RCLCPP_INFO(this->get_logger(), "RPC connections established for all: %s", vehicle_name_.c_str());
->>>>>>> main
 }
 
 void VehicleNodeBase::setup_services()
 {
-<<<<<<< HEAD
-    reset_service_ = this->create_service<airsim_interfaces::srv::Reset>(
-        "reset", 
-        std::bind(&VehicleNodeBase::reset_callback, this, std::placeholders::_1, std::placeholders::_2));
-    
-    // Call virtual method for vehicle-specific services
-    setup_vehicle_services();
-=======
     // Topic prefixing: vehicle_name + "/" + service
     std::string topic_prefix = vehicle_name_ + "/";
     
     reset_service_ = this->create_service<airsim_interfaces::srv::Reset>(
         topic_prefix + "reset", 
         std::bind(&VehicleNodeBase::reset_callback, this, std::placeholders::_1, std::placeholders::_2));
-    
->>>>>>> main
 }
 
 // Phase 2.1: Independent Timer Management with isolated callback groups
 void VehicleNodeBase::setup_timers()
 {
-<<<<<<< HEAD
-    // Phase 2.1: Per-vehicle timer frequencies, each vehicle has independent timers
-    state_timer_ = this->create_wall_timer(
-        std::chrono::duration<double>(state_timer_freq_),
-        std::bind(&VehicleNodeBase::state_timer_callback, this),
-        state_callback_group_);
-        
-    image_timer_ = this->create_wall_timer(
-        std::chrono::duration<double>(image_timer_freq_),
-        std::bind(&VehicleNodeBase::image_timer_callback, this),
-        sensor_callback_group_);
-        
-    lidar_timer_ = this->create_wall_timer(
-        std::chrono::duration<double>(lidar_timer_freq_),
-        std::bind(&VehicleNodeBase::lidar_timer_callback, this),
-        lidar_callback_group_);
-        
-    gpulidar_timer_ = this->create_wall_timer(
-        std::chrono::duration<double>(gpulidar_timer_freq_),
-        std::bind(&VehicleNodeBase::gpulidar_timer_callback, this),
-        gpulidar_callback_group_);
-        
-    echo_timer_ = this->create_wall_timer(
-        std::chrono::duration<double>(echo_timer_freq_),
-        std::bind(&VehicleNodeBase::echo_timer_callback, this),
-        echo_callback_group_);
-=======
     // 4-TIER CALLBACK ARCHITECTURE: Assign timers to specialized callback groups
     
     // State timer uses light_sensor_group for low-latency operations (IMU, GPS, baro)
@@ -876,18 +768,11 @@ void VehicleNodeBase::setup_timers()
     RCLCPP_INFO(this->get_logger(), 
         "4-tier callback groups configured: State %.1fHz (light), LiDAR %.1fHz (lidar), Images %.1fHz (camera), Echo %.1fHz (light)",
         1.0/state_timer_freq_, 1.0/lidar_timer_freq_, 1.0/image_timer_freq_, 1.0/echo_timer_freq_);
->>>>>>> main
 }
 
 // Phase 2.1: Independent timer callbacks
 void VehicleNodeBase::state_timer_callback()
 {
-<<<<<<< HEAD
-    try {
-        update_vehicle_state();
-        publish_vehicle_state();
-        handle_vehicle_commands();
-=======
     // CRITICAL: Initialization guard - prevent execution before RPC clients/publishers ready
     if (!initialization_complete_.load()) {
         return;  // Skip callback until initialize_common() completes
@@ -913,28 +798,21 @@ void VehicleNodeBase::state_timer_callback()
         process_state_changes();  // NEW: Virtual hook for state change processing
         publish_vehicle_state();
         process_vehicle_commands();
->>>>>>> main
         publish_static_transforms();
     }
     catch (const rpc::rpc_error& e) {
         handle_rpc_error(e, "state update");
     }
-<<<<<<< HEAD
-=======
     // Mutex automatically released by RAII (exception-safe!)
->>>>>>> main
 }
 
 void VehicleNodeBase::image_timer_callback()
 {
-<<<<<<< HEAD
-=======
     // CRITICAL: Initialization guard - prevent execution before RPC clients ready
     if (!initialization_complete_.load()) {
         return;  // Skip callback until initialize_common() completes
     }
 
->>>>>>> main
     try {
         process_images();
     }
@@ -942,125 +820,14 @@ void VehicleNodeBase::image_timer_callback()
         handle_rpc_error(e, "image processing");
     }
 }
-
-<<<<<<< HEAD
-void VehicleNodeBase::lidar_timer_callback()
-{
-    try {
-        process_lidar();
-    }
-    catch (const rpc::rpc_error& e) {
-        handle_rpc_error(e, "lidar processing");
-    }
-=======
-// Individual camera timer callbacks for parallel processing
-void VehicleNodeBase::camera_1_timer_callback()
-{
-    try {
-        process_camera_1();
-    }
-    catch (const rpc::rpc_error& e) {
-        handle_rpc_error(e, "camera 1 processing");
-    }
-}
-
-void VehicleNodeBase::camera_2_timer_callback()
-{
-    try {
-        process_camera_2();
-    }
-    catch (const rpc::rpc_error& e) {
-        handle_rpc_error(e, "camera 2 processing");
-    }
-}
-
-void VehicleNodeBase::camera_3_timer_callback()
-{
-    try {
-        process_camera_3();
-    }
-    catch (const rpc::rpc_error& e) {
-        handle_rpc_error(e, "camera 3 processing");
-    }
-}
-
-void VehicleNodeBase::camera_4_timer_callback()
-{
-    try {
-        process_camera_4();
-    }
-    catch (const rpc::rpc_error& e) {
-        handle_rpc_error(e, "camera 4 processing");
-    }
-}
-
-void VehicleNodeBase::lidar_timer_callback()
-{
-    // CRITICAL: Initialization guard - prevent execution before RPC clients ready
-    if (!initialization_complete_.load()) {
-        return;  // Skip callback until initialize_common() completes
-    }
-
-    // CRITICAL: Non-blocking guard to prevent concurrent callback execution (race condition fix)
-    // RAII-based mutex with try_to_lock: Non-blocking + automatic cleanup on exception
-    std::unique_lock<std::mutex> lock(lidar_callback_mutex_, std::try_to_lock);
-    if (!lock.owns_lock()) {
-        // Another callback is already running - skip this one (non-blocking behavior)
-        // DISABLED THROTTLE: ROS2 Humble bug - RCLCPP_*_THROTTLE uses static vars causing thread corruption
-        return;
-    }
-
-    try {
-        // DIAGNOSTIC: Manual throttled log (5s interval) - safe alternative to RCLCPP_INFO_THROTTLE
-        static auto last_lidar_log = std::chrono::steady_clock::now();
-        auto log_now = std::chrono::steady_clock::now();
-        if (std::chrono::duration_cast<std::chrono::seconds>(log_now - last_lidar_log).count() >= 5) {
-            RCLCPP_INFO(this->get_logger(), "✓ LiDAR callback active for %s (50Hz)", vehicle_name_.c_str());
-            last_lidar_log = log_now;
-        }
-
-        auto start_time = std::chrono::steady_clock::now();
-        process_lidar();
-        auto end_time = std::chrono::steady_clock::now();
-        auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
-
-        // DISABLED: RCLCPP_INFO_THROTTLE has threading issues causing SEGFAULT
-        // // DISABLED THROTTLE: ROS2 Humble threading bug
- // RCLCPP_INFO_THROTTLE(this->get_logger(), *this->get_clock(), 5000,
-        //     "LiDAR processing took %ld ms", duration.count());
-    }
-    catch (const rpc::rpc_error& e) {
-        RCLCPP_ERROR(this->get_logger(), "RPC error in LiDAR timer: %s", e.what());
-        handle_rpc_error(e, "lidar processing");
-    }
-    catch (const std::exception& e) {
-        RCLCPP_ERROR(this->get_logger(), "Exception in LiDAR timer: %s", e.what());
-    }
-
-    // Mutex automatically released by RAII when lock goes out of scope (exception-safe!)
->>>>>>> main
-}
-
-void VehicleNodeBase::gpulidar_timer_callback()
-{
-    try {
-        process_gpulidar();
-    }
-    catch (const rpc::rpc_error& e) {
-        handle_rpc_error(e, "gpulidar processing");
-    }
-}
-
 void VehicleNodeBase::echo_timer_callback()
 {
-<<<<<<< HEAD
-=======
+
     // CRITICAL: Initialization guard - prevent execution before RPC clients ready
     if (!initialization_complete_.load()) {
         return;  // Skip callback until initialize_common() completes
     }
 
->>>>>>> main
     try {
         process_echo();
     }
@@ -1072,10 +839,6 @@ void VehicleNodeBase::echo_timer_callback()
 void VehicleNodeBase::publish_odometry_tf(const nav_msgs::msg::Odometry& odom_msg)
 {
     geometry_msgs::msg::TransformStamped odom_tf;
-<<<<<<< HEAD
-    odom_tf.header = odom_msg.header;
-    odom_tf.child_frame_id = odom_msg.child_frame_id;
-=======
     odom_tf.header.stamp = odom_msg.header.stamp;
     
     // REP 105 COMPLIANT: {vehicle}/odom → {vehicle}/base_link transform (dynamic from robot odometry)
@@ -1083,14 +846,10 @@ void VehicleNodeBase::publish_odometry_tf(const nav_msgs::msg::Odometry& odom_ms
     odom_tf.child_frame_id = odom_msg.child_frame_id;        // "{vehicle}/base_link"
     
     // Use actual position data from AirSim (already converted in odom_msg)
->>>>>>> main
     odom_tf.transform.translation.x = odom_msg.pose.pose.position.x;
     odom_tf.transform.translation.y = odom_msg.pose.pose.position.y;
     odom_tf.transform.translation.z = odom_msg.pose.pose.position.z;
     odom_tf.transform.rotation = odom_msg.pose.pose.orientation;
-<<<<<<< HEAD
-    tf_broadcaster_->sendTransform(odom_tf);
-=======
 
     // DISABLED THROTTLE: ROS2 Humble bug - RCLCPP_DEBUG_THROTTLE uses static vars causing thread corruption
     // This function runs at 50Hz in state_timer_callback - logging disabled for thread safety
@@ -1131,19 +890,12 @@ void VehicleNodeBase::publish_odometry_tf(const nav_msgs::msg::Odometry& odom_ms
     //     "Odometry TF published: %s → %s (stamp: %ld.%ld)", 
     //     odom_tf.header.frame_id.c_str(), odom_tf.child_frame_id.c_str(),
     //     odom_tf.header.stamp.sec, odom_tf.header.stamp.nanosec);
->>>>>>> main
 }
 
 void VehicleNodeBase::publish_static_transforms()
 {
     if (!static_tf_msg_vec_.empty()) {
         auto now = this->get_clock()->now();
-<<<<<<< HEAD
-        for (auto& static_tf_msg : static_tf_msg_vec_) {
-            static_tf_msg.header.stamp = now;
-            static_tf_pub_->sendTransform(static_tf_msg);
-        }
-=======
 
         // DISABLED THROTTLE: ROS2 Humble bug - static vars cause thread corruption in MultiThreadedExecutor
         // This function runs at 50Hz in state_timer_callback - logging disabled for thread safety
@@ -1211,7 +963,6 @@ void VehicleNodeBase::publish_static_transforms()
     } else {
         RCLCPP_DEBUG_ONCE(this->get_logger(), 
             "No static transforms to publish for vehicle: %s", vehicle_name_.c_str());
->>>>>>> main
     }
 }
 
@@ -1222,13 +973,8 @@ bool VehicleNodeBase::reset_callback(const std::shared_ptr<airsim_interfaces::sr
     
     try {
         // Need to use main client for reset (not specialized clients)
-<<<<<<< HEAD
-        if (airsim_client_) {
-            airsim_client_->reset();
-=======
         if (state_client_) {
             state_client_->reset();
->>>>>>> main
         }
         RCLCPP_INFO(this->get_logger(), "Reset successful for vehicle: %s", vehicle_name_.c_str());
         response->success = true;
@@ -1268,21 +1014,6 @@ void VehicleNodeBase::handle_rpc_error(const rpc::rpc_error& e, const std::strin
 // Default implementations for virtual methods (can be overridden by derived classes)
 void VehicleNodeBase::initialize_vehicle_client() 
 {
-<<<<<<< HEAD
-    // Default implementation - create basic client
-    airsim_client_ = std::make_unique<msr::airlib::RpcLibClientBase>(host_ip_, host_port_);
-}
-
-void VehicleNodeBase::setup_vehicle_publishers() 
-{
-    // Default implementation - no additional publishers
-}
-
-void VehicleNodeBase::setup_vehicle_subscribers() 
-{
-    // Default implementation - no subscribers
-}
-=======
     // Single client architecture - create only basic client by default
     // Derived classes override this to create specialized clients (MultirotorRpcLibClient, etc.)
     sensor_client_ = std::make_unique<msr::airlib::MultirotorRpcLibClient>(host_ip_, host_port_);
@@ -1300,19 +1031,12 @@ void VehicleNodeBase::setup_vehicle_subscribers()
 }
 
 
->>>>>>> main
 
 void VehicleNodeBase::setup_vehicle_services() 
 {
     // Default implementation - no additional services
 }
 
-<<<<<<< HEAD
-void VehicleNodeBase::update_vehicle_state() 
-{
-    // Default implementation - basic state update
-    RCLCPP_DEBUG(this->get_logger(), "Updating state for vehicle: %s", vehicle_name_.c_str());
-=======
 void VehicleNodeBase::setup_vehicle_subscribers()
 {
     // Default implementation - no additional subscribers
@@ -1354,18 +1078,12 @@ void VehicleNodeBase::process_state_changes()
     // - State change monitoring
     // - Custom activity tracking
     RCLCPP_DEBUG(this->get_logger(), "Base class process_state_changes() - no processing implemented");
->>>>>>> main
 }
 
 void VehicleNodeBase::publish_vehicle_state() 
 {
     // Default implementation - basic state publishing
     RCLCPP_DEBUG(this->get_logger(), "Publishing state for vehicle: %s", vehicle_name_.c_str());
-<<<<<<< HEAD
-}
-
-void VehicleNodeBase::handle_vehicle_commands() 
-=======
     // Publish odometry
     odom_pub_->publish(curr_odom_);
     publish_odometry_tf(curr_odom_);
@@ -1381,23 +1099,10 @@ void VehicleNodeBase::handle_vehicle_commands()
 }
 
 void VehicleNodeBase::process_vehicle_commands() 
->>>>>>> main
 {
     // Default implementation - no command handling
 }
 
-<<<<<<< HEAD
-void VehicleNodeBase::process_images() 
-{
-    // Default implementation - no image processing
-}
-
-void VehicleNodeBase::process_lidar() 
-{
-    // Default implementation - no lidar processing
-}
-=======
->>>>>>> main
 
 void VehicleNodeBase::process_gpulidar() 
 {
@@ -1407,9 +1112,6 @@ void VehicleNodeBase::process_gpulidar()
 void VehicleNodeBase::process_echo() 
 {
     // Default implementation - no echo processing
-<<<<<<< HEAD
-}
-=======
 }
 
 // ===== UTILITY METHODS FOR SENSOR DATA CONVERSION =====
@@ -2566,5 +2268,82 @@ std::string VehicleNodeBase::findVehicleInSettings(const msr::airlib::Settings& 
     // No match found
     return "";
 }
+void VehicleNodeBase::lidar_timer_callback()
+{
+    // CRITICAL: Initialization guard - prevent execution before RPC clients ready
+    if (!initialization_complete_.load()) {
+        return;
+    }
 
->>>>>>> main
+    // CRITICAL: Non-blocking guard to prevent concurrent callback execution
+    std::unique_lock<std::mutex> lock(lidar_callback_mutex_, std::try_to_lock);
+    if (!lock.owns_lock()) {
+        return;
+    }
+
+    try {
+        process_lidar();
+    }
+    catch (const rpc::rpc_error& e) {
+        handle_rpc_error(e, "lidar processing");
+    }
+    catch (const std::exception& e) {
+        RCLCPP_ERROR(this->get_logger(), "LiDAR processing error: %s", e.what());
+    }
+}
+
+void VehicleNodeBase::gpulidar_timer_callback()
+{
+    // CRITICAL: Initialization guard - prevent execution before RPC clients ready
+    if (!initialization_complete_.load()) {
+        return;
+    }
+
+    try {
+        process_gpulidar();
+    }
+    catch (const rpc::rpc_error& e) {
+        handle_rpc_error(e, "gpulidar processing");
+    }
+}
+
+// Individual camera timer callbacks for parallel processing
+void VehicleNodeBase::camera_1_timer_callback()
+{
+    try {
+        process_camera_1();
+    }
+    catch (const rpc::rpc_error& e) {
+        handle_rpc_error(e, "camera 1 processing");
+    }
+}
+
+void VehicleNodeBase::camera_2_timer_callback()
+{
+    try {
+        process_camera_2();
+    }
+    catch (const rpc::rpc_error& e) {
+        handle_rpc_error(e, "camera 2 processing");
+    }
+}
+
+void VehicleNodeBase::camera_3_timer_callback()
+{
+    try {
+        process_camera_3();
+    }
+    catch (const rpc::rpc_error& e) {
+        handle_rpc_error(e, "camera 3 processing");
+    }
+}
+
+void VehicleNodeBase::camera_4_timer_callback()
+{
+    try {
+        process_camera_4();
+    }
+    catch (const rpc::rpc_error& e) {
+        handle_rpc_error(e, "camera 4 processing");
+    }
+}

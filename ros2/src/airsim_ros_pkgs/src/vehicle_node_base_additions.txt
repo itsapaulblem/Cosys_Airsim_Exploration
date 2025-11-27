@@ -1,0 +1,19 @@
+
+void VehicleNodeBase::lidar_timer_callback()
+{
+    // CRITICAL: Initialization guard - prevent execution before RPC clients ready
+    if (!initialization_complete_.load()) {
+        return;
+    }
+
+    // CRITICAL: Non-blocking guard to prevent concurrent callback execution
+    std::unique_lock<std::mutex> lock(lidar_callback_mutex_, std::try_to_lock);
+    if (!lock.owns_lock()) {
+        return;
+    }
+
+    try {
+        process_lidar();
+    }
+    catch (const rpc::rpc_error& e) {
+        handle_rpc_error(e, " lidar processing\);

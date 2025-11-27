@@ -92,7 +92,7 @@ protected:
     virtual void setup_vehicle_services() override;
     virtual void update_vehicle_state() override;
     virtual void publish_vehicle_state() override;
-    virtual void handle_vehicle_commands() override;
+    virtual void process_vehicle_commands() override;
     
     // Parallel sensor processing overrides
     virtual void process_images() override;
@@ -109,7 +109,6 @@ protected:
     // Vehicle-specific control methods
     void setup_vehicle_control_subscribers();
     void setup_vehicle_control_services();
-    void process_vehicle_commands();
 
     // Service callbacks (protected so derived classes can access them)
     bool takeoff_callback(
@@ -190,6 +189,8 @@ private:
     virtual bool should_create_flight_services() const { return true; }
 
     // Subscriber callbacks
+    void vel_cmd_body_callback(const airsim_interfaces::msg::VelCmd::SharedPtr msg);
+    void vel_cmd_world_callback(const airsim_interfaces::msg::VelCmd::SharedPtr msg);
     void vel_cmd_body_frame_callback(const airsim_interfaces::msg::VelCmd::SharedPtr msg);
     void vel_cmd_world_frame_callback(const airsim_interfaces::msg::VelCmd::SharedPtr msg);
     // TODO: Create TargetDetection.msg in airsim_interfaces if motion detection is needed
@@ -275,8 +276,8 @@ private:
     airsim_interfaces::msg::VelCmd vel_cmd_world_frame_;
 
     // Subscribers
-    rclcpp::Subscription<airsim_interfaces::msg::VelCmd>::SharedPtr vel_cmd_body_frame_sub_;
-    rclcpp::Subscription<airsim_interfaces::msg::VelCmd>::SharedPtr vel_cmd_world_frame_sub_;
+    rclcpp::Subscription<airsim_interfaces::msg::VelCmd>::SharedPtr vel_cmd_body_sub_;
+    rclcpp::Subscription<airsim_interfaces::msg::VelCmd>::SharedPtr vel_cmd_world_sub_;
     // TODO: Create TargetDetection.msg in airsim_interfaces if motion detection is needed
     // rclcpp::Subscription<airsim_interfaces::msg::TargetDetection>::SharedPtr motion_detection_sub_;
 
@@ -295,10 +296,4 @@ private:
     rclcpp::Time stamp_;
     msr::airlib::MultirotorState vehicle_state_;
 
-    // Velocity command state with thread safety
-    airsim_interfaces::msg::VelCmd vel_cmd_body_frame_;
-    airsim_interfaces::msg::VelCmd vel_cmd_world_frame_;
-    bool has_new_vel_cmd_body_frame_ = false;
-    bool has_new_vel_cmd_world_frame_ = false;
-    std::mutex vel_cmd_mutex_;
 };
