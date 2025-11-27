@@ -1920,7 +1920,7 @@ This enhanced Cosys-AirSim implementation builds upon the excellent work of Micr
 @misc{internship_project_2025,
   author = {Paul Cheng},
   title = {6-Month Internship: Modular Multi-Vehicle Simulation with AI Integration},
-  organization = {DSTA},
+  organization = {},
   year = {2025},
   note = {Advanced ROS2 architecture, autonomous vision systems, and physics enhancements for drone fleets},
   url = {https://github.com/itsapaulblem/Cosys_Airsim_Exploration}
