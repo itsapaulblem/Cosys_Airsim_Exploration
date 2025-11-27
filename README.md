@@ -17,7 +17,7 @@
 7. [Physics Engine Enhancements](#-physics-engine-enhancements)
 8. [Technical Implementation Deep Dive](#-technical-implementation-deep-dive)
 9. [Installation & Deployment](#️-installation--deployment)
-10. [Startup Instructions (WSL 2.5.10.0 & Windows 10)](#startup-instructions-wsl-2510--windows-10)
+10. [Quick Start Guide](#quick-start-guide)
 11. [Architecture Overview](#architecture-overview)
 12. [ROS Topics and Services](#ros-topics-and-services)
 13. [Detailed Comparisons: Old vs New Architecture](#detailed-comparisons-old-vs-new-architecture)
