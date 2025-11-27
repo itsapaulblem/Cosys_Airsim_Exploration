@@ -1411,10 +1411,6 @@ python3 generate_settings.py 2
 For each drone, run in separate terminals:
 ```bash
 PX4_SYS_AUTOSTART=10016 PX4_SIM_MODEL=none ./build/px4_sitl_default/bin/px4 -i <instance_id>
-=======
-
-- [Physical LiDAR Simulation in Real-Time Engine](https://arxiv.org/abs/2208.10295)
->>>>>>> main
 ```
 Example for two drones:
 ```bash
