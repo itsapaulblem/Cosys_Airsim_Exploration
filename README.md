@@ -2,38 +2,7 @@
 
 ![Project Status](https://img.shields.io/badge/Internship-6_Months_Complete-success) ![ROS2](https://img.shields.io/badge/ROS2-Humble-green) ![AI](https://img.shields.io/badge/AI-YOLO_Vision-orange) ![Architecture](https://img.shields.io/badge/Architecture-Modular-blue)
 
-**📊 Full Presentation Slides**: A [slide deck](https://docs.google.com/presentation/d/1QnXTPNWawfn-A6RgIhcmu6294ree_dILD_hp1z6UNZY/edit?usp=sharing) delivered to the M&S internal team, covering the system arcihtecture, implementation and key results
----
-
-## 🎓 Internship Project Overview
-
-This repository documents a **6-month internship project** that transformed Cosys-AirSim from a monolithic single-vehicle system into a **scalable, modular multi-vehicle simulation platform** with **YOLOv7 + DeepSORT AI vision capabilities** and **enhanced physics simulation**. 
-
-### **Original Cosys-AirSim Foundation**
-
-Cosys-AirSim is a simulator for drones, cars and more, with extensive API support, built on [Unreal Engine](https://www.unrealengine.com/). It is open-source, cross platform, and supports hardware-in-loop with popular flight controllers such as PX4 for visually realistic simulations.
-
-This fork is based on the last public AirSim release from Microsoft's GitHub. Paulsys-Lab made extensive modifications to the AirSim platform to support multiple projects and research goals. The [original AirSim MIT license](https://github.com/Cosys-Lab/Cosys-AirSim/blob/main/LICENSE) applies to all native AirSim source files.
-
----
-### **🌍 Platform Comparison: Why Cosys-AirSim over Alternatives?**
-
-**AirSim vs CoSys-AirSim:**
-
-| Category                    | AirSim (Microsoft)                                         | CoSys-AirSim (CoSys-Lab)                                                    |
-|-----------------------------|------------------------------------------------------------|-----------------------------------------------------------------------------|
-| **Base Engine Support**     | Primarily supports Unreal Engine 4.27                      | Supports Unreal Engine 5                                                    |
-| **Sensors Modalities**      | Standard sensors: RGB, Depth segmentation, LiDAR, IMU, GPS | Standard sensors + thermal, stereo, multi-camera and expanded LiDAR options |
-| **ROS / ROS 2 Integration** | ROS 1 officially supported                                 | Includes ROS 2 workspace support                                            |
-
-**Unity vs Unreal Engine:**
-
-| Criteria                  | Unity Robotics Hub & ROS-TCP Connector                                  | Cosys-AirSim                                                                        |
-|---------------------------|-------------------------------------------------------------------------|-------------------------------------------------------------------------------------|
-| **ROS Compatibility**     | Primarily supports ROS 1; Limited ROS 2 support                         | Full ROS 2 Support                                                                  |
-| **Drone Control Loop**    | Physics simulated but loop latency via TCP limits true in-loop feedback | Real-time physics-in-the-loop (SITL/HITL) with PX4 for accurate drone dynamics      |
-| **Maintenance & Updates** | Deprecated (last updated Feb 2022)                                      | Maintained and regularly updated                                                    |
-| **Community Support**     | Minimal support; Inactive forum                                         | Strong community and active development                                             |
+**📊 Full Presentation Slides**: A [slide deck](https://docs.google.com/presentation/d/1QnXTPNWawfn-A6RgIhcmu6294ree_dILD_hp1z6UNZY/edit?usp=sharing) delivered to the M&S internal team, covering the system architecture, implementation and key results
 
 ---
 
@@ -54,6 +23,36 @@ This fork is based on the last public AirSim release from Microsoft's GitHub. Pa
 13. [License & Citation](#-license--citation)
 
 ---
+
+## 🎓 Internship Project Overview
+
+This repository documents a **6-month internship project** that transformed Cosys-AirSim from a monolithic single-vehicle system into a **scalable, modular multi-vehicle simulation platform** with **YOLOv7 + DeepSORT AI vision capabilities** and **enhanced physics simulation**. 
+
+### **Original Cosys-AirSim Foundation**
+
+Cosys-AirSim is a simulator for drones, cars and more, with extensive API support, built on [Unreal Engine](https://www.unrealengine.com/). It is open-source, cross platform, and supports hardware-in-loop with popular flight controllers such as PX4 for visually realistic simulations.
+
+This fork is based on the last public AirSim release from Microsoft's GitHub. Paulsys-Lab made extensive modifications to the CoSys-AirSim platform to support multiple projects and research goals. The [original AirSim MIT license](https://github.com/Cosys-Lab/Cosys-AirSim/blob/main/LICENSE) applies to all native AirSim source files.
+
+---
+### **🌍 Platform Comparison: Why Cosys-AirSim over Alternatives?**
+
+**AirSim vs CoSys-AirSim:**
+
+| Category                    | AirSim (Microsoft)                                         | CoSys-AirSim (CoSys-Lab)                                                    |
+|-----------------------------|------------------------------------------------------------|-----------------------------------------------------------------------------|
+| **Base Engine Support**     | Primarily supports Unreal Engine 4.27                      | Supports Unreal Engine 5                                                    |
+| **Sensors Modalities**      | Standard sensors: RGB, Depth segmentation, LiDAR, IMU, GPS | Standard sensors + thermal, stereo, multi-camera and expanded LiDAR options |
+| **ROS / ROS 2 Integration** | ROS 1 officially supported                                 | Includes ROS 2 workspace support                                            |
+
+**Unity vs Unreal Engine:**
+
+| Criteria                  | Unity Robotics Hub & ROS-TCP Connector                                  | Cosys-AirSim                                                                        |
+|---------------------------|-------------------------------------------------------------------------|-------------------------------------------------------------------------------------|
+| **ROS Compatibility**     | Primarily supports ROS 1; Limited ROS 2 support                         | Full ROS 2 Support                                                                  |
+| **Drone Control Loop**    | Physics simulated but loop latency via TCP limits true in-loop feedback | Real-time physics-in-the-loop (SITL/HITL) with PX4 for accurate drone dynamics      |
+| **Maintenance & Updates** | Deprecated (last updated Feb 2022)                                      | Maintained and regularly updated                                                    |
+| **Community Support**     | Minimal support; Inactive forum                                         | Strong community and active development                                             |
 
 ### **Internship Project Transformation**
 
@@ -503,56 +502,6 @@ Cosys-AirSim/
 9. Process repeats 30 times per second for real-time tracking!
 
 This integrated system enables **fully autonomous person following** with **realistic physics simulation** - exactly what this internship project achieved! 🎯
-
-
-## 🛠️ Installation & Deployment
-
-### **Prerequisites & Setup**
-
-**System Requirements**:
-- Windows 10/11 or Ubuntu 22.04
-- Unreal Engine 5.5
-- ROS2 Humble
-- Python 3.8+ with OpenCV, PyTorch
-- PX4 SITL (optional for hardware-in-loop)
-- ArduPilot (in the works)
-
-### **Quick Start Guide**
-
-```bash
-
-### **AI Vision System Deployment**
-
-**📁 Launch File Locations:**
-
-ros2/src/airsim_ros_pkgs/launch/motion_detection_launch.py
-ros2/src/airsim_ros_pkgs/launch/generalised_object_tracking_launch.py
-ros2/src/airsim_ros_pkgs/launch/multi_drone.launch.py
-```
-
-```bash  
-# Deploy person following on Drone1
-ros2 launch airsim_ros_pkgs motion_detection_launch.py \
-  vehicle_name:=Drone1 \
-  confidence_threshold:=0.8 \
-  enable_following:=true \
-  follow_distance:=5.0
-
-# Deploy car tracking on Drone2  
-ros2 launch airsim_ros_pkgs generalised_object_tracking_launch.py \
-  vehicle_name:=Drone2 \
-  target_class_id:=2 \
-  confidence_threshold:=0.6 \
-  follow_distance:=3.0
-
-# Deploy drone detection on Drone3
-ros2 launch airsim_ros_pkgs generalised_object_tracking_launch.py \
-  vehicle_name:=Drone3 \
-  target_class_id:=4 \
-  confidence_threshold:=0.7
-```
-
----
 
 ## 🔧 Technical Implementation Deep Dive
 
@@ -1424,12 +1373,19 @@ private:
 This comprehensive implementation transforms AirSim's F10 weather menu from purely visual effects into a fully functional weather physics system that realistically affects drone flight behavior.
 
 ---
+## 🛠️ Installation & Deployment
 
-## 🏛️ Original Cosys-Lab Features
+### **Prerequisites & Setup**
 
-The internship project builds upon Cosys-Lab's extensive modifications to AirSim:
+**System Requirements**:
+- Windows 10/11 or Ubuntu 22.04
+- Unreal Engine 5.5
+- ROS2 Humble
+- Python 3.8+ with OpenCV, PyTorch
+- PX4 SITL (optional for hardware-in-loop)
+- ArduPilot (in the works)
 
-## Associated publications
+### **Quick Start Guide**
 
 ## Startup Instructions (WSL 2.5.10.0 & Windows 10)
 
@@ -1508,6 +1464,37 @@ ros2 launch airsim_ros_pkgs motion_detection_launch.py vehicle_name:=Drone2
 ```
 
 ### Step 6: Test System 
+
+### **AI Vision System Deployment**
+
+**📁 Launch File Locations:**
+
+ros2/src/airsim_ros_pkgs/launch/motion_detection_launch.py
+ros2/src/airsim_ros_pkgs/launch/generalised_object_tracking_launch.py
+ros2/src/airsim_ros_pkgs/launch/multi_drone.launch.py
+```
+
+```bash  
+# Deploy person following on Drone1
+ros2 launch airsim_ros_pkgs motion_detection_launch.py \
+  vehicle_name:=Drone1 \
+  confidence_threshold:=0.8 \
+  enable_following:=true \
+  follow_distance:=5.0
+
+# Deploy car tracking on Drone2  
+ros2 launch airsim_ros_pkgs generalised_object_tracking_launch.py \
+  vehicle_name:=Drone2 \
+  target_class_id:=2 \
+  confidence_threshold:=0.6 \
+  follow_distance:=3.0
+
+# Deploy drone detection on Drone3
+ros2 launch airsim_ros_pkgs generalised_object_tracking_launch.py \
+  vehicle_name:=Drone3 \
+  target_class_id:=4 \
+  confidence_threshold:=0.7
+```
 
 ```bash
 # Takeoff drone
@@ -1611,20 +1598,20 @@ ros2 service call /drone1/track_target airsim_interfaces/srv/TrackTarget "{
 
 ### Topics Published Per Vehicle 
 
-| Topic Name                | Message Type                       | Description                                      |
-|---------------------------|------------------------------------|--------------------------------------------------|
-| `/droneX/odom`            | `nav_msgs/msg/Odometry`            | Vehicle odometry (position, orientation, velocity)|
-| `/droneX/gps`             | `sensor_msgs/msg/NavSatFix`        | GPS data (lat, lon, alt)                         |
-| `/droneX/imu`             | `sensor_msgs/msg/Imu`              | IMU data (orientation, angular/linear accel)     |
-| `/droneX/environment`     | `airsim_interfaces/msg/Environment`| AirSim environment state (pressure, temp, etc.)  |
-| `/droneX/camera0/image`   | `sensor_msgs/msg/Image`            | Front camera image (640x480)                     |
-| `/droneX/camera1/image`   | `sensor_msgs/msg/Image`            | Right camera image (640x480)                     |
-| `/droneX/camera2/image`   | `sensor_msgs/msg/Image`            | Back camera image (640x480)                      |
-| `/droneX/camera3/image`   | `sensor_msgs/msg/Image`            | Left camera image (640x480)                      |
+| Topic Name                | Message Type                       | Description                                          |
+|---------------------------|----------------------------------------|--------------------------------------------------|
+| `/droneX/odom`            | `nav_msgs/msg/Odometry`                | Vehicle odometry (position, orientation, velocity)|
+| `/droneX/gps`             | `sensor_msgs/msg/NavSatFix`            | GPS data (lat, lon, alt)                         |
+| `/droneX/imu`             | `sensor_msgs/msg/Imu`                  | IMU data (orientation, angular/linear accel)     |
+| `/droneX/environment`     | `airsim_interfaces/msg/Environment`    | AirSim environment state (pressure, temp, etc.)  |
+| `/droneX/camera0/image`   | `sensor_msgs/msg/Image`                | Front camera image (640x480)                     |
+| `/droneX/camera1/image`   | `sensor_msgs/msg/Image`                | Right camera image (640x480)                     |
+| `/droneX/camera2/image`   | `sensor_msgs/msg/Image`                | Back camera image (640x480)                      |
+| `/droneX/camera3/image`   | `sensor_msgs/msg/Image`                | Left camera image (640x480)                      |
 | `/droneX/camera{0-3}/camera_info` | `sensor_msgs/msg/CameraInfo`   | Camera calibration info                          |
-| `/droneX/lidar0/points`   | `sensor_msgs/msg/PointCloud2`      | Lidar point cloud                                |
-| `/droneX/mag`             | `sensor_msgs/msg/MagneticField`    | Magnetometer data                                |
-| `/droneX/baro`            | `sensor_msgs/msg/Range`            | Barometer/altimeter data                         |
+| `/droneX/lidar0/points`   | `sensor_msgs/msg/PointCloud2`          | Lidar point cloud                                |
+| `/droneX/mag`             | `sensor_msgs/msg/MagneticField`        | Magnetometer data                                |
+| `/droneX/baro`            | `sensor_msgs/msg/Range`                | Barometer/altimeter data                         |
 
 ### Topics Published by Coordination Node 
 
@@ -1702,26 +1689,6 @@ ros2 service call /Drone1/search_target airsim_interfaces/srv/SearchTarget "{
   "message": "Moving target found via AI vision system"
 }
 ```
-
-* Updated for Unreal 5.
-* Added [multi-layer annotation](https://cosys-lab.github.io/Cosys-AirSim/annotation) for groundtruth label generation with RGB, greyscale and texture options. Extensive API integration and available for camera and GPU-LiDAR sensors.
-* Added [Instance Segmentation](https://cosys-lab.github.io/Cosys-AirSim/instance_segmentation). 
-* Added [Echo sensor type](https://cosys-lab.github.io/Cosys-AirSim/echo) for simulation of sensors like sonar and radar.
-* Added [GPU LIDAR sensor type](https://cosys-lab.github.io/Cosys-AirSim/gpulidar): Uses GPU acceleration to simulate a LiDAR sensor. Can support much higher point density then normal LiDAR and behaves more authentic and has realistic intensity generation.
-* Added [skid steering SimMode and vehicle type](https://cosys-lab.github.io/Cosys-AirSim/skid_steer_vehicle). ClearPath Husky and Pioneer P3DX implemented as vehicle types using this new vehicle model. 
-* Added [Matlab API Client](https://cosys-lab.github.io/Cosys-AirSim/matlab) implementation as an easy to install Matlab toolbox.
-* Added various [random but deterministic dynamic object types and world configuration options](https://cosys-lab.github.io/Cosys-AirSim/dynamic_objects).
-* Added [Artificial Lights](https://cosys-lab.github.io/Cosys-AirSim/lights). 
-* Added BoxCar vehicle model to the Car SimMode to have a smaller vehicle to use in indoor spaces.
-* Added a new image type called [Lighting](https://cosys-lab.github.io/Cosys-AirSim/image_apis) which only shows the light information and no materials.
-* Updated [ComputerVision mode](https://cosys-lab.github.io/Cosys-AirSim/image_apis#computer-vision-mode-1): Now has full API and Simulation just like other vehicle types. It mostly means it can now have sensors attached (outside of IMU). Improved handling and camera operation.
-* Updated [LIDAR sensor type](https://cosys-lab.github.io/Cosys-AirSim/lidar): Fixed not tracing correctly, added ground truth (point labels) generation, added range-noise generation. Improved API pointcloud delivery to be full scan instead of being frame-rate dependent and partial.
-* Updated the camera, Echo and (GPU-)LiDAR sensors to be uncoupled from the vehicle and be placed as external world sensors.
-* Updated sensors like cameras, Echo sensor and GPU-LiDAR to ignore certain objects with the _MarkedIgnore_ Unreal tag and enabling the "IgnoreMarked" setting in [the settings file](https://cosys-lab.github.io/Cosys-AirSim/settings).
-* Updated cameras sensor with more distortion features such as chromatic aberration, motion blur and lens distortion. 
-* Updated Python [ROS implementation](https://cosys-lab.github.io/Cosys-AirSim/ros_python) with completely new implementation and feature set.
-* **ENHANCED BY INTERNSHIP**: Updated C++ [ROS2 implementation](https://cosys-lab.github.io/Cosys-AirSim/ros_cplusplus) with modular architecture, AI integration, and weather physics.
-* Dropped support for Unity Environments.
 
 ### New Modular Architecture Files
 
@@ -1931,6 +1898,26 @@ This enhanced Cosys-AirSim implementation builds upon the excellent work of Micr
   url = {https://arxiv.org/abs/1705.05065}
 }
 ``` 
+
+* Updated for Unreal 5.
+* Added [multi-layer annotation](https://cosys-lab.github.io/Cosys-AirSim/annotation) for groundtruth label generation with RGB, greyscale and texture options. Extensive API integration and available for camera and GPU-LiDAR sensors.
+* Added [Instance Segmentation](https://cosys-lab.github.io/Cosys-AirSim/instance_segmentation). 
+* Added [Echo sensor type](https://cosys-lab.github.io/Cosys-AirSim/echo) for simulation of sensors like sonar and radar.
+* Added [GPU LIDAR sensor type](https://cosys-lab.github.io/Cosys-AirSim/gpulidar): Uses GPU acceleration to simulate a LiDAR sensor. Can support much higher point density then normal LiDAR and behaves more authentic and has realistic intensity generation.
+* Added [skid steering SimMode and vehicle type](https://cosys-lab.github.io/Cosys-AirSim/skid_steer_vehicle). ClearPath Husky and Pioneer P3DX implemented as vehicle types using this new vehicle model. 
+* Added [Matlab API Client](https://cosys-lab.github.io/Cosys-AirSim/matlab) implementation as an easy to install Matlab toolbox.
+* Added various [random but deterministic dynamic object types and world configuration options](https://cosys-lab.github.io/Cosys-AirSim/dynamic_objects).
+* Added [Artificial Lights](https://cosys-lab.github.io/Cosys-AirSim/lights). 
+* Added BoxCar vehicle model to the Car SimMode to have a smaller vehicle to use in indoor spaces.
+* Added a new image type called [Lighting](https://cosys-lab.github.io/Cosys-AirSim/image_apis) which only shows the light information and no materials.
+* Updated [ComputerVision mode](https://cosys-lab.github.io/Cosys-AirSim/image_apis#computer-vision-mode-1): Now has full API and Simulation just like other vehicle types. It mostly means it can now have sensors attached (outside of IMU). Improved handling and camera operation.
+* Updated [LIDAR sensor type](https://cosys-lab.github.io/Cosys-AirSim/lidar): Fixed not tracing correctly, added ground truth (point labels) generation, added range-noise generation. Improved API pointcloud delivery to be full scan instead of being frame-rate dependent and partial.
+* Updated the camera, Echo and (GPU-)LiDAR sensors to be uncoupled from the vehicle and be placed as external world sensors.
+* Updated sensors like cameras, Echo sensor and GPU-LiDAR to ignore certain objects with the _MarkedIgnore_ Unreal tag and enabling the "IgnoreMarked" setting in [the settings file](https://cosys-lab.github.io/Cosys-AirSim/settings).
+* Updated cameras sensor with more distortion features such as chromatic aberration, motion blur and lens distortion. 
+* Updated Python [ROS implementation](https://cosys-lab.github.io/Cosys-AirSim/ros_python) with completely new implementation and feature set.
+* **ENHANCED BY INTERNSHIP**: Updated C++ [ROS2 implementation](https://cosys-lab.github.io/Cosys-AirSim/ros_cplusplus) with modular architecture, AI integration, and weather physics.
+* Dropped support for Unity Environments.
 
 ---
 
