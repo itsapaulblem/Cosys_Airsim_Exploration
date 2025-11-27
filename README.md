@@ -1,5 +1,4 @@
 # Paul's 6-Months Internship Project, PaulSys: Enhancing the CoSys-AirSim Simulator with AI-Driven Autonomy & Physics-Based Effects
-## Modular ROS2 Architecture & Vision Based Autonomy and Enhanced Physics Integration for the Cosys-AirSim Platform
 
 ![Project Status](https://img.shields.io/badge/Internship-6_Months_Complete-success) ![ROS2](https://img.shields.io/badge/ROS2-Humble-green) ![AI](https://img.shields.io/badge/AI-YOLO_Vision-orange) ![Architecture](https://img.shields.io/badge/Architecture-Modular-blue)
 
