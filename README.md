@@ -1705,9 +1705,6 @@ ros2 service call /Drone1/search_target airsim_interfaces/srv/SearchTarget "{
 }
 ```
 
-<<<<<<< HEAD
----
-=======
 * Updated for Unreal 5.
 * Added [multi-layer annotation](https://cosys-lab.github.io/Cosys-AirSim/annotation) for groundtruth label generation with RGB, greyscale and texture options. Extensive API integration and available for camera and GPU-LiDAR sensors.
 * Added [Instance Segmentation](https://cosys-lab.github.io/Cosys-AirSim/instance_segmentation). 
@@ -1727,11 +1724,7 @@ ros2 service call /Drone1/search_target airsim_interfaces/srv/SearchTarget "{
 * Updated Python [ROS implementation](https://cosys-lab.github.io/Cosys-AirSim/ros_python) with completely new implementation and feature set.
 * **ENHANCED BY INTERNSHIP**: Updated C++ [ROS2 implementation](https://cosys-lab.github.io/Cosys-AirSim/ros_cplusplus) with modular architecture, AI integration, and weather physics.
 * Dropped support for Unity Environments.
->>>>>>> main
 
-## File-by-File Explanation 
-
-<<<<<<< HEAD
 ### New Modular Architecture Files
 
 | File Name                        | Purpose / Contribution                                                                                   |
@@ -1891,7 +1884,8 @@ The new architecture is modular, robust, and scalable. Each vehicle runs in its 
       "PawnBP": "Class'/AirSim/Blueprints/BP_MyPawn.BP_MyPawn_C'"
     }
   }
-=======
+```
+
 ---
 
 ## 🎓 Internship Project Conclusion
@@ -1901,7 +1895,8 @@ This **6-month internship project** successfully transformed Cosys-AirSim from a
 ## 📞 Contact & Acknowledgments
 
 **🎓 Internship Duration**: 6 months (13 May 2025 - 5 December 2025)  
-**📧 Contact**: Paul Cheng  
+**📧 Contact**: Paul Cheng 
+* Feel free to reach out if you ever need any help.  
 
 **Special Thanks**:
 - Cosys-Lab team for building on Microsoft AirSim
@@ -1936,7 +1931,6 @@ This enhanced Cosys-AirSim implementation builds upon the excellent work of Micr
   booktitle = {Field and Service Robotics},
   eprint = {arXiv:1705.05065},
   url = {https://arxiv.org/abs/1705.05065}
->>>>>>> main
 }
 ``` 
 
@@ -1948,15 +1942,8 @@ This enhanced Cosys-AirSim implementation builds upon the excellent work of Micr
 - [ROS2 Tutorials](https://docs.ros.org/en/rolling/Tutorials.html)
 - [Cosys-AirSim GitHub](https://github.com/Cosys-Lab/Cosys-AirSim)
 
----
-
-<<<<<<< HEAD
 This project is released under the MIT License. Please review the [License file](https://github.com/Cosys-Lab/Cosys-AirSim/blob/main/LICENSE) for more details.
 
-*Last updated: 23 Sept 2025*
-=======
 **🎯 Project Status**: ✅ **Successfully Completed**  
 **📈 Impact**: Production-ready multi-vehicle simulation platform with AI capabilities  
-
 *Project completed: December 5, 2025 | Documentation version: 1.0*
->>>>>>> main
