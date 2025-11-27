@@ -94,20 +94,12 @@ class GeneralisedObjectTrackingNode(Node):
 
         self.num_cameras = 4
         self.primary_camera = 0
-<<<<<<< HEAD
-        self.camera_topics = [
-            f'/{self.vehicle_name.lower()}/camera0/image',
-            f'/{self.vehicle_name.lower()}/camera1/image', 
-            f'/{self.vehicle_name.lower()}/camera2/image',
-            f'/{self.vehicle_name.lower()}/camera3/image'
-=======
         # Updated to match actual AirSim camera topics: /Drone1/Camera_N_Scene/image
         self.camera_topics = [
             f'/{self.vehicle_name}/Camera_0_Scene/image',
             f'/{self.vehicle_name}/Camera_1_Scene/image',
             f'/{self.vehicle_name}/Camera_2_Scene/image',
             f'/{self.vehicle_name}/Camera_3_Scene/image'
->>>>>>> main
         ]
 
         self.bridge = CvBridge()
@@ -145,14 +137,11 @@ class GeneralisedObjectTrackingNode(Node):
         # Target position smoothing
         self.target_position_buffer = deque(maxlen=5)
 
-<<<<<<< HEAD
-=======
         # FPS tracking for each camera
         self.camera_fps_counters = {}
         self.camera_fps_timers = {}
         self.camera_current_fps = {}
 
->>>>>>> main
         # Drone state management
         self.drone_state = 'IDLE'
         self.takeoff_initiated = False
@@ -209,14 +198,11 @@ class GeneralisedObjectTrackingNode(Node):
             self.camera_data_deques[cam_id] = {}
             self.camera_locks[cam_id] = threading.Lock()
             self.all_camera_targets[cam_id] = []
-<<<<<<< HEAD
-=======
             
             # Initialize FPS tracking for this camera
             self.camera_fps_counters[cam_id] = 0
             self.camera_fps_timers[cam_id] = time.time()
             self.camera_current_fps[cam_id] = 0.0
->>>>>>> main
 
             # Create image subscription for each camera
             self.image_subs[cam_id] = self.create_subscription(
@@ -1091,8 +1077,6 @@ class GeneralisedObjectTrackingNode(Node):
     def image_callback(self, msg, camera_id):
         """Enhanced image processing with improved resolution handling"""
         try:
-<<<<<<< HEAD
-=======
             # Update FPS calculation
             current_time = time.time()
             self.camera_fps_counters[camera_id] += 1
@@ -1104,7 +1088,6 @@ class GeneralisedObjectTrackingNode(Node):
                     self.camera_current_fps[camera_id] = 30.0 / time_elapsed
                     self.camera_fps_timers[camera_id] = current_time
             
->>>>>>> main
             with self.camera_locks[camera_id]:
                 self.camera_frame_counts[camera_id] += 1
 
@@ -1436,17 +1419,6 @@ class GeneralisedObjectTrackingNode(Node):
                         world_pos = getattr(self, 'target_position', [0.0, 0.0])
 
                         # Display target pixel location
-<<<<<<< HEAD
-                        cv2.putText(vis_image, f"TARGET PIXEL: ({int(target_center[0])}, {int(target_center[1])})", 
-                                   (10, 140), cv2.FONT_HERSHEY_SIMPLEX, font_scale * 0.7, (0, 255, 255), thickness)
-
-                        # Display estimated distance
-                        cv2.putText(vis_image, f"EST. DISTANCE: {estimated_distance:.2f}m", 
-                                   (10, 165), cv2.FONT_HERSHEY_SIMPLEX, font_scale * 0.7, (0, 255, 255), thickness)
-
-                        # Display world coordinates
-                        cv2.putText(vis_image, f"WORLD POS: ({world_pos[0]:.2f}, {world_pos[1]:.2f})", 
-=======
                         cv2.putText(vis_image, f"TARGET POS: ({int(target_center[0])}, {int(target_center[1])})", 
                                    (10, 140), cv2.FONT_HERSHEY_SIMPLEX, font_scale * 0.7, (0, 255, 255), thickness)
 
@@ -1456,17 +1428,12 @@ class GeneralisedObjectTrackingNode(Node):
 
                         # Display world coordinates
                         cv2.putText(vis_image, f"WORLD: ({world_pos[0]:.2f}, {world_pos[1]:.2f})", 
->>>>>>> main
                                    (10, 190), cv2.FONT_HERSHEY_SIMPLEX, font_scale * 0.7, (0, 255, 255), thickness)
 
                         # Display bounding box size
                         bbox_width = int(target_bbox[2]) if len(target_bbox) > 2 else 0
                         bbox_height = int(target_bbox[3]) if len(target_bbox) > 3 else 0
-<<<<<<< HEAD
-                        cv2.putText(vis_image, f"BBOX SIZE: {bbox_width}x{bbox_height}", 
-=======
                         cv2.putText(vis_image, f"BBOX: {bbox_width}x{bbox_height}", 
->>>>>>> main
                                    (10, 215), cv2.FONT_HERSHEY_SIMPLEX, font_scale * 0.7, (0, 255, 255), thickness)
 
                         # Draw crosshair at target position
@@ -1490,22 +1457,6 @@ class GeneralisedObjectTrackingNode(Node):
                 cv2.putText(vis_image, status, (10, 250), cv2.FONT_HERSHEY_SIMPLEX, 
                            font_scale, (255, 255, 0), thickness)
 
-<<<<<<< HEAD
-            # fps calculation
-            frame_count = self.camera_frame_counts.get(camera_id, 0)
-            now = time.time()
-            if not hasattr(self, 'fps_times'):
-                self.fps_times = {}
-            if camera_id not in self.fps_times:
-                self.fps_times[camera_id] = deque(maxlen=30)
-            self.fps_times[camera_id].append(now)
-            fps = 0.0
-            times = self.fps_times[camera_id]
-            if len(times) > 1:
-                fps = len(times) / (times[-1] - times[0] + 1e-6)
-
-            info_text = f"FRAME COUNT: {frame_count} | RESOLUTION: {self.image_width}x{self.image_height}"
-=======
             # FPS display in top right corner
             fps_value = self.camera_current_fps.get(camera_id, 0.0)
             fps_text = f"FPS: {fps_value:.1f}"
@@ -1518,22 +1469,10 @@ class GeneralisedObjectTrackingNode(Node):
             # Frame count and resolution info
             frame_count = self.camera_frame_counts.get(camera_id, 0)
             info_text = f"FRAME: {frame_count} | RES: {self.image_width}x{self.image_height}"
->>>>>>> main
             # cv2.rectangle(vis_image, (5, 200), (500, 230), text_bg_color, -1)
             cv2.putText(vis_image, info_text, (10, 280), 
                        cv2.FONT_HERSHEY_SIMPLEX, font_scale * 0.7, (255, 255, 255), thickness)
 
-<<<<<<< HEAD
-            # FPS in upper right corner
-            fps_text = f"FPS: {fps:.1f}"
-            text_size, _ = cv2.getTextSize(fps_text, cv2.FONT_HERSHEY_SIMPLEX, font_scale, thickness)
-            x_pos = self.image_width - text_size[0] - 20
-            y_pos = 30
-            cv2.putText(vis_image, fps_text, (x_pos, y_pos), 
-                   cv2.FONT_HERSHEY_SIMPLEX, font_scale, (0, 255, 255), thickness)
-            
-=======
->>>>>>> main
             # Draw enhanced crosshair at image center for reference
             center_x, center_y = self.image_width // 2, self.image_height // 2
             crosshair_size = max(30, self.image_width // 40)

@@ -57,24 +57,15 @@ MultirotorNode::MultirotorNode(const std::string& vehicle_name,
     lidar_timer_freq_ = 0.05;   // 20Hz for lidar data
     echo_timer_freq_ = 0.1;     // 10Hz for other sensors
     
-    initialize_vehicle_client();
-
+    // Initialize basic components first
     tf_broadcaster_ = std::make_shared<tf2_ros::TransformBroadcaster>(this);
     static_tf_broadcaster_ = std::make_shared<tf2_ros::StaticTransformBroadcaster>(this);
 
+    // Setup publishers and subscribers (but don't initialize clients yet)
     setup_sensor_publishers();
     setup_vehicle_publishers();
     setup_vehicle_subscribers();
     setup_vehicle_services();
-    
-    // Add motion detection subscription with service callback group
-    // TODO: Create TargetDetection.msg in airsim_interfaces if motion detection is needed
-    // motion_detection_sub_ = this->create_subscription<airsim_interfaces::msg::TargetDetection>(
-    //     "target_detection", 10,
-    //     std::bind(&MultirotorNode::motion_detection_callback, this, std::placeholders::_1));
-
-    // Initialize the common base functionality (sets up parallel timers)
-    initialize_common();
     
     RCLCPP_INFO(this->get_logger(), "Enhanced parallel multirotor node created for: %s", vehicle_name_.c_str());
     RCLCPP_INFO(this->get_logger(), "Timer frequencies - State: %.1fHz, Images: %.1fHz, LiDAR: %.1fHz, Sensors: %.1fHz", 
@@ -83,24 +74,37 @@ MultirotorNode::MultirotorNode(const std::string& vehicle_name,
 
 void MultirotorNode::initialize_common()
 {
-    // CRITICAL: Override the main vehicle client first
-    initialize_vehicle_client();
+    // CRITICAL: Initialize vehicle clients first before any base class calls
+    try {
+        initialize_vehicle_client();
+        RCLCPP_INFO(this->get_logger(), "Vehicle clients initialized successfully for: %s", vehicle_name_.c_str());
+    }
+    catch (const std::exception& e) {
+        RCLCPP_ERROR(this->get_logger(), "Failed to initialize vehicle clients for %s: %s", vehicle_name_.c_str(), e.what());
+        return;
+    }
 
-    // Call base class implementation (handles image_transport, publishers, services, timers, etc.)
+    // Now call base class implementation with properly initialized clients
     VehicleNodeBase::initialize_common();
     
-    // Now establish connections using the initialized client
+    // Verify connections are established
     if (!establish_connections()) {
         RCLCPP_ERROR(this->get_logger(), "Failed to establish connections for vehicle: %s", vehicle_name_.c_str());
         return;
     }
     
     // Add multirotor-specific setup after base initialization is complete
-    setup_vehicle_control_subscribers();
-    setup_vehicle_control_services();
+    try {
+        setup_vehicle_control_subscribers();
+        setup_vehicle_control_services();
+        RCLCPP_INFO(this->get_logger(), "Multirotor-specific setup completed for: %s", vehicle_name_.c_str());
+    }
+    catch (const std::exception& e) {
+        RCLCPP_ERROR(this->get_logger(), "Failed to setup multirotor-specific components for %s: %s", vehicle_name_.c_str(), e.what());
+        return;
+    }
 
-    // CRITICAL: Mark initialization complete ONLY after ALL setup is done (base + multirotor-specific)
-    // This prevents timer callbacks from executing before RPC clients, publishers, and services are ready
+    // CRITICAL: Mark initialization complete ONLY after ALL setup is done
     initialization_complete_.store(true);
     RCLCPP_INFO(this->get_logger(), "Multirotor node fully initialized: %s - timer callbacks now enabled", vehicle_name_.c_str());
 }
