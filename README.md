@@ -1446,7 +1446,6 @@ python3 generate_settings.py 2
 - Start Cosys-AirSim in Unreal Engine 5.5
 - Ensure multi-camera configuration is enabled in settings.json
 
-<<<<<<< HEAD
 ### Step 3: Launch PX4 SITL (for multiple drones)
 For each drone, run in separate terminals:
 ```bash
