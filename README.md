@@ -3,7 +3,7 @@
 
 ![Project Status](https://img.shields.io/badge/Internship-6_Months_Complete-success) ![ROS2](https://img.shields.io/badge/ROS2-Humble-green) ![AI](https://img.shields.io/badge/AI-YOLO_Vision-orange) ![Architecture](https://img.shields.io/badge/Architecture-Modular-blue)
 
-**📊 Full Presentation Slides**: [View Presentation Slides](https://docs.google.com/presentation/d/1QnXTPNWawfn-A6RgIhcmu6294ree_dILD_hp1z6UNZY/edit?usp=sharing) - A slide deck delivered to the M&S internal team, covering the system arcihtecture, implementation and key results
+**📊 Full Presentation Slides**: A [slide deck](https://docs.google.com/presentation/d/1QnXTPNWawfn-A6RgIhcmu6294ree_dILD_hp1z6UNZY/edit?usp=sharing) delivered to the M&S internal team, covering the system arcihtecture, implementation and key results
 ---
 
 ## 🎓 Internship Project Overview
