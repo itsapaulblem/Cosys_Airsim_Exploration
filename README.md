@@ -1799,7 +1799,7 @@ This **6-month internship project** successfully transformed Cosys-AirSim from a
 
 **🎓 Internship Duration**: 6 months (13 May 2025 - 5 December 2025)  
 **📧 Contact**: Paul Cheng 
-* Feel free to reach out if you ever need any help.  
+* Feel free to reach out if you ever need any help (or you can just ask Mr Lee JunWei aka Aortz).  
 
 **Special Thanks**:
 - Cosys-Lab team for building on Microsoft AirSim
