@@ -1,0 +1,157 @@
+groups:
+  - name: airsim_ecosystem_alerts
+    interval: 10s
+    rules:
+      # Container Health Alerts
+      - alert: ContainerDown
+        expr: up{job=~"cadvisor|ros2-metrics|airsim-api-metrics|px4-mavlink-metrics"} == 0
+        for: 30s
+        labels:
+          severity: critical
+          component: infrastructure
+        annotations:
+          summary: "Container {{ $labels.job }} is down"
+          description: "The {{ $labels.job }} container has been down for more than 30 seconds."
+
+      - alert: HighContainerCPU
+        expr: rate(container_cpu_usage_seconds_total{name=~"px4-drone-.*|ros2-.*|airsim-container"}[1m]) > 0.8
+        for: 2m
+        labels:
+          severity: warning
+          component: performance
+        annotations:
+          summary: "High CPU usage on {{ $labels.name }}"
+          description: "Container {{ $labels.name }} is using {{ humanize $value }}% CPU for more than 2 minutes."
+
+      - alert: HighContainerMemory
+        expr: (container_memory_usage_bytes{name=~"px4-drone-.*|ros2-.*|airsim-container"} / container_spec_memory_limit_bytes) > 0.9
+        for: 2m
+        labels:
+          severity: warning
+          component: performance
+        annotations:
+          summary: "High memory usage on {{ $labels.name }}"
+          description: "Container {{ $labels.name }} is using {{ humanizePercentage $value }} of its memory limit."
+
+      # ROS2 Alerts
+      - alert: ROS2TopicTimeout
+        expr: rate(ros2_topic_messages_total[30s]) == 0
+        for: 5s
+        labels:
+          severity: warning
+          component: ros2
+        annotations:
+          summary: "ROS2 topic {{ $labels.topic_name }} has stopped publishing"
+          description: "No messages received on topic {{ $labels.topic_name }} for 5 seconds."
+
+      - alert: ROS2NodeDown
+        expr: ros2_node_count < 8
+        for: 10s
+        labels:
+          severity: critical
+          component: ros2
+        annotations:
+          summary: "ROS2 node count is low"
+          description: "Expected at least 8 ROS2 nodes but only {{ $value }} are active."
+
+      - alert: ROS2ConnectionDegraded
+        expr: ros2_connection_health == 0
+        for: 15s
+        labels:
+          severity: critical
+          component: ros2
+        annotations:
+          summary: "ROS2 DDS connection is degraded"
+          description: "ROS2 connection health check has failed."
+
+      # PX4 Alerts
+      - alert: PX4LowBattery
+        expr: px4_battery_remaining_percent < 20
+        for: 10s
+        labels:
+          severity: warning
+          component: px4
+        annotations:
+          summary: "Low battery on {{ $labels.drone_id }}"
+          description: "Drone {{ $labels.drone_id }} battery is at {{ $value }}%."
+
+      - alert: PX4CriticalBattery
+        expr: px4_battery_remaining_percent < 10
+        for: 5s
+        labels:
+          severity: critical
+          component: px4
+        annotations:
+          summary: "CRITICAL battery on {{ $labels.drone_id }}"
+          description: "Drone {{ $labels.drone_id }} battery is critically low at {{ $value }}%!"
+
+      - alert: PX4MAVLinkDisconnected
+        expr: px4_mavlink_connection_status == 0
+        for: 15s
+        labels:
+          severity: critical
+          component: px4
+        annotations:
+          summary: "MAVLink connection lost for {{ $labels.drone_id }}"
+          description: "Drone {{ $labels.drone_id }} has lost MAVLink connection."
+
+      - alert: PX4HeartbeatTimeout
+        expr: px4_heartbeat_age_seconds > 5
+        for: 10s
+        labels:
+          severity: warning
+          component: px4
+        annotations:
+          summary: "PX4 heartbeat timeout for {{ $labels.drone_id }}"
+          description: "No heartbeat from {{ $labels.drone_id }} for {{ $value }} seconds."
+
+      - alert: PX4GPSLost
+        expr: px4_gps_fix_type < 3
+        for: 30s
+        labels:
+          severity: warning
+          component: px4
+        annotations:
+          summary: "GPS fix lost on {{ $labels.drone_id }}"
+          description: "Drone {{ $labels.drone_id }} has lost 3D GPS fix."
+
+      # AirSim Alerts
+      - alert: AirSimAPIDisconnected
+        expr: airsim_connection_status == 0
+        for: 30s
+        labels:
+          severity: critical
+          component: airsim
+        annotations:
+          summary: "AirSim API connection lost"
+          description: "Cannot connect to AirSim RPC API."
+
+      - alert: AirSimCollision
+        expr: rate(airsim_collisions_total[10s]) > 0
+        for: 1s
+        labels:
+          severity: warning
+          component: airsim
+        annotations:
+          summary: "Collision detected on {{ $labels.vehicle_name }}"
+          description: "Vehicle {{ $labels.vehicle_name }} collided with {{ $labels.object_name }}."
+
+      - alert: AirSimHighAPILatency
+        expr: histogram_quantile(0.95, rate(airsim_api_latency_seconds_bucket[1m])) > 0.5
+        for: 1m
+        labels:
+          severity: warning
+          component: airsim
+        annotations:
+          summary: "High AirSim API latency"
+          description: "95th percentile API latency is {{ humanizeDuration $value }} for {{ $labels.api_call }}."
+
+      - alert: AirSimLowFPS
+        expr: airsim_simulation_fps < 30
+        for: 1m
+        labels:
+          severity: warning
+          component: airsim
+        annotations:
+          summary: "Low simulation FPS"
+          description: "AirSim simulation FPS has dropped to {{ $value }}."

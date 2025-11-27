@@ -1,0 +1,65 @@
+# Service to validate and analyze search areas before mission execution
+# Available on both coordination node and individual vehicles
+
+# Request
+geometry_msgs/Polygon search_area     # Area to validate
+float32 planned_altitude              # Intended search altitude
+string search_pattern                 # Planned search pattern
+string[] participating_vehicles       # Vehicles that will search this area
+
+# Validation parameters
+bool check_airspace_restrictions      # Validate against no-fly zones
+bool check_terrain_clearance         # Ensure safe altitude above terrain
+bool check_weather_constraints       # Consider current/forecast weather
+bool check_vehicle_capabilities      # Verify vehicles can handle area
+
+---
+# Response
+bool success
+string message
+
+# Validation results
+bool area_valid                 # Overall validation result
+float32 validation_confidence   # Confidence in validation (0.0 to 1.0)
+
+# Area analysis
+float32 total_area_sq_m        # Calculated area size
+float32 perimeter_length_m     # Boundary perimeter length
+geometry_msgs/Point area_center # Geographic center of area
+float32 max_dimension_m        # Longest dimension of area
+
+# Terrain analysis
+float32 min_terrain_elevation  # Lowest point in area
+float32 max_terrain_elevation  # Highest point in area
+float32 average_slope_degrees  # Average terrain slope
+string terrain_type           # "flat", "hilly", "mountainous", "mixed"
+
+# Airspace validation
+bool airspace_clear           # No airspace restrictions
+string[] airspace_warnings    # Airspace restriction warnings
+geometry_msgs/Polygon[] restricted_zones  # Areas within search zone to avoid
+
+# Weather validation
+bool weather_suitable         # Current weather suitable for search
+float32 current_wind_speed    # Current wind speed (m/s)
+string weather_forecast       # Brief weather forecast
+string[] weather_warnings     # Weather-related cautions
+
+# Vehicle capability validation
+string[] capable_vehicles     # Vehicles that can handle this area
+string[] incapable_vehicles   # Vehicles that cannot handle this area
+string[] capability_warnings  # Vehicle-specific warnings
+
+# Search optimization recommendations
+string recommended_search_pattern    # Optimal pattern for this area
+float32 recommended_altitude        # Optimal altitude considering terrain
+float32 recommended_speed          # Optimal speed for this terrain
+uint32 recommended_num_vehicles    # Optimal number of vehicles
+
+# Risk assessment
+uint8 RISK_LOW = 1
+uint8 RISK_MEDIUM = 2
+uint8 RISK_HIGH = 3
+uint8 overall_risk_level      # Overall mission risk level
+string[] identified_risks     # Specific risks identified
+string[] risk_mitigation_suggestions  # How to reduce risks

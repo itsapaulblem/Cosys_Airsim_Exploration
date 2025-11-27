@@ -30,6 +30,8 @@
   <build_depend>tf2_sensor_msgs</build_depend>
   
   <depend>airsim_interfaces</depend>
+  <depend>mission_search_interfaces</depend>
+  <depend>rclcpp_action</depend>
   <depend>pcl_conversions</depend>
   <depend>pcl</depend>
 

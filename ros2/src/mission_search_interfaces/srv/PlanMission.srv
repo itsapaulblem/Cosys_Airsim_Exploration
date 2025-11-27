@@ -1,0 +1,65 @@
+# Service to create comprehensive mission plan
+# Called on coordination node: /airsim_coordination_node/services/plan_mission
+
+# Request
+string mission_name             # Human-readable mission name
+string mission_type             # "search_and_rescue", "surveillance", "inspection"
+geometry_msgs/Polygon mission_area  # Overall area to search
+
+# Mission parameters
+float32 search_altitude         # Default search altitude (meters)
+string preferred_search_pattern # Preferred pattern: "spiral", "lawnmower", "grid"
+float32 required_coverage_percent  # Minimum coverage required (0.0 to 100.0)
+
+# Vehicle selection
+string[] requested_vehicles     # Specific vehicles requested (empty = auto-select)
+uint8 min_vehicles             # Minimum number of vehicles required
+uint8 max_vehicles             # Maximum number of vehicles to use
+
+# Mission constraints
+builtin_interfaces/Duration max_mission_time  # Maximum allowable mission time
+float32 max_wind_speed         # Weather constraint: max wind speed
+bool daylight_only             # Restrict to daylight hours
+
+# Detection requirements
+string[] target_types          # Types to detect: ["person", "vehicle", "debris"]
+float32 detection_confidence_threshold  # Minimum confidence for valid detection
+bool require_detection_confirmation     # Require secondary confirmation
+
+# Priority areas
+geometry_msgs/Polygon[] high_priority_areas  # Areas requiring immediate attention
+geometry_msgs/Polygon[] no_fly_zones         # Areas to avoid
+
+---
+# Response
+bool success
+string message
+
+# Generated mission plan
+MissionPlan mission_plan        # Complete mission plan
+string generated_mission_id     # Unique ID for this mission
+
+# Plan validation
+bool plan_feasible             # Is plan achievable with available resources
+string[] feasibility_issues    # Issues preventing plan execution
+string[] recommendations       # Suggestions for plan improvement
+
+# Resource allocation
+string[] assigned_vehicles     # Vehicles assigned to mission
+string[] unavailable_vehicles  # Vehicles that couldn't be assigned
+SearchZone[] search_zone_assignments  # Individual vehicle zone assignments
+
+# Mission estimates
+builtin_interfaces/Duration estimated_total_time   # Total mission time
+float32 estimated_total_distance      # Total flight distance all vehicles
+float32 estimated_coverage_area_sq_m  # Total area that will be searched
+uint32 estimated_total_waypoints      # Total waypoints across all vehicles
+
+# Performance predictions
+float32 predicted_detection_rate      # Expected detections per hour
+float32 predicted_coverage_efficiency # Expected coverage rate (sq_m/second)
+float32 confidence_in_predictions     # Confidence in estimates (0.0 to 1.0)
+
+# Contingency planning
+geometry_msgs/Point[] emergency_landing_sites  # Emergency landing options
+string[] contingency_plans              # Plans for common failure scenarios

@@ -1,0 +1,81 @@
+================================================================================
+EMOJI DETECTION REPORT
+================================================================================
+Generated: 2025-09-16 10:13:00
+
+SUMMARY:
+  Files scanned: 4
+  Files with emojis: 4
+  Total emojis found: 112
+
+EMOJI FREQUENCY:
+  ✅ : 29 occurrences → PASS
+  ❌ : 21 occurrences → FAIL
+  ⚠ : 12 occurrences → [EMOJI]
+  🔧 : 10 occurrences → CONFIG
+  🔗 : 6 occurrences → LINK
+  🚀 : 5 occurrences → LAUNCH
+  🌐 : 4 occurrences → NETWORK
+  📡 : 4 occurrences → SIGNAL
+  🎮 : 4 occurrences → CONTROL
+  🔍 : 3 occurrences → SEARCH
+  🐳 : 3 occurrences → [EMOJI]
+  🚁 : 2 occurrences → [EMOJI]
+  📊 : 2 occurrences → STATS
+  🎯 : 1 occurrences → TARGET
+  💓 : 1 occurrences → [EMOJI]
+  💡 : 1 occurrences → INFO
+  💾 : 1 occurrences → SAVE
+  📁 : 1 occurrences → FOLDER
+  ⚙ : 1 occurrences → [EMOJI]
+  📄 : 1 occurrences → FILE
+
+FILES WITH EMOJIS:
+
+  ..\docker\px4_airsim_docker\tools\start_swarm_bridge_optimized.bat:
+    ✅ × 8 → PASS
+    ⚠ × 3 → [EMOJI]
+    🚀 × 1 → LAUNCH
+    🔗 × 1 → LINK
+    🌐 × 1 → NETWORK
+    ❌ × 2 → FAIL
+
+  ..\docker\px4_airsim_docker\tools\start_swarm_bridge_optimized.sh:
+    ✅ × 8 → PASS
+    ⚠ × 4 → [EMOJI]
+    🚀 × 2 → LAUNCH
+    🔗 × 2 → LINK
+    🌐 × 2 → NETWORK
+    📡 × 1 → SIGNAL
+    ❌ × 2 → FAIL
+
+  ..\docker\px4_airsim_docker\tools\unified_mavlink_tester.py:
+    🔍 × 1 → SEARCH
+    ✅ × 10 → PASS
+    ⚠ × 2 → [EMOJI]
+    🐳 × 2 → [EMOJI]
+    ❌ × 11 → FAIL
+    🔗 × 3 → LINK
+    🚁 × 2 → [EMOJI]
+    📡 × 3 → SIGNAL
+    🔧 × 8 → CONFIG
+    🎯 × 1 → TARGET
+    💓 × 1 → [EMOJI]
+    🎮 × 4 → CONTROL
+    📊 × 1 → STATS
+    💡 × 1 → INFO
+    💾 × 1 → SAVE
+
+  ..\docker\px4_airsim_docker\tools\validate_complete_solution.py:
+    ❌ × 6 → FAIL
+    ✅ × 3 → PASS
+    ⚠ × 3 → [EMOJI]
+    🔍 × 2 → SEARCH
+    📁 × 1 → FOLDER
+    🐳 × 1 → [EMOJI]
+    🌐 × 1 → NETWORK
+    ⚙ × 1 → [EMOJI]
+    🔧 × 2 → CONFIG
+    🚀 × 2 → LAUNCH
+    📊 × 1 → STATS
+    📄 × 1 → FILE

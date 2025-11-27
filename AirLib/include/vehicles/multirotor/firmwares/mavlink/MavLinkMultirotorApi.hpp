@@ -427,8 +427,8 @@ namespace airlib
             auto local_pos = getPosition();
             
             // Set unknown GPS coordinates (will be NaN for getHomeGeoPoint)
-            current_state_.home.global_pos.lat = Utils::nan<double>();
-            current_state_.home.global_pos.lon = Utils::nan<double>();
+            current_state_.home.global_pos.lat = Utils::nan<float>();
+            current_state_.home.global_pos.lon = Utils::nan<float>();
             current_state_.home.global_pos.alt = Utils::nan<float>();
             
             // Set home to current local position

@@ -1,0 +1,137 @@
+[global_config]
+  always_split_with_profile = True
+  title_transmit_fg_color = "#ffffff"
+  title_transmit_bg_color = "#c80003"
+  title_receive_fg_color = "#ffffff"
+  title_receive_bg_color = "#0076c9"
+  suppress_multiple_term_dialog = True
+  enabled_plugins = LaunchpadCodeURLHandler, APTURLHandler, LaunchpadBugURLHandler
+
+[keybindings]
+  split_horiz = <Ctrl><Shift>h
+  split_vert = <Ctrl><Shift>v
+  new_tab = <Ctrl><Shift>t
+  next_tab = <Ctrl><Page_Down>
+  prev_tab = <Ctrl><Page_Up>
+  close_term = <Ctrl><Shift>w
+  close_window = <Ctrl><Shift>q
+
+[profiles]
+  [[default]]
+    background_color = "#1e1e1e"
+    background_darkness = 0.85
+    foreground_color = "#ffffff"
+    scrollback_lines = 5000
+    font = Monospace 10
+    use_system_font = False
+    copy_on_selection = True
+    cursor_color = "#ffffff"
+
+  [[drone_monitor]]
+    background_color = "#0d1117"
+    foreground_color = "#58a6ff"
+    palette = "#484f58:#ff7b72:#7ee787:#f9e2af:#79c0ff:#bc8cff:#56d4dd:#f0f6fc:#6e7681:#ffa198:#56d364:#e3b341:#a5a5ff:#d2a8ff:#39c5cf:#b1bac4"
+    scrollback_lines = 10000
+    font = Monospace 9
+    cursor_color = "#58a6ff"
+    cursor_shape = underline
+
+  [[development]]
+    background_color = "#2d1b69"
+    foreground_color = "#f1f1f1"
+    palette = "#073642:#dc322f:#859900:#b58900:#268bd2:#d33682:#2aa198:#eee8d5:#586e75:#cb4b16:#586e75:#657b83:#839496:#6c71c4:#93a1a1:#fdf6e3"
+    scrollback_lines = 15000
+    font = Monospace 10
+    cursor_color = "#268bd2"
+
+[layouts]
+  [[default]]
+    [[[child0]]]
+      type = Window
+      parent = ""
+      order = 0
+      position = 100:100
+      maximised = True
+      fullscreen = False
+      size = 1920, 1080
+      title = "Multi-Drone ROS2 Development Environment"
+      last_active_term = 82db2b5e-2e25-4a66-9de8-c30b03700f10
+      last_active_window = True
+
+    [[[child1]]]
+      type = Notebook
+      parent = child0
+      order = 0
+      labels = Drone Monitoring, ROS2 Development
+      last_active_term = 82db2b5e-2e25-4a66-9de8-c30b03700f10
+      active_page = 0
+
+    # Tab 1: Multi-Drone Monitoring (3 horizontal splits)
+    [[[child2]]]
+      type = HPaned
+      parent = child1
+      order = 0
+      ratio = 0.33
+
+    [[[child3]]]
+      type = HPaned
+      parent = child2
+      order = 0
+      ratio = 0.33
+
+    [[[drone1_terminal]]]
+      type = Terminal
+      parent = child2
+      order = 0
+      profile = drone_monitor
+      uuid = 82db2b5e-2e25-4a66-9de8-c30b03700f10
+      command = bash -c 'echo "=== PX4_Drone1 Monitoring Terminal ==="; echo ""; echo "Ready for drone commands..."; echo ""; echo "Available commands:"; echo "  ros2 topic list | grep PX4_Drone1"; echo "  ros2 topic echo /PX4_Drone1/odom"; echo "  ros2 service call /PX4_Drone1/takeoff airsim_interfaces/srv/Takeoff"; echo "  ros2 service call /PX4_Drone1/land airsim_interfaces/srv/Land"; echo ""; echo "Mission commands:"; echo "  ros2 topic echo /PX4_Drone1/mission/status"; echo "  ros2 topic echo /PX4_Drone1/mission/events"; echo ""; exec bash'
+      directory = /airsim_ros2_ws
+      ratio = 0.33
+
+    [[[drone2_terminal]]]
+      type = Terminal
+      parent = child2
+      order = 1
+      profile = drone_monitor
+      uuid = 83db2b5e-2e25-4a66-9de8-c30b03700f11
+      command = bash -c 'echo "=== PX4_Drone2 Monitoring Terminal ==="; echo ""; echo "Ready for drone commands..."; echo ""; echo "Available commands:"; echo "  ros2 topic list | grep PX4_Drone2"; echo "  ros2 topic echo /PX4_Drone2/odom"; echo "  ros2 service call /PX4_Drone2/takeoff airsim_interfaces/srv/Takeoff"; echo "  ros2 service call /PX4_Drone2/land airsim_interfaces/srv/Land"; echo ""; echo "Mission commands:"; echo "  ros2 topic echo /PX4_Drone2/mission/status"; echo "  ros2 topic echo /PX4_Drone2/mission/events"; echo ""; exec bash'
+      directory = /airsim_ros2_ws
+      ratio = 0.33
+
+    [[[drone3_terminal]]]
+      type = Terminal
+      parent = child2
+      order = 1
+      profile = drone_monitor
+      uuid = 84db2b5e-2e25-4a66-9de8-c30b03700f12
+      command = bash -c 'echo "=== PX4_Drone3 Monitoring Terminal ==="; echo ""; echo "Ready for drone commands..."; echo ""; echo "Available commands:"; echo "  ros2 topic list | grep PX4_Drone3"; echo "  ros2 topic echo /PX4_Drone3/odom"; echo "  ros2 service call /PX4_Drone3/takeoff airsim_interfaces/srv/Takeoff"; echo "  ros2 service call /PX4_Drone3/land airsim_interfaces/srv/Land"; echo ""; echo "Mission commands:"; echo "  ros2 topic echo /PX4_Drone3/mission/status"; echo "  ros2 topic echo /PX4_Drone3/mission/events"; echo ""; exec bash'
+      directory = /airsim_ros2_ws
+      ratio = 0.33
+
+    # Tab 2: ROS2 Development (2 vertical terminals - auto-launch and RViz)
+    [[[child4]]]
+      type = VPaned
+      parent = child1
+      order = 1
+      ratio = 0.5
+
+    [[[ros2_launch_terminal]]]
+      type = Terminal
+      parent = child4
+      order = 0
+      profile = development
+      uuid = 85db2b5e-2e25-4a66-9de8-c30b03700f13
+      command = bash -c 'cd /airsim_ros2_ws; source /opt/ros/humble/setup.bash; source install/setup.bash 2>/dev/null || true; echo "=== ROS2 Multi-Node Launch Terminal ==="; echo ""; echo "Starting ROS2 mission system..."; echo "Command: ros2 launch airsim_ros_pkgs rpc_dynamic_vehicles.launch.py mission_mode:=true"; echo ""; sleep 2; ros2 launch airsim_ros_pkgs rpc_dynamic_vehicles.launch.py mission_mode:=true'
+      directory = /airsim_ros2_ws
+
+    [[[rviz_terminal]]]
+      type = Terminal
+      parent = child4
+      order = 1
+      profile = development
+      uuid = 86db2b5e-2e25-4a66-9de8-c30b03700f14
+      command = bash -c 'cd /airsim_ros2_ws; source /opt/ros/humble/setup.bash; source install/setup.bash 2>/dev/null || true; echo "=== RViz2 Visualization Terminal ==="; echo ""; echo "Starting RViz2 with lidar visualization..."; echo "Command: rviz2 -d /airsim_ros2_ws/src/airsim_ros_pkgs/rviz/lidar_visualization.rviz"; echo ""; echo "Waiting for ROS2 system to initialize..."; sleep 8; rviz2 -d /airsim_ros2_ws/src/airsim_ros_pkgs/rviz/lidar_visualization.rviz'
+      directory = /airsim_ros2_ws
+
+[plugins]

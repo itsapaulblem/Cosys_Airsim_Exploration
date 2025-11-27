@@ -1,0 +1,17 @@
+# Grafana Dashboard Provisioning Configuration
+# This file tells Grafana to automatically load all dashboard JSONs from this directory
+# Documentation: https://grafana.com/docs/grafana/latest/administration/provisioning/#dashboards
+
+apiVersion: 1
+
+providers:
+  - name: 'AirSim Dashboards'
+    orgId: 1
+    folder: ''  # Empty string = root folder
+    type: file
+    disableDeletion: false  # Allow deletion from Grafana UI
+    updateIntervalSeconds: 10  # Check for changes every 10 seconds
+    allowUiUpdates: true  # Allow editing dashboards in Grafana UI
+    options:
+      path: /etc/grafana/provisioning/dashboards
+      foldersFromFilesStructure: false

@@ -17,6 +17,7 @@ if [ -d "$BLOCKS_DIR/LinuxBlocks" ]; then
     exit 0
 fi
 
+<<<<<<< HEAD
 echo "📥 Downloading Blocks environment..."
 cd $BLOCKS_DIR
 
@@ -55,3 +56,8 @@ echo ""
 echo "🐳 Next steps:"
 echo "1. Build AirSim Docker image: docker-compose -f docker-compose-full-stack.yml build"
 echo "2. Start full stack: docker-compose -f docker-compose-full-stack.yml --profile full-stack up" 
+=======
+wget -c https://github.com/Cosys-Lab/Cosys-AirSim/releases/download/5.4-v3.2/Blocks_packaged_Linux_54_32.zip
+unzip -q Blocks_packaged_Linux_54_32.zip
+rm Blocks_packaged_Linux_54_32.zip
+>>>>>>> main

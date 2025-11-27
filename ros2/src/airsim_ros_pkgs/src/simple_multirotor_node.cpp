@@ -5,6 +5,7 @@
 #include <geometry_msgs/msg/twist.hpp>
 #include <tf2_ros/transform_broadcaster.h>
 #include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
+#include <cmath>
 
 #include "vehicles/multirotor/api/MultirotorRpcLibClient.hpp"
 #include <airsim_interfaces/srv/takeoff.hpp>
@@ -14,7 +15,7 @@ class SimpleMultirotorNode : public rclcpp::Node
 {
 public:
     SimpleMultirotorNode(const std::string& vehicle_name) 
-        : Node("airsim_" + vehicle_name)
+        : Node(vehicle_name)  // Node name IS vehicle name: /VehicleName
         , vehicle_name_(vehicle_name)
         , host_ip_("localhost")
         , host_port_(41451)
@@ -31,23 +32,24 @@ public:
         this->get_parameter("host_port", port_param);
         host_port_ = static_cast<uint16_t>(port_param);
         
-        // Create publishers
-        odom_pub_ = this->create_publisher<nav_msgs::msg::Odometry>("odom_local_ned", 10);
-        gps_pub_ = this->create_publisher<sensor_msgs::msg::NavSatFix>("global_gps", 10);
-        imu_pub_ = this->create_publisher<sensor_msgs::msg::Imu>("imu", 10);
+        // Create publishers with vehicle name prefix for /VehicleName/topic structure
+        std::string topic_prefix = vehicle_name_ + "/";
+        odom_pub_ = this->create_publisher<nav_msgs::msg::Odometry>(topic_prefix + "odom_local_ned", 10);
+        gps_pub_ = this->create_publisher<sensor_msgs::msg::NavSatFix>(topic_prefix + "global_gps", 10);
+        imu_pub_ = this->create_publisher<sensor_msgs::msg::Imu>(topic_prefix + "imu", 10);
         
-        // Create subscribers
+        // Create subscribers with vehicle name prefix
         vel_cmd_sub_ = this->create_subscription<geometry_msgs::msg::Twist>(
-            "vel_cmd_body_frame", 10,
+            topic_prefix + "vel_cmd_body_frame", 10,
             std::bind(&SimpleMultirotorNode::vel_cmd_callback, this, std::placeholders::_1));
         
-        // Create services
+        // Create services with vehicle name prefix
         takeoff_service_ = this->create_service<airsim_interfaces::srv::Takeoff>(
-            "takeoff",
+            topic_prefix + "takeoff",
             std::bind(&SimpleMultirotorNode::takeoff_callback, this, std::placeholders::_1, std::placeholders::_2));
             
         land_service_ = this->create_service<airsim_interfaces::srv::Land>(
-            "land",
+            topic_prefix + "land",
             std::bind(&SimpleMultirotorNode::land_callback, this, std::placeholders::_1, std::placeholders::_2));
         
         // Create TF broadcaster
@@ -93,14 +95,115 @@ private:
             // Publish odometry
             nav_msgs::msg::Odometry odom_msg;
             odom_msg.header.stamp = timestamp;
-            odom_msg.header.frame_id = "world_ned";
-            odom_msg.child_frame_id = vehicle_name_ + "_base_link";
+            // Consistent frame setup (matches multirotor_node architecture)
+            odom_msg.header.frame_id = "world_ned";  // Global frame from coordination_node
+            odom_msg.child_frame_id = vehicle_name_ + "_base_link";  // Standardized naming
             
-            // Position (NED to ENU conversion)
+            // DIAGNOSTIC: Log raw AirSim position data (before conversion)
             auto pos = state.getPosition();
-            odom_msg.pose.pose.position.x = pos.x();
-            odom_msg.pose.pose.position.y = -pos.y();
-            odom_msg.pose.pose.position.z = -pos.z();
+            RCLCPP_INFO_THROTTLE(this->get_logger(), *this->get_clock(), 2000,
+                "Vehicle %s - Raw AirSim position (NED): [%.3f, %.3f, %.3f]", 
+                vehicle_name_.c_str(), pos.x(), pos.y(), pos.z());
+            
+            // Initialize spawn offset on first call using GPS position
+            if (!spawn_offset_initialized_) {
+                try {
+                    auto gps_data = airsim_client_->getGpsData("", vehicle_name_);
+                    auto origin_gps = airsim_client_->getHomeGeoPoint("");
+                    
+                    // Calculate spawn offset from GPS coordinates
+                    double lat_diff = gps_data.gnss.geo_point.latitude - origin_gps.latitude;
+                    double lon_diff = gps_data.gnss.geo_point.longitude - origin_gps.longitude;
+                    double alt_diff = gps_data.gnss.geo_point.altitude - origin_gps.altitude;
+                    
+                    // Convert to local NED meters
+                    double lat_rad = origin_gps.latitude * M_PI / 180.0;
+                    double ned_x = lat_diff * 111320.0;
+                    double ned_y = lon_diff * 111320.0 * std::cos(lat_rad);
+                    double ned_z = -alt_diff;
+                    
+                    // Store spawn offset (already in NED, will convert to ENU when used)
+                    spawn_offset_x_ = ned_x;
+                    spawn_offset_y_ = ned_y;
+                    spawn_offset_z_ = ned_z;
+                    spawn_offset_initialized_ = true;
+                    
+                    RCLCPP_INFO(this->get_logger(), 
+                        "Vehicle %s spawn offset initialized: NED [%.3f, %.3f, %.3f]", 
+                        vehicle_name_.c_str(), spawn_offset_x_, spawn_offset_y_, spawn_offset_z_);
+                        
+                } catch (const std::exception& e) {
+                    RCLCPP_WARN(this->get_logger(), 
+                        "Failed to initialize spawn offset for %s: %s", vehicle_name_.c_str(), e.what());
+                    // Leave spawn offset at zero and mark as initialized to avoid repeated attempts
+                    spawn_offset_initialized_ = true;
+                }
+            }
+            
+            // Check if local position is valid (non-zero for grounded vehicles)
+            bool local_position_valid = (std::abs(pos.x()) > 0.001 || 
+                                        std::abs(pos.y()) > 0.001 || 
+                                        std::abs(pos.z()) > 0.001);
+            
+            if (local_position_valid) {
+                // Use local position data + spawn offset (for flying vehicles)
+                double local_x = pos.x() + spawn_offset_x_;
+                double local_y = pos.y() + spawn_offset_y_;
+                double local_z = pos.z() + spawn_offset_z_;
+                
+                // Convert NED to ENU
+                odom_msg.pose.pose.position.x = local_x;
+                odom_msg.pose.pose.position.y = -local_y;
+                odom_msg.pose.pose.position.z = -local_z;
+                
+                RCLCPP_DEBUG_THROTTLE(this->get_logger(), *this->get_clock(), 5000,
+                    "Vehicle %s using LOCAL position + spawn offset", vehicle_name_.c_str());
+            } else {
+                // Fallback to GPS-derived position (for grounded vehicles)
+                try {
+                    auto gps_data = airsim_client_->getGpsData("", vehicle_name_);
+                    auto origin_gps = airsim_client_->getHomeGeoPoint("");
+                    
+                    // Convert GPS coordinates to local NED position relative to origin
+                    double lat_diff = gps_data.gnss.geo_point.latitude - origin_gps.latitude;
+                    double lon_diff = gps_data.gnss.geo_point.longitude - origin_gps.longitude;
+                    double alt_diff = gps_data.gnss.geo_point.altitude - origin_gps.altitude;
+                    
+                    // Convert lat/lon differences to meters (approximate)
+                    // 1 degree latitude ≈ 111,320 meters
+                    // 1 degree longitude ≈ 111,320 * cos(latitude) meters
+                    double lat_rad = origin_gps.latitude * M_PI / 180.0;
+                    double ned_x = lat_diff * 111320.0;  // North (positive X in NED)
+                    double ned_y = lon_diff * 111320.0 * std::cos(lat_rad);  // East (positive Y in NED)
+                    double ned_z = -alt_diff;  // Down (negative Z in NED for higher altitude)
+                    
+                    // Convert NED to ENU
+                    odom_msg.pose.pose.position.x = ned_x;
+                    odom_msg.pose.pose.position.y = -ned_y;
+                    odom_msg.pose.pose.position.z = -ned_z;
+                    
+                    RCLCPP_INFO_THROTTLE(this->get_logger(), *this->get_clock(), 5000,
+                        "Vehicle %s using GPS-derived position: [%.3f, %.3f, %.3f]", 
+                        vehicle_name_.c_str(), odom_msg.pose.pose.position.x, 
+                        odom_msg.pose.pose.position.y, odom_msg.pose.pose.position.z);
+                        
+                } catch (const std::exception& e) {
+                    // GPS fallback failed, use zero position
+                    RCLCPP_WARN_THROTTLE(this->get_logger(), *this->get_clock(), 5000,
+                        "Vehicle %s: GPS fallback failed (%s), using zero position", 
+                        vehicle_name_.c_str(), e.what());
+                    
+                    odom_msg.pose.pose.position.x = 0.0;
+                    odom_msg.pose.pose.position.y = 0.0;
+                    odom_msg.pose.pose.position.z = 0.0;
+                }
+            }
+            
+            // DIAGNOSTIC: Log converted position data (after NED→ENU)
+            RCLCPP_INFO_THROTTLE(this->get_logger(), *this->get_clock(), 2000,
+                "Vehicle %s - Converted position (ENU): [%.3f, %.3f, %.3f]", 
+                vehicle_name_.c_str(), odom_msg.pose.pose.position.x, 
+                odom_msg.pose.pose.position.y, odom_msg.pose.pose.position.z);
             
             // Orientation
             auto orientation = state.getOrientation();
@@ -123,14 +226,26 @@ private:
             
             odom_pub_->publish(odom_msg);
             
-            // Publish TF
+            // Publish TF (consistent with multirotor_node architecture)
             geometry_msgs::msg::TransformStamped transform;
-            transform.header = odom_msg.header;
-            transform.child_frame_id = odom_msg.child_frame_id;
+            transform.header.stamp = odom_msg.header.stamp;
+            // Use global world_ned frame established by coordination_node (don't conflict!)
+            transform.header.frame_id = "world_ned";
+            // Standardized frame naming: {vehicle_name}_base_link  
+            transform.child_frame_id = vehicle_name_ + "_base_link";
+            
+            // Use actual position data from AirSim (already converted in odom_msg)
             transform.transform.translation.x = odom_msg.pose.pose.position.x;
             transform.transform.translation.y = odom_msg.pose.pose.position.y;
             transform.transform.translation.z = odom_msg.pose.pose.position.z;
             transform.transform.rotation = odom_msg.pose.pose.orientation;
+            
+            // DIAGNOSTIC: Log tf transform being published
+            RCLCPP_INFO_THROTTLE(this->get_logger(), *this->get_clock(), 2000,
+                "Vehicle %s - Publishing tf: %s -> %s at [%.3f, %.3f, %.3f]", 
+                vehicle_name_.c_str(), transform.header.frame_id.c_str(), transform.child_frame_id.c_str(),
+                transform.transform.translation.x, transform.transform.translation.y, transform.transform.translation.z);
+            
             tf_broadcaster_->sendTransform(transform);
             
             // Publish GPS
@@ -239,6 +354,12 @@ private:
     
     std::unique_ptr<msr::airlib::MultirotorRpcLibClient> airsim_client_;
     
+    // Spawn position offset storage (to maintain relative positions after takeoff)
+    bool spawn_offset_initialized_ = false;
+    double spawn_offset_x_ = 0.0;
+    double spawn_offset_y_ = 0.0;
+    double spawn_offset_z_ = 0.0;
+    
     rclcpp::Publisher<nav_msgs::msg::Odometry>::SharedPtr odom_pub_;
     rclcpp::Publisher<sensor_msgs::msg::NavSatFix>::SharedPtr gps_pub_;
     rclcpp::Publisher<sensor_msgs::msg::Imu>::SharedPtr imu_pub_;
@@ -256,10 +377,8 @@ int main(int argc, char** argv)
 {
     rclcpp::init(argc, argv);
     
+    // Use default vehicle name - actual name will be set via parameters
     std::string vehicle_name = "Drone1";
-    if (argc > 1) {
-        vehicle_name = std::string(argv[1]);
-    }
     
     try {
         auto node = std::make_shared<SimpleMultirotorNode>(vehicle_name);
@@ -267,7 +386,7 @@ int main(int argc, char** argv)
     }
     catch (const std::exception& e) {
         RCLCPP_ERROR(rclcpp::get_logger("simple_multirotor_main"), 
-                     "Failed to create simple multirotor node %s: %s", vehicle_name.c_str(), e.what());
+                     "Failed to create simple multirotor node: %s", e.what());
         return 1;
     }
     

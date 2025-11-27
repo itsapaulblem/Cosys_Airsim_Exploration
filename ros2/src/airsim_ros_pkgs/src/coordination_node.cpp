@@ -50,6 +50,13 @@
 #include <chrono>
 #include <thread>
 #include <future>
+#include <mutex>
+
+// Forward declaration for VehicleNodeBase to access global AirSim RPC mutex
+class VehicleNodeBase {
+public:
+    static std::mutex airsim_rpc_mutex_;
+};
 
 CoordinationNode::CoordinationNode()
     : Node("airsim_coordination")
@@ -79,6 +86,10 @@ CoordinationNode::CoordinationNode()
     setup_global_services();
     setup_publishers();
     
+    // Initialize transform broadcaster (global frame authority)
+    static_tf_broadcaster_ = std::make_shared<tf2_ros::StaticTransformBroadcaster>(*this);
+    publish_global_frame();
+    
     connect_to_airsim();
     
     // Start coordination timer (slower rate for coordination tasks)
@@ -96,10 +107,33 @@ void CoordinationNode::connect_to_airsim()
         airsim_client_->confirmConnection();
         RCLCPP_INFO(this->get_logger(), "Connected to AirSim at %s:%d", 
                    host_ip_.c_str(), host_port_);
+        
+        // Initialize GPS origin once during connection setup (not in timer)
+        try {
+            // GLOBAL GPS MUTEX: Serialize GPS RPC calls across ALL nodes
+            // Note: VehicleNodeBase is forward-declared at top of file
+            decltype(airsim_client_->getHomeGeoPoint("")) origin;
+            {
+                std::lock_guard<std::mutex> rpc_lock(VehicleNodeBase::airsim_rpc_mutex_);
+                origin = airsim_client_->getHomeGeoPoint("");
+            }
+            origin_geo_point_msg_.latitude = origin.latitude;
+            origin_geo_point_msg_.longitude = origin.longitude;
+            origin_geo_point_msg_.altitude = origin.altitude;
+            origin_geo_point_msg_.yaw = 0.0;
+            gps_origin_initialized_ = true;
+            RCLCPP_INFO(this->get_logger(), "GPS origin set: %.6f, %.6f", 
+                       origin.latitude, origin.longitude);
+        }
+        catch (const std::exception& e) {
+            RCLCPP_WARN(this->get_logger(), "Failed to get GPS origin during initialization: %s", e.what());
+            gps_origin_initialized_ = false;
+        }
     }
     catch (const std::exception& e) {
         RCLCPP_WARN(this->get_logger(), "Could not connect to AirSim: %s. Will retry in timer.", e.what());
         airsim_client_.reset(); // Clear failed connection
+        gps_origin_initialized_ = false;
     }
 }
 
@@ -191,22 +225,14 @@ void CoordinationNode::coordination_timer_callback()
         return;
     }
     
-    // Publish GPS origin
-    try {
-        if (origin_geo_point_msg_.latitude == 0.0 && origin_geo_point_msg_.longitude == 0.0) {
-            auto origin = airsim_client_->getHomeGeoPoint("");
-            origin_geo_point_msg_.latitude = origin.latitude;
-            origin_geo_point_msg_.longitude = origin.longitude;
-            origin_geo_point_msg_.altitude = origin.altitude;
-            origin_geo_point_msg_.yaw = 0.0;
-            RCLCPP_INFO(this->get_logger(), "GPS origin set: %.6f, %.6f", 
-                       origin.latitude, origin.longitude);
-        }
+    // Publish GPS origin (initialized during connection setup)
+    if (gps_origin_initialized_) {
         origin_geo_point_pub_->publish(origin_geo_point_msg_);
     }
-    catch (const std::exception& e) {
-        RCLCPP_WARN_THROTTLE(this->get_logger(), *this->get_clock(), 5000,
-                             "Failed to get GPS origin: %s", e.what());
+    else {
+        // DISABLED THROTTLE: ROS2 Humble bug - RCLCPP_DEBUG_THROTTLE uses static vars causing thread corruption
+        // RCLCPP_DEBUG_THROTTLE(this->get_logger(), *this->get_clock(), 5000,
+        //                      "GPS origin not initialized yet");
     }
     
     // Publish simulation clock
@@ -581,4 +607,18 @@ bool CoordinationNode::track_target_all_callback(
         RCLCPP_ERROR(this->get_logger(), "%s", response->message.c_str());
         return false;
     }
+}
+void CoordinationNode::publish_global_frame()
+{
+    // REP 105 COMPLIANCE: "map" frame authority belongs to localization components
+    // According to REP 105, the coordination node should NOT publish any transforms
+    // involving the "map" frame - that's exclusively for localization components
+    
+    // The "map" frame will be created automatically when localization nodes
+    // publish their first map→{vehicle}/odom transforms
+    
+    RCLCPP_INFO(this->get_logger(), 
+        "🌐 REP 105 Compliance: 'map' frame authority delegated to localization components");
+    RCLCPP_INFO(this->get_logger(), 
+        "📡 Transform chain: map → {vehicle}/odom → {vehicle}/base_link → sensors");
 }

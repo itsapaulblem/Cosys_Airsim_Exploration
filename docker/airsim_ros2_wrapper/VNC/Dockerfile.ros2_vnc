@@ -26,6 +26,15 @@ RUN apt-get update && apt-get install -y \
     && apt-get install -y ros-humble-mavros-msgs || echo "mavros-msgs not available" \
     && rm -rf /var/lib/apt/lists/* && apt-get clean
 
+<<<<<<< HEAD
+=======
+# Install Python dependencies for AirSim RPC communication in build stage
+RUN python3 -m pip install --upgrade pip \
+    && python3 -m pip install msgpack msgpack-rpc-python numpy opencv-python \
+    && python3 -c "import msgpack; print('msgpack imported successfully')" \
+    && python3 -c "import numpy; print('numpy imported successfully')"
+
+>>>>>>> main
 # Initialize rosdep
 RUN rosdep init || echo "rosdep already initialized" && rosdep update
 
@@ -82,8 +91,20 @@ RUN apt-get update -q && apt-get install -y \
     dbus-x11 x11-xserver-utils x11-utils xauth \
     xfonts-base xfonts-75dpi xfonts-100dpi fonts-liberation fonts-dejavu-core \
     openssh-server software-properties-common \
+<<<<<<< HEAD
     && rm -rf /var/lib/apt/lists/* && apt-get clean
 
+=======
+    terminator htop tree ncdu less \
+    && rm -rf /var/lib/apt/lists/* && apt-get clean
+
+# Install Python dependencies for AirSim RPC communication
+RUN python3 -m pip install --upgrade pip \
+    && python3 -m pip install msgpack msgpack-rpc-python numpy opencv-python \
+    && python3 -c "import msgpack; print('msgpack imported successfully')" \
+    && python3 -c "import numpy; print('numpy imported successfully')"
+
+>>>>>>> main
 # Configure system
 RUN mkdir -p /var/run/dbus /tmp/.X11-unix \
     && dbus-uuidgen > /etc/machine-id \
@@ -126,6 +147,7 @@ RUN mkdir -p /airsim_ros2_ws/src \
 RUN echo -e "source /opt/ros/humble/setup.bash\nsource /airsim_ros2_ws/install/setup.bash 2>/dev/null || true\ncd /airsim_ros2_ws" >> /home/Aortz/.bashrc \
     && chown Aortz:Aortz /home/Aortz/.bashrc
 
+<<<<<<< HEAD
 # Create convenient aliases for development
 RUN echo -e "alias ll='ls -alF'\nalias la='ls -A'\nalias l='ls -CF'\n# Fix permissions before building\nalias fix_perms='sudo chown -R \$USER:\$USER /airsim_ros2_ws/log /airsim_ros2_ws/build /airsim_ros2_ws/install /airsim_ros2_ws/src 2>/dev/null || true'\nalias build='fix_perms && colcon build --symlink-install'\nalias build_interfaces='fix_perms && colcon build --packages-select airsim_interfaces'\nalias build_pkgs='fix_perms && colcon build --packages-select airsim_ros_pkgs'\nalias source_ws='source install/setup.bash'\nalias clean_build='rm -rf build install log && colcon build --symlink-install'\n# Auto fix permissions when starting shell\nif [ -f /airsim_ros2_ws/fix_permissions.sh ]; then\n    /airsim_ros2_ws/fix_permissions.sh > /dev/null 2>&1\nfi" >> /home/Aortz/.bashrc
 
@@ -139,6 +161,256 @@ RUN chmod +x /launch_airsim_ros2.sh \
 COPY docker/airsim_ros2_wrapper/VNC/colcon_wrapper.sh /usr/local/bin/colcon_wrapper
 COPY docker/airsim_ros2_wrapper/VNC/maintenance.sh /usr/local/bin/maintenance
 RUN chmod +x /usr/local/bin/colcon_wrapper /usr/local/bin/maintenance
+=======
+# Create Terminator configuration directory and sophisticated multi-tab layout
+RUN mkdir -p /home/Aortz/.config/terminator \
+    && cat > /home/Aortz/.config/terminator/config << 'EOF'
+[global_config]
+  always_split_with_profile = True
+  title_transmit_fg_color = "#ffffff"
+  title_transmit_bg_color = "#c80003"
+  title_receive_fg_color = "#ffffff"
+  title_receive_bg_color = "#0076c9"
+  suppress_multiple_term_dialog = True
+
+[keybindings]
+  split_horiz = <Ctrl><Shift>h
+  split_vert = <Ctrl><Shift>v
+  new_tab = <Ctrl><Shift>t
+  next_tab = <Ctrl><Page_Down>
+  prev_tab = <Ctrl><Page_Up>
+
+[profiles]
+  [[default]]
+    background_color = "#1e1e1e"
+    background_darkness = 0.85
+    foreground_color = "#ffffff"
+    scrollback_lines = 5000
+    font = Monospace 10
+    use_system_font = False
+    copy_on_selection = True
+
+  [[drone_monitor]]
+    background_color = "#0d1117"
+    foreground_color = "#58a6ff"
+    palette = "#484f58:#ff7b72:#7ee787:#f9e2af:#79c0ff:#bc8cff:#56d4dd:#f0f6fc:#6e7681:#ffa198:#56d364:#e3b341:#a5a5ff:#d2a8ff:#39c5cf:#b1bac4"
+    scrollback_lines = 10000
+    font = Monospace 9
+
+  [[system_monitor]]
+    background_color = "#0f1419"
+    foreground_color = "#bfbdb6"
+    palette = "#000000:#ff3333:#4d9900:#ffcc00:#0066cc:#cc00ff:#00cccc:#d9d9d9:#808080:#ff6666:#66ff00:#ffff66:#3399ff:#ff66ff:#66ffff:#ffffff"
+    scrollback_lines = 10000
+
+  [[development]]
+    background_color = "#2d1b69"
+    foreground_color = "#f1f1f1"
+    palette = "#073642:#dc322f:#859900:#b58900:#268bd2:#d33682:#2aa198:#eee8d5:#586e75:#cb4b16:#586e75:#657b83:#839496:#6c71c4:#93a1a1:#fdf6e3"
+
+  [[git_files]]
+    background_color = "#1a1a1a"
+    foreground_color = "#dcdcdc"
+    palette = "#2e3436:#cc0000:#4e9a06:#c4a000:#3465a4:#75507b:#06989a:#d3d7cf:#555753:#ef2929:#8ae234:#fce94f:#729fcf:#ad7fa8:#34e2e2:#eeeeec"
+
+[layouts]
+  [[default]]
+    [[[child0]]]
+      type = Window
+      parent = ""
+      order = 0
+      position = 100:100
+      maximised = True
+      fullscreen = False
+      size = 1920, 1080
+      title = "Multi-Drone ROS2 Development Environment"
+      last_active_term = 82db2b5e-2e25-4a66-9de8-c30b03700f10
+      last_active_window = True
+
+    [[[child1]]]
+      type = Notebook
+      parent = child0
+      order = 0
+      labels = Drone Monitoring, System Monitor, ROS2 Development, Git & Files
+      last_active_term = 82db2b5e-2e25-4a66-9de8-c30b03700f10
+      active_page = 0
+
+    # Tab 1: Multi-Drone Monitoring (3 horizontal splits)
+    [[[child2]]]
+      type = HPaned
+      parent = child1
+      order = 0
+
+    [[[child3]]]
+      type = HPaned
+      parent = child2
+      order = 0
+
+    [[[drone1_terminal]]]
+      type = Terminal
+      parent = child3
+      order = 0
+      profile = drone_monitor
+      uuid = 82db2b5e-2e25-4a66-9de8-c30b03700f10
+      command = bash -c 'echo "=== PX4_Drone1 Monitoring Terminal ==="; echo "Ready for drone commands..."; echo "Available commands:"; echo "  ros2 topic list | grep PX4_Drone1"; echo "  ros2 topic echo /PX4_Drone1/odom"; echo "  ros2 service call /PX4_Drone1/takeoff airsim_interfaces/srv/Takeoff"; exec bash'
+      directory = /airsim_ros2_ws
+
+    [[[drone2_terminal]]]
+      type = Terminal
+      parent = child3
+      order = 1
+      profile = drone_monitor
+      uuid = 83db2b5e-2e25-4a66-9de8-c30b03700f11
+      command = bash -c 'echo "=== PX4_Drone2 Monitoring Terminal ==="; echo "Ready for drone commands..."; echo "Available commands:"; echo "  ros2 topic list | grep PX4_Drone2"; echo "  ros2 topic echo /PX4_Drone2/odom"; echo "  ros2 service call /PX4_Drone2/takeoff airsim_interfaces/srv/Takeoff"; exec bash'
+      directory = /airsim_ros2_ws
+
+    [[[drone3_terminal]]]
+      type = Terminal
+      parent = child2
+      order = 1
+      profile = drone_monitor
+      uuid = 84db2b5e-2e25-4a66-9de8-c30b03700f12
+      command = bash -c 'echo "=== PX4_Drone3 Monitoring Terminal ==="; echo "Ready for drone commands..."; echo "Available commands:"; echo "  ros2 topic list | grep PX4_Drone3"; echo "  ros2 topic echo /PX4_Drone3/odom"; echo "  ros2 service call /PX4_Drone3/takeoff airsim_interfaces/srv/Takeoff"; exec bash'
+      directory = /airsim_ros2_ws
+
+    # Tab 2: System Monitoring (htop + logs)
+    [[[child4]]]
+      type = VPaned
+      parent = child1
+      order = 1
+
+    [[[htop_terminal]]]
+      type = Terminal
+      parent = child4
+      order = 0
+      profile = system_monitor
+      uuid = 85db2b5e-2e25-4a66-9de8-c30b03700f13
+      command = bash -c 'echo "=== System Resource Monitor ==="; echo "Starting htop..."; sleep 2; htop'
+      directory = /airsim_ros2_ws
+
+    [[[logs_terminal]]]
+      type = Terminal
+      parent = child4
+      order = 1
+      profile = system_monitor
+      uuid = 86db2b5e-2e25-4a66-9de8-c30b03700f14
+      command = bash -c 'echo "=== Log Monitoring Terminal ==="; echo "Available log commands:"; echo "  docker logs -f airsim-vnc-ros2"; echo "  ros2 node list"; echo "  ros2 topic list"; echo "  tail -f /var/log/syslog"; exec bash'
+      directory = /airsim_ros2_ws
+
+    # Tab 3: ROS2 Development
+    [[[dev_terminal]]]
+      type = Terminal
+      parent = child1
+      order = 2
+      profile = development
+      uuid = 87db2b5e-2e25-4a66-9de8-c30b03700f15
+      command = bash -c 'echo "=== ROS2 Development Environment ==="; echo "Workspace: /airsim_ros2_ws"; echo "Available build commands:"; echo "  build          - Full workspace build"; echo "  build_interfaces - Build interfaces only"; echo "  build_pkgs     - Build packages only"; echo "  clean_build    - Clean and rebuild"; echo "  source_ws      - Source workspace"; echo ""; echo "Test commands:"; echo "  ros2 launch airsim_ros_pkgs rpc_dynamic_vehicles.launch.py"; echo "  rviz2 -d src/airsim_ros_pkgs/rviz/lidar_visualization.rviz"; exec bash'
+      directory = /airsim_ros2_ws
+
+    # Tab 4: Git & File Management
+    [[[child5]]]
+      type = VPaned
+      parent = child1
+      order = 3
+
+    [[[git_terminal]]]
+      type = Terminal
+      parent = child5
+      order = 0
+      profile = git_files
+      uuid = 88db2b5e-2e25-4a66-9de8-c30b03700f16
+      command = bash -c 'echo "=== Git Operations Terminal ==="; echo "Current branch: $(git branch --show-current 2>/dev/null || echo \"Not a git repository\")"; echo "Git status:"; git status 2>/dev/null || echo "Run git status when in repository"; echo ""; echo "Common git commands:"; echo "  git status"; echo "  git add ."; echo "  git commit -m \"message\""; echo "  git push"; echo "  git pull"; exec bash'
+      directory = /airsim_ros2_ws
+
+    [[[files_terminal]]]
+      type = Terminal
+      parent = child5
+      order = 1
+      profile = git_files
+      uuid = 89db2b5e-2e25-4a66-9de8-c30b03700f17
+      command = bash -c 'echo "=== File Management Terminal ==="; echo "Current directory: $(pwd)"; echo ""; echo "File navigation commands:"; echo "  ls -la         - List files with details"; echo "  tree src/      - Show directory structure"; echo "  ncdu           - Disk usage analyzer"; echo "  find . -name \"*.cpp\" - Find C++ files"; echo ""; ls -la; exec bash'
+      directory = /airsim_ros2_ws
+
+[plugins]
+EOF
+
+# Set proper ownership for Terminator configuration and create startup script
+RUN chown -R Aortz:Aortz /home/Aortz/.config \
+    && cat > /home/Aortz/.config/autostart/terminator.desktop << 'EOF'
+[Desktop Entry]
+Type=Application
+Name=Terminator Multi-Drone Layout
+Exec=terminator --layout=default
+Hidden=false
+NoDisplay=false
+X-GNOME-Autostart-enabled=true
+Comment=Launch Terminator with multi-drone development layout
+EOF
+
+# Create Terminator launcher script
+RUN cat > /usr/local/bin/terminator-multi-drone << 'EOF'
+#!/bin/bash
+# Launch Terminator with multi-drone development layout
+
+echo "Starting Terminator with Multi-Drone ROS2 Development Layout..."
+cd /airsim_ros2_ws
+
+# Source ROS2 environment
+source /opt/ros/humble/setup.bash 2>/dev/null
+source /airsim_ros2_ws/install/setup.bash 2>/dev/null || true
+
+# Launch Terminator with custom layout
+terminator --layout=default --title="Multi-Drone ROS2 Development Environment"
+EOF
+
+RUN chmod +x /usr/local/bin/terminator-multi-drone \
+    && chown Aortz:Aortz /home/Aortz/.config/autostart/terminator.desktop
+
+# Add Terminator aliases to bashrc
+RUN cat >> /home/Aortz/.bashrc << 'EOF'
+
+# Terminator shortcuts
+alias term='terminator --layout=default'
+alias multi-drone='terminator-multi-drone'
+alias drone-term='terminator --layout=default --title="Multi-Drone Development"'
+
+EOF
+
+# Create convenient aliases for development
+RUN cat >> /home/Aortz/.bashrc << 'EOF'
+alias ll='ls -alF'
+alias la='ls -A'
+alias l='ls -CF'
+# Fix permissions before building
+alias fix_perms='sudo chown -R $USER:$USER /airsim_ros2_ws/log /airsim_ros2_ws/build /airsim_ros2_ws/install /airsim_ros2_ws/src 2>/dev/null || true'
+alias build='fix_perms && colcon build --symlink-install'
+alias build_interfaces='fix_perms && colcon build --packages-select airsim_interfaces'
+alias build_pkgs='fix_perms && colcon build --packages-select airsim_ros_pkgs'
+alias source_ws='source install/setup.bash'
+alias clean_build='rm -rf build install log && colcon build --symlink-install'
+
+# Auto fix permissions when starting shell
+if [ -f /airsim_ros2_ws/fix_permissions.sh ]; then
+    /airsim_ros2_ws/fix_permissions.sh > /dev/null 2>&1
+fi
+EOF
+
+# Enhanced launch scripts with connectivity check
+COPY docker/airsim_ros2_wrapper/VNC/launch_airsim_ros2.sh /launch_airsim_ros2.sh
+COPY docker/airsim_ros2_wrapper/VNC/launch_ros2_system.sh /launch_ros2_system.sh
+RUN chmod +x /launch_airsim_ros2.sh /launch_ros2_system.sh \
+    && cp /launch_airsim_ros2.sh /airsim_ros2_ws/launch_airsim_ros2.sh \
+    && cp /launch_ros2_system.sh /airsim_ros2_ws/launch_ros2_system.sh \
+    && chmod +x /airsim_ros2_ws/launch_airsim_ros2.sh /airsim_ros2_ws/launch_ros2_system.sh \
+    && ln -sf /launch_ros2_system.sh /usr/local/bin/ros2-system
+
+# Multi-node environment variables (can be overridden by docker-compose)
+ENV LAUNCH_MODE=multi \
+    ENABLE_COORDINATION=true \
+    RPC_TIMEOUT=10.0 \
+    LAUNCH_RVIZ=false \
+    DEBUG=false
+>>>>>>> main
 
 # Create development helper scripts
 RUN echo '#!/bin/bash\necho "Building AirSim ROS2 workspace..."\ncd /airsim_ros2_ws\n# Fix permissions first\nsudo chown -R $USER:$USER /airsim_ros2_ws/log /airsim_ros2_ws/build /airsim_ros2_ws/install /airsim_ros2_ws/src 2>/dev/null || true\nsource /opt/ros/humble/setup.bash\ncolcon build --symlink-install --packages-select airsim_interfaces airsim_ros_pkgs\necho "Build complete! Source the workspace with: source install/setup.bash"' > /build_workspace.sh \
@@ -156,8 +428,14 @@ ENV PYTHONPATH="/opt/ros/humble/lib/python3.10/site-packages:/airsim_ros2_ws/ins
 # Set working directory to the workspace (this is where VNC will start)
 WORKDIR /airsim_ros2_ws
 
+<<<<<<< HEAD
 # Create volume mount point for ros2 source
 VOLUME ["/airsim_ros2_ws/src"]
+=======
+# Create volume mount points for development
+VOLUME ["/airsim_ros2_ws/src"]
+# Note: Launch files and configs are copied into container for consistency
+>>>>>>> main
 
 EXPOSE 5901 7400/udp 7401/udp 7402/udp
 

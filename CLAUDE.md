@@ -52,6 +52,65 @@ Follow these steps for each interaction:
      b) Connect them to the current entities using relations
      c) Store facts about them as observations
 
+## Security Best Practices
+
+### Critical Security Requirements
+
+This project requires secure environment configuration to protect sensitive data. **Never commit files containing actual secrets to version control.**
+
+#### Environment Variables Configuration
+
+All sensitive configuration must be provided via environment variables:
+
+1. **PostgreSQL Database Password** - Required for database services
+   ```bash
+   export POSTGRES_PASSWORD="your_secure_password_here"
+   ```
+
+2. **pgAdmin Interface Password** - Required for database administration
+   ```bash
+   export PGADMIN_PASSWORD="your_secure_pgadmin_password_here"
+   ```
+
+#### Secure Setup Process
+
+1. **Copy environment templates:**
+   ```bash
+   # Root level configuration
+   cp .env.template .env
+
+   # Docker configuration
+   cp docker/.env.example docker/.env
+   ```
+
+2. **Generate secure passwords:**
+   ```bash
+   # Method 1: OpenSSL
+   openssl rand -base64 32
+
+   # Method 2: Python
+   python -c "import secrets; print(secrets.token_urlsafe(32))"
+   ```
+
+3. **Update environment files with your secure values**
+4. **Verify .env files are in .gitignore (they are)**
+
+#### Security Validation
+
+Before starting services, ensure:
+- ✓ All required environment variables are set
+- ✓ No hardcoded secrets in configuration files
+- ✓ Environment files (.env) are not committed to git
+- ✓ Passwords meet security requirements (20+ characters)
+
+#### Development vs Production
+
+- **Development**: Use the provided environment templates
+- **Production**: Implement proper secrets management (Azure Key Vault, AWS Secrets Manager, etc.)
+- **CI/CD**: Use encrypted secrets and never expose credentials in logs
+
+For complete security guidelines, see `SECURITY.md`.
+
 ## Essential Commands
 
 ### Build Commands
@@ -126,13 +185,9 @@ python migrate_to_unified.py
 
 ### Docker Commands
 
-#### ROS2 Docker Development (ALWAYS run from AirSim root directory)
+#### ROS2 Docker Development
 ```bash
-# Navigate to AirSim root first
-cd /mnt/l/cosys-airsim    # WSL/Linux
-cd L:\Cosys-AirSim        # Windows
-
-# Build and run ROS2 Docker container
+# Option 1: Use convenience launcher from project root (RECOMMENDED)
 ./airsim_ros2_docker.bat build              # Build the image
 ./airsim_ros2_docker.bat run                # Run with VNC
 ./airsim_ros2_docker.bat run --launch-rviz  # Run with RViz auto-launch
@@ -142,8 +197,29 @@ cd L:\Cosys-AirSim        # Windows
 ./airsim_ros2_docker.bat stop               # Stop container
 ./airsim_ros2_docker.bat clean              # Remove container/image
 
+# Option 2: Use script directly from specialized directory
+cd docker/airsim_ros2_wrapper/
+./airsim_ros2_docker.bat build              # Direct script access
+
 # Inside container (you'll be in /airsim_ros2_ws)
-./launch_airsim_ros2.sh     # Quick launch AirSim ROS2
+
+# ULTRA-CLEAN ARCHITECTURE LAUNCH (PRIMARY):
+ros2 launch airsim_ros_pkgs rpc_dynamic_vehicles.launch.py
+
+# REP 105 COMPLIANT LAUNCH (with localization):
+ros2 launch airsim_ros_pkgs rpc_dynamic_vehicles.launch.py enable_localization:=true
+
+# This creates perfect ultra-clean naming:
+# - Nodes: /Droan1, /PX4_Drone2, /airsim_coordination_node
+# - Topics: /Droan1/odom_local_ned, /PX4_Drone2/imu, etc.  
+# - Services: /Droan1/takeoff, /PX4_Drone2/land, etc.
+# - Transform Chain: map → vehicle/odom → vehicle/base_link → sensors (REP 105)
+# - Automatic cross-platform discovery (Windows AirSim + Docker ROS2)
+
+# Legacy single-node approach (backward compatibility):
+ros2 launch airsim_ros_pkgs airsim_node.launch.py
+
+# Build commands
 build_interfaces            # Rebuild interface packages
 build_pkgs                  # Rebuild main packages
 build                       # Rebuild entire workspace
@@ -269,6 +345,91 @@ python3 wsl2_detector.py --auto-update docker/px4_airsim_docker_v2
 
 For detailed troubleshooting, see: [MAVLink Networking Troubleshooting Guide](docs/mavlink_networking_troubleshooting.md)
 
+## REP 105 Multi-Robot Compliance and Coordinate Systems
+
+### AirSim Coordinate System Behavior
+
+**Critical Discovery**: AirSim uses a GPS-based multi-vehicle coordinate system where:
+
+1. **Each vehicle spawns at local origin `[0, 0, ground_height]`** regardless of settings.json spawn positions
+2. **Different GPS coordinates** are assigned to each vehicle based on settings.json configuration
+3. **GPS-to-NED conversion required** for proper multi-robot frame separation in ROS2
+
+**Example from diagnostic output:**
+```
+D2 GPS: [47.641017, -122.140787, 1259.445]         # Different GPS coordinates
+Drone_1 GPS: [47.640945, -122.140865, 1259.445]    # Different GPS coordinates  
+MyDrone3 GPS: [47.640973, -122.140738, 1259.445]   # Different GPS coordinates
+
+D2 Local NED: [0.000, 0.000, 1.698]                # All identical local positions
+Drone_1 Local NED: [0.000, 0.000, 1.698]           # All identical local positions
+MyDrone3 Local NED: [0.000, 0.000, 1.698]          # All identical local positions  
+```
+
+### REP 105 Frame Authority Implementation
+
+**Transform Chain**: `map → vehicle/odom → vehicle/base_link → sensors`
+
+**Frame Authority Separation (per REP 105):**
+- **Odometry Sources**: Publish `vehicle/odom → vehicle/base_link` transforms
+- **Localization Sources**: Publish `map → vehicle/odom` transforms (computed dynamically)
+- **Static Publishers**: Handle sensor attachment transforms
+
+**Key Implementation:**
+- `spawn_offset` calculated via GPS coordinate differences to create proper world-space vehicle separation
+- Each vehicle gets independent odom frame anchored at its GPS-derived world position
+- base_link position computed relative to vehicle's own odom frame: `current_pos - spawn_offset`
+
+### Diagnostic Commands
+
+#### Coordinate System Analysis
+```bash
+# Check vehicle spawn positions and GPS coordinates
+cd PythonClient/multirotor
+python diagnose_vehicle_positions.py
+
+# Comprehensive AirSim coordinate diagnostic
+python debug_airsim_spawn.py
+```
+
+#### Transform Chain Validation
+```bash
+# Check transform connectivity
+ros2 run tf2_ros tf2_echo map Drone_1/base_link
+
+# View complete transform tree
+ros2 run tf2_tools view_frames.py
+
+# Monitor live transforms
+ros2 run tf2_ros tf2_monitor map Drone_1/base_link
+```
+
+#### REP 105 Compliance Check
+```bash
+# Verify frame authorities (should see per-vehicle odom frames)
+ros2 topic echo /tf_static
+
+# Check localization transforms (map→odom should be dynamic)  
+ros2 topic echo /tf --field transforms
+
+# Validate RViz visualization with proper frame separation
+rviz2 # Set Fixed Frame to 'map', verify vehicles appear at different locations
+```
+
+### Troubleshooting Common Issues
+
+#### All vehicles clustering at origin in RViz
+**Cause**: spawn_offset not properly calculated from GPS differences
+**Solution**: Check GPS coordinate differences in diagnostic output, ensure localization nodes are running
+
+#### "Invalid frame ID" errors
+**Cause**: Missing or incorrect frame naming, localization nodes not publishing map→odom transforms
+**Solution**: Verify `enable_localization=true` in launch command, check frame naming consistency
+
+#### base_link showing wrong position relative to odom
+**Cause**: spawn_offset calculation mismatch with actual AirSim coordinate system
+**Solution**: Use GPS-based spawn_offset calculation as implemented in `multirotor_node.cpp`
+
 ## High-Level Architecture
 
 ### Core Components
@@ -293,12 +454,19 @@ For detailed troubleshooting, see: [MAVLink Networking Troubleshooting Guide](do
    - `Matlab/` - MATLAB toolbox for API access
    - Clients communicate via RPC over TCP (default port 41451)
 
-4. **Vehicle Types**
+4. **ROS2 Multi-Vehicle Architecture** - Ultra-clean modular system
+   - `ros2/src/airsim_ros_pkgs/` - Modern ROS2 integration
+   - **Perfect Ultra-Clean Naming**: Vehicle names ARE node names (`/Droan1`, `/PX4_Drone2`)
+   - **RPC Auto-Discovery**: Cross-platform Windows AirSim + Docker ROS2 support
+   - **Fault Isolation**: Individual vehicle nodes with independent connections
+   - **Two-Strategy Approach**: RPC dynamic (primary) + monolithic (legacy)
+
+5. **Vehicle Types**
    - Multirotor (PX4, ArduCopter, SimpleFlight)
    - Car (PhysX, SkidSteer vehicles)
    - ComputerVision mode (camera-only simulation)
 
-5. **Sensor System**
+6. **Sensor System**
    - Modular sensor architecture in `sensors/`
    - Each sensor type has Base class and Simple implementation
    - Custom Cosys-Lab sensors: GPU LiDAR, Echo (radar/sonar), MarLocUwb
@@ -370,8 +538,20 @@ Always use Gemini CLI when:
 
 ### Key Files to Understand
 
+**Core AirLib:**
 - `AirLib/include/api/RpcLibServerBase.hpp` - API endpoint definitions
 - `AirLib/include/common/AirSimSettings.hpp` - All settings structures
 - `AirLib/include/vehicles/*/api/*ApiBase.hpp` - Vehicle-specific APIs
 - `PythonClient/cosysairsim/client.py` - Python client implementation
 - `Unreal/Plugins/AirSim/Source/SimMode*.cpp` - Unreal simulation modes
+
+**Ultra-Clean ROS2 Architecture:**
+- `ros2/src/airsim_ros_pkgs/launch/rpc_dynamic_vehicles.launch.py` - Primary RPC auto-discovery launch
+- `ros2/src/airsim_ros_pkgs/src/simple_multirotor_node.cpp` - Ultra-clean vehicle node with explicit topic prefixing
+- `ros2/src/airsim_ros_pkgs/src/coordination_node.cpp` - Global coordination services
+- `ros2/README_MULTIROTOR_ARCHITECTURE.md` - Complete architecture documentation
+
+**REP 105 Multi-Robot Compliance:**
+- `ros2/src/airsim_ros_pkgs/src/multirotor_node.cpp` lines 440-491 - GPS-based spawn offset calculation for proper multi-vehicle frame separation
+- `ros2/src/airsim_ros_pkgs/src/localization_node.cpp` - REP 105 compliant localization component with proper frame authority separation  
+- `ros2/src/airsim_ros_pkgs/src/vehicle_node_base.cpp` lines 52-53 - Per-vehicle frame naming for namespace isolation

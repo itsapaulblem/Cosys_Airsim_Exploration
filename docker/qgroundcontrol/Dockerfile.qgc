@@ -1,0 +1,138 @@
+# QGroundControl Docker Image with VNC Access
+# Integrates with AirSim PX4 ecosystem for ground control station functionality
+
+FROM ubuntu:22.04
+
+LABEL maintainer="AirSim Team"
+LABEL description="QGroundControl with VNC/noVNC for remote access to PX4/AirSim drones"
+
+# Prevent interactive prompts during package installation
+ENV DEBIAN_FRONTEND=noninteractive
+
+# Set up locale
+RUN apt-get update && apt-get install -y \
+    locales \
+    && locale-gen en_US.UTF-8 \
+    && update-locale LC_ALL=en_US.UTF-8 LANG=en_US.UTF-8
+
+ENV LANG=en_US.UTF-8
+ENV LANGUAGE=en_US:en
+ENV LC_ALL=en_US.UTF-8
+
+# Install essential utilities and dependencies
+RUN apt-get update && apt-get install -y \
+    wget \
+    curl \
+    git \
+    software-properties-common \
+    sudo \
+    gnupg2 \
+    ca-certificates \
+    apt-transport-https \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install X11, VNC, and desktop environment dependencies
+RUN apt-get update && apt-get install -y \
+    xvfb \
+    x11vnc \
+    fluxbox \
+    wmctrl \
+    libgl1-mesa-glx \
+    libgl1-mesa-dri \
+    libglu1-mesa \
+    libxcb-xinerama0 \
+    libxcb-cursor0 \
+    libxkbcommon-x11-0 \
+    libxcb-icccm4 \
+    libxcb-image0 \
+    libxcb-keysyms1 \
+    libxcb-randr0 \
+    libxcb-render-util0 \
+    libxcb-shape0 \
+    libfontconfig1 \
+    libdbus-1-3 \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install noVNC for web-based VNC access
+RUN apt-get update && apt-get install -y \
+    net-tools \
+    novnc \
+    python3-websockify \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install QGroundControl dependencies
+RUN apt-get update && apt-get install -y \
+    libsdl2-2.0-0 \
+    libfuse2 \
+    fuse \
+    gstreamer1.0-plugins-base \
+    gstreamer1.0-plugins-good \
+    gstreamer1.0-plugins-bad \
+    gstreamer1.0-libav \
+    gstreamer1.0-gl \
+    libqt5gui5 \
+    libqt5multimedia5-plugins \
+    libqt5serialport5 \
+    libqt5svg5 \
+    libqt5charts5 \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install PulseAudio client libraries (required by QGroundControl for audio)
+RUN apt-get update && apt-get install -y \
+    libpulse0 \
+    libpulse-mainloop-glib0 \
+    && rm -rf /var/lib/apt/lists/*
+
+# Download and install QGroundControl v5.0.7 (latest stable as of Sept 2025)
+# Primary: GitHub v5.0.7 release (renamed to standardized filename)
+# Fallback: GitHub v4.4.2 if v5.0.7 unavailable
+RUN mkdir -p /opt/qgroundcontrol && \
+    cd /opt/qgroundcontrol && \
+    (wget -O QGroundControl.AppImage https://github.com/mavlink/qgroundcontrol/releases/download/v5.0.7/QGroundControl-x86_64.AppImage || \
+     wget https://github.com/mavlink/qgroundcontrol/releases/download/v4.4.2/QGroundControl.AppImage) && \
+    chmod +x QGroundControl.AppImage
+
+# Install MAVLink utilities for debugging
+RUN apt-get update && apt-get install -y \
+    python3-pip \
+    && pip3 install --no-cache-dir pymavlink MAVProxy \
+    && rm -rf /var/lib/apt/lists/*
+
+# Create qgc user with sudo privileges
+RUN useradd -m -s /bin/bash -G sudo qgc && \
+    echo "qgc:qgc" | chpasswd && \
+    echo "qgc ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers
+
+# Set up VNC password
+RUN mkdir -p /home/qgc/.vnc && \
+    x11vnc -storepasswd airsim /home/qgc/.vnc/passwd && \
+    chown -R qgc:qgc /home/qgc/.vnc
+
+# Create QGroundControl configuration directory
+RUN mkdir -p /home/qgc/.config/QGroundControl.org && \
+    chown -R qgc:qgc /home/qgc/.config
+
+# Set up working directory
+WORKDIR /home/qgc
+
+# Copy startup script (will be created next)
+COPY scripts/start-qgc.sh /usr/local/bin/start-qgc.sh
+RUN chmod +x /usr/local/bin/start-qgc.sh
+
+# Expose ports
+# 5900: VNC server
+# 6080: noVNC web interface
+# 14550: Default MAVLink GCS UDP port
+# 14550-14578: MAVLink UDP range for multi-drone support
+EXPOSE 5900 6080 14550/udp
+
+# Environment variables for display and VNC
+ENV DISPLAY=:1
+ENV VNC_PASSWORD=airsim
+ENV QGC_APPIMAGE=/opt/qgroundcontrol/QGroundControl.AppImage
+
+# Switch to qgc user
+USER qgc
+
+# Default command: start VNC server and QGroundControl
+CMD ["/usr/local/bin/start-qgc.sh"]

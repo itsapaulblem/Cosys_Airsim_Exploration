@@ -1,0 +1,322 @@
+# Optimized X11-Forwarding Dockerfile for AirSim ROS2 (Linux Native)
+# Removes VNC/Desktop overhead for ~60% resource savings
+
+# =============================================================================
+# Stage 1: Builder - All build-time operations and dependencies
+# =============================================================================
+FROM osrf/ros:humble-desktop-full AS builder
+
+SHELL ["/bin/bash", "-c"]
+
+ENV DEBIAN_FRONTEND=noninteractive \
+    ROS_DISTRO=humble
+
+# Install build dependencies and development packages in single optimized layer
+RUN apt-get update -q && apt-get install -y --no-install-recommends \
+    # Build essentials
+    build-essential cmake git python3-pip dos2unix \
+    # Python development (for NumPy C extensions and ROS2 interfaces)
+    python3-dev python3-numpy-dev libpython3-dev \
+    # Additional build tools
+    curl wget \
+    # ROS2 build dependencies
+    python3-colcon-common-extensions python3-vcstool python3-rosdep \
+    # ROS2 runtime packages needed for building airsim_interfaces
+    ros-humble-geographic-msgs ros-humble-mavros-msgs ros-humble-rclcpp-action \
+    # MAVROS for PX4 MAVLink communication (full package + extras)
+    ros-humble-mavros ros-humble-mavros-extras \
+    # PCL (Point Cloud Library) for 3D mapping and point cloud processing
+    libpcl-dev ros-humble-pcl-conversions ros-humble-pcl-ros \
+    # EIGEN3 - Required for AirLib compilation
+    libeigen3-dev \
+    && rm -rf /var/lib/apt/lists/* && apt-get clean
+
+# Install Python dependencies with optimized caching
+# NumPy 1.x required for ROS2 Humble binary compatibility (cv_bridge compiled against 1.x)
+RUN python3 -m pip install --no-cache-dir --upgrade pip && \
+    python3 -m pip install --no-cache-dir msgpack msgpack-rpc-python 'numpy<2.0' opencv-python
+
+# Comprehensive NumPy header setup for ROS2 interface generation
+RUN echo "=== Setting up NumPy headers for ROS2 interface generation ===" && \
+    NUMPY_INCLUDE_PATH=$(python3 -c "import numpy; print(numpy.get_include())") && \
+    echo "NumPy include path: $NUMPY_INCLUDE_PATH" && \
+    # Create standard system include directories
+    mkdir -p /usr/include/numpy /usr/local/include/numpy && \
+    # Link NumPy headers to standard locations
+    if [ -d "$NUMPY_INCLUDE_PATH/numpy" ]; then \
+        ln -sf "$NUMPY_INCLUDE_PATH/numpy"/* /usr/include/numpy/ && \
+        ln -sf "$NUMPY_INCLUDE_PATH/numpy"/* /usr/local/include/numpy/ && \
+        echo "[SUCCESS] NumPy headers linked successfully"; \
+    else \
+        echo "[ERROR] NumPy headers not found at $NUMPY_INCLUDE_PATH"; \
+    fi && \
+    # Verify critical header exists
+    ls -la /usr/include/numpy/ndarrayobject.h && echo "[SUCCESS] NumPy headers verified"
+    
+# Create workspace and copy AirSim components
+WORKDIR /build_workspace
+COPY cmake/ ./cmake/
+COPY AirLib/include/ ./AirLib/include/
+COPY AirLib/src/ ./AirLib/src/
+COPY AirLib/deps/ ./AirLib/deps/
+COPY MavLinkCom/src/ ./MavLinkCom/src/
+COPY MavLinkCom/include/ ./MavLinkCom/include/
+COPY MavLinkCom/common_utils/ ./MavLinkCom/common_utils/
+COPY MavLinkCom/mavlink/ ./MavLinkCom/mavlink/
+COPY external/rpclib/ ./external/rpclib/
+
+# Prepare Docker-friendly CMake configuration
+COPY cmake/cmake-modules/CommonSetupDocker.cmake ./cmake/cmake-modules/
+COPY cmake/rpclib_wrapper/CMakeLists_docker.txt ./cmake/rpclib_wrapper/
+RUN sed -i 's/add_subdirectory("MavLinkTest")/#add_subdirectory("MavLinkTest")/' ./cmake/MavLinkCom/CMakeLists.txt 2>/dev/null || true && \
+    mv ./cmake/rpclib_wrapper/CMakeLists_docker.txt ./cmake/rpclib_wrapper/CMakeLists.txt && \
+    cp ./cmake/cmake-modules/CommonSetupDocker.cmake ./cmake/cmake-modules/CommonSetup.cmake
+
+# Create clean build artifacts directory
+RUN mkdir -p /build_artifacts && \
+    cp -r . /build_artifacts/ && \
+    echo "[SUCCESS] Build artifacts prepared"
+
+# =============================================================================
+# Stage 1.5: ROS2 Package Builder - Build interfaces with PIE fix
+# =============================================================================
+FROM builder AS ros2_builder
+
+SHELL ["/bin/bash", "-c"]
+
+# Copy ROS2 source packages
+WORKDIR /airsim_ros2_ws
+COPY ros2/src ./src
+
+# Copy build artifacts from builder stage
+COPY --from=builder /build_artifacts ./
+RUN mkdir -p src/airsim && \
+    ln -sf /airsim_ros2_ws/cmake src/airsim/cmake && \
+    ln -sf /airsim_ros2_ws/AirLib src/airsim/AirLib && \
+    ln -sf /airsim_ros2_ws/MavLinkCom src/airsim/MavLinkCom && \
+    ln -sf /airsim_ros2_ws/external src/airsim/external
+
+# Step 1: Rebuild RPC library with -fPIC (PIE fix)
+RUN echo "=== Building RPC library with -fPIC ===" && \
+    cd /airsim_ros2_ws/external/rpclib/rpclib-2.3.1 && \
+    rm -rf build && \
+    mkdir build && cd build && \
+    cmake .. \
+        -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
+        -DCMAKE_CXX_STANDARD=17 \
+        -DCMAKE_CXX_FLAGS="-fPIC -O2" \
+        -DCMAKE_C_FLAGS="-fPIC -O2" \
+        -DRPCLIB_BUILD_STATIC=ON && \
+    make -j$(nproc) && \
+    echo "[SUCCESS] RPC library built with PIE support"
+
+# Step 2: Build all ROS2 packages with dependencies
+RUN echo "=== Building ROS2 interfaces and packages ===" && \
+    cd /airsim_ros2_ws && \
+    source /opt/ros/humble/setup.bash && \
+    colcon build --packages-up-to airsim_ros_pkgs \
+        --cmake-args \
+        -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
+        -DCMAKE_CXX_STANDARD=17 \
+        -DCMAKE_CXX_FLAGS="-fPIC -O2" \
+        -DCMAKE_BUILD_TYPE=Release && \
+    echo "[SUCCESS] All ROS2 packages built successfully"
+
+# Verify build outputs
+RUN ls -la /airsim_ros2_ws/install/ && \
+    echo "[VERIFICATION] Built packages:" && \
+    ls /airsim_ros2_ws/install/
+
+# =============================================================================
+# Stage 2: Runtime - Minimal X11-forwarding environment (NO VNC/XFCE)
+# =============================================================================
+FROM osrf/ros:humble-desktop-full AS runtime
+
+SHELL ["/bin/bash", "-c"]
+
+# Runtime environment variables (X11-focused)
+ENV DEBIAN_FRONTEND=noninteractive \
+    ROS_DISTRO=humble \
+    DISPLAY=:0 \
+    LAUNCH_MODE=multi \
+    ENABLE_COORDINATION=true \
+    RPC_TIMEOUT=10.0 \
+    LAUNCH_RVIZ=false \
+    DEBUG=false
+
+# Install runtime packages ONLY (NO VNC/DESKTOP)
+# Key change: Remove tigervnc*, xfce4*, desktop packages
+RUN apt-get update -q && apt-get install -y --no-install-recommends \
+    # System essentials for runtime
+    tini curl wget sudo locales bash-completion tzdata \
+    python3 python3-pip dos2unix git \
+    # Build tools for colcon and RPC rebuilds (required by fix_rpc_build.sh)
+    build-essential cmake \
+    # Debug tools (gdb for debugging ROS2 nodes and crashes)
+    gdb \
+    # Network utilities
+    telnet iputils-ping net-tools dnsutils netcat-openbsd \
+    # X11 CLIENT libraries only (no X server)
+    libx11-6 libxext6 libxrender1 libxrandr2 libxfixes3 \
+    libxcursor1 libxcomposite1 libxdamage1 libxi6 libxtst6 \
+    libxinerama1 libxkbcommon0 libxcb1 libx11-xcb1 \
+    # X11 utilities for testing and authentication
+    x11-utils x11-apps xauth x11-xserver-utils mesa-utils \
+    # OpenGL/GPU support (required for 3D rendering)
+    libgl1 libglx-mesa0 libglu1-mesa \
+    # Terminal and utilities (lightweight)
+    xterm terminator htop tree ncdu less vim nano \
+    # ROS2 runtime packages for AirSim
+    ros-humble-geographic-msgs ros-humble-mavros-msgs ros-humble-rclcpp-action \
+    # MAVROS for PX4 MAVLink communication (runtime + extras for multi-drone control)
+    ros-humble-mavros ros-humble-mavros-extras \
+    # OctoMap 3D Mapping (4-drone LiDAR collaborative mapping)
+    ros-humble-octomap ros-humble-octomap-msgs \
+    ros-humble-octomap-server ros-humble-octomap-rviz-plugins \
+    # PCL (Point Cloud Library) runtime support for point cloud processing
+    libpcl-dev ros-humble-pcl-conversions ros-humble-pcl-ros \
+    # RViz2 for OctoMap visualization (re-added for 3D mapping support)
+    ros-humble-rviz2 \
+    # EIGEN3 RUNTIME DEPENDENCY - Required for AirLib compilation consistency
+    libeigen3-dev \
+    && rm -rf /var/lib/apt/lists/* && apt-get clean
+
+# Refresh library cache for OpenGL libraries
+RUN ldconfig
+
+# Install GeographicLib datasets for MAVROS GPS transformations
+RUN wget https://raw.githubusercontent.com/mavlink/mavros/ros2/mavros/scripts/install_geographiclib_datasets.sh && \
+    bash install_geographiclib_datasets.sh && \
+    rm install_geographiclib_datasets.sh
+
+# Install Python runtime dependencies for ROS2 (microservices architecture)
+# NumPy 1.x required for ROS2 Humble binary compatibility (cv_bridge compiled against 1.x)
+# Note: YOLOv10 + DeepSORT now run in separate detection service container
+RUN python3 -m pip install --no-cache-dir --upgrade pip && \
+    python3 -m pip install --no-cache-dir \
+        'numpy<2.0' \
+        msgpack msgpack-rpc-python \
+        opencv-python \
+        Pillow PyYAML requests tqdm protobuf psutil \
+        matplotlib scipy pandas seaborn && \
+    echo "[SUCCESS] ROS2 Python dependencies installed with NumPy 1.x compatibility"
+
+
+# Create NumPy header links from runtime NumPy installation (not builder)
+# This fixes broken symlinks that pointed to builder stage NumPy location
+RUN NUMPY_INCLUDE_PATH=$(python3 -c "import numpy; print(numpy.get_include())") && \
+    echo "Runtime NumPy include path: $NUMPY_INCLUDE_PATH" && \
+    mkdir -p /usr/include/numpy /usr/local/include/numpy && \
+    if [ -d "$NUMPY_INCLUDE_PATH/numpy" ]; then \
+        cp -r "$NUMPY_INCLUDE_PATH/numpy"/* /usr/include/numpy/ && \
+        cp -r "$NUMPY_INCLUDE_PATH/numpy"/* /usr/local/include/numpy/ && \
+        echo "[SUCCESS] NumPy headers copied from runtime installation"; \
+    else \
+        echo "[ERROR] NumPy headers not found at $NUMPY_INCLUDE_PATH"; \
+        exit 1; \
+    fi && \
+    ls -la /usr/include/numpy/ndarrayobject.h && echo "[SUCCESS] NumPy headers verified"
+
+# Note: Removed C_INCLUDE_PATH and CPLUS_INCLUDE_PATH environment variables
+# These were breaking #include_next directives in C++ standard library headers
+# GCC's default search paths already include /usr/include and /usr/local/include
+# in the correct order for C++ compilation to work properly
+
+# Python include path for ROS2 message Python bindings
+# ONLY Python subdirectory path is added - this is safe and doesn't break #include_next
+ENV CPLUS_INCLUDE_PATH="/usr/include/python3.10:${CPLUS_INCLUDE_PATH}" \
+    C_INCLUDE_PATH="/usr/include/python3.10:${C_INCLUDE_PATH}"
+
+# Streamlined system configuration (X11 minimal)
+# Set XDG_RUNTIME_DIR to suppress Qt X11 warnings
+ENV XDG_RUNTIME_DIR=/tmp/runtime-dockeruser
+RUN mkdir -p /tmp/.X11-unix && \
+    chmod 1777 /tmp/.X11-unix && \
+    mkdir -p /tmp/runtime-dockeruser && \
+    chmod 700 /tmp/runtime-dockeruser
+
+# Create temporary build user (will be replaced by dynamic user at runtime)
+# Runtime user will be created by entrypoint based on docker-compose user: "${UID}:${GID}"
+RUN useradd -m -s /bin/bash -u 1000 dockeruser && \
+    echo 'dockeruser:ubuntu' | chpasswd && \
+    usermod -aG sudo,video dockeruser && \
+    echo 'dockeruser ALL=(ALL) NOPASSWD:ALL' >> /etc/sudoers
+
+# Copy AirSim build artifacts AND pre-built ROS2 packages from ros2_builder stage
+WORKDIR /airsim_ros2_ws
+COPY --from=ros2_builder /airsim_ros2_ws/build ./build
+COPY --from=ros2_builder /airsim_ros2_ws/install ./install
+COPY --from=ros2_builder /airsim_ros2_ws/log ./log
+COPY --from=builder /build_artifacts ./
+# Copy built RPC library from ros2_builder (required for in-container colcon rebuilds)
+# Without this, colcon build fails looking for librpc.a which was built in ros2_builder stage
+COPY --from=ros2_builder /airsim_ros2_ws/external/rpclib/rpclib-2.3.1/build ./external/rpclib/rpclib-2.3.1/build
+RUN mkdir -p src/airsim && \
+    ln -sf /airsim_ros2_ws/cmake src/airsim/cmake && \
+    ln -sf /airsim_ros2_ws/AirLib src/airsim/AirLib && \
+    ln -sf /airsim_ros2_ws/MavLinkCom src/airsim/MavLinkCom && \
+    ln -sf /airsim_ros2_ws/external src/airsim/external
+
+# Copy and configure development scripts (early integration)
+COPY docker/airsim_ros2_wrapper/scripts/ ./scripts/
+# Copy RPC fix script for runtime PIE compatibility fix
+COPY ros2/fix_rpc_build.sh ./scripts/
+RUN dos2unix ./scripts/*.sh && chmod +x ./scripts/*.sh && \
+    # Fix username in development_aliases.sh (uses /home/Aortz by default)
+    sed -i 's|/home/Aortz|/home/dockeruser|g' ./scripts/development_aliases.sh && \
+    # Run development aliases setup
+    ./scripts/development_aliases.sh && \
+    # Ensure proper line endings after script modification
+    dos2unix /home/dockeruser/.bashrc
+
+# Copy launch and debug scripts
+COPY docker/airsim_ros2_wrapper/VNC/launch_ros2_system.sh /launch_ros2_system.sh
+COPY docker/airsim_ros2_wrapper/VNC/debug_airsim_connection.sh /debug_airsim_connection.sh
+RUN dos2unix /launch_ros2_system.sh /debug_airsim_connection.sh && \
+    chmod +x /launch_ros2_system.sh /debug_airsim_connection.sh && \
+    ln -sf /launch_ros2_system.sh /usr/local/bin/ros2-system
+
+# Set proper ownership (single operation)
+RUN chown -R dockeruser:dockeruser /airsim_ros2_ws /home/dockeruser
+
+# Configure optimized runtime environment paths
+ENV PYTHONPATH="/opt/ros/humble/lib/python3.10/site-packages:/airsim_ros2_ws/install/airsim_interfaces/lib/python3.10/site-packages:/airsim_ros2_ws/install/airsim_ros_pkgs/lib/python3.10/site-packages:${PYTHONPATH}" \
+    PATH="/opt/ros/humble/bin:/airsim_ros2_ws/install/airsim_ros_pkgs/bin:${PATH}" \
+    LD_LIBRARY_PATH="/opt/ros/humble/lib:/airsim_ros2_ws/install/airsim_interfaces/lib:/airsim_ros2_ws/install/airsim_ros_pkgs/lib:${LD_LIBRARY_PATH}" \
+    CMAKE_PREFIX_PATH="/opt/ros/humble:/airsim_ros2_ws/install/airsim_interfaces:/airsim_ros2_ws/install/airsim_ros_pkgs:${CMAKE_PREFIX_PATH}"
+
+# Runtime configuration
+WORKDIR /airsim_ros2_ws
+VOLUME ["/airsim_ros2_ws/src"]
+EXPOSE 7400/udp 7401/udp 7402/udp
+
+# X11-focused health check (no VNC)
+HEALTHCHECK --interval=30s --timeout=10s --start-period=15s --retries=3 \
+    CMD xdpyinfo > /dev/null 2>&1 || exit 1
+
+# Copy and configure X11 entrypoint
+COPY docker/airsim_ros2_wrapper/Linux/entrypoint_x11.sh /
+RUN dos2unix /entrypoint_x11.sh && chmod +x /entrypoint_x11.sh
+
+# Add PIE compatibility fix aliases
+RUN cat >> /home/dockeruser/.bashrc << 'EOF'
+
+# ===============================================
+# PIE Compatibility Fix for RPC Library
+# ===============================================
+alias fix-rpc-pie='/airsim_ros2_ws/scripts/fix_rpc_build.sh'
+alias manual-pie-fix='/airsim_ros2_ws/scripts/fix_rpc_build.sh'
+alias check-pie-status='echo "PIE fix is automatically applied with build alias. Use build_no_fix to skip."'
+EOF
+
+# Final user configuration with enhanced line ending protection
+USER dockeruser
+RUN printf '\ncd /airsim_ros2_ws\n' >> /home/dockeruser/.bashrc && \
+    dos2unix /home/dockeruser/.bashrc 2>/dev/null || true && \
+    # Final verification of .bashrc syntax
+    bash -n /home/dockeruser/.bashrc || { echo "ERROR: .bashrc syntax check failed" && cat -n /home/dockeruser/.bashrc && exit 1; }
+
+# Switch back for entrypoint execution
+USER root
+
+ENTRYPOINT ["/entrypoint_x11.sh"]

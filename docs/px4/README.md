@@ -35,11 +35,26 @@ This section contains documentation for PX4 integration, MAVLink communication, 
 ### Architecture Diagrams
 - **[MAVLinkCom Design](../mavlinkcom_design/)** - Detailed design diagrams and documentation
 
+<<<<<<< HEAD
+=======
+## 🎯 Mission Coordination Integration
+
+### Advanced Mission Systems
+- **[PX4 SITL Mission Integration](../mission_coordination/px4_sitl_mission_integration.md)** - Complete PX4 SITL integration with mission coordination
+- **[Offboard Control Patterns](../mission_coordination/offboard_control_patterns.md)** - Advanced offboard control for missions
+- **[Practical Mission Examples](../mission_coordination/practical_mission_examples.md)** - Real-world mission scenarios
+- **[Mission Coordination Overview](../mission_coordination/README.md)** - Complete mission coordination system
+
+>>>>>>> main
 ## 🔗 Related Documentation
 
 - **[Core APIs](../core/apis.md)** - Core AirSim API documentation
 - **[Multi-Vehicle Setup](../core/multi_vehicle.md)** - General multi-vehicle configuration
 - **[ROS2 Integration](../ros2/)** - ROS2 wrapper for PX4 integration
+<<<<<<< HEAD
+=======
+- **[Ultra-Clean ROS2 Architecture](../../ros2/README_MULTIROTOR_ARCHITECTURE.md)** - Modern ROS2 multi-vehicle system
+>>>>>>> main
 
 ## 📋 Quick Reference
 

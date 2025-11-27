@@ -1,0 +1,81 @@
+# AirSim-Recommended PX4 Parameters
+# These parameters optimize PX4 for simulation environments
+# Documentation: https://microsoft.github.io/AirSim/px4_setup/
+
+# Position Estimator
+# Enable the new position estimator module (EKF2)
+SYS_MC_EST_GROUP 2
+
+# Cruise Speed Configuration
+# Increase default limits on cruise speed for faster navigation in large maps
+MPC_XY_CRUISE 10          # Horizontal cruise speed (m/s)
+MPC_XY_VEL_MAX 10         # Maximum horizontal velocity (m/s)
+MPC_Z_VEL_MAX_DN 2        # Maximum descent velocity (m/s)
+
+# Auto-Disarm Configuration
+# Increase timeout for auto-disarm on landing for long-running applications
+COM_DISARM_LAND 60        # Auto-disarm delay after landing (seconds)
+
+# Radio Control Configuration
+# WARNING: DO NOT use this on real drones!
+# Allow flight without radio control attached (simulation only)
+NAV_RCL_ACT 0             # RC loss action: 0 = disabled
+
+# Logging Configuration
+# Enable new syslogger for more detailed PX4 logs
+SYS_LOGGER 1              # Use improved logger
+
+# Additional recommended parameters for AirSim
+# These improve stability and responsiveness in simulation
+MPC_ACC_HOR_MAX 10        # Maximum horizontal acceleration (m/s²)
+MPC_ACC_HOR 5             # Horizontal acceleration (m/s²)
+MPC_Z_VEL_MAX_UP 3        # Maximum ascent velocity (m/s)
+
+# Offboard mode parameters
+# These ensure reliable offboard control for ROS2/MAVROS
+COM_OBL_ACT 0             # Offboard loss action: 0 = Land mode
+COM_OBL_RC_ACT 0          # Offboard loss RC override: 0 = Disabled
+COM_RC_IN_MODE 1          # RC input mode: 1 = Joystick/No RC checks
+
+# Failsafe parameters for simulation
+# Disable certain failsafes that aren't relevant in simulation
+COM_LOW_BAT_ACT 0         # Low battery action: 0 = Warning only
+CBRK_SUPPLY_CHK 894281    # Circuit breaker for power supply check
+CBRK_USB_CHK 197848       # Circuit breaker for USB check (allows arming via MAVLink)
+CBRK_AIRSPD_CHK 162128    # Circuit breaker for airspeed check
+CBRK_ENGINEFAIL 284953    # Circuit breaker for engine failure detection
+CBRK_FLIGHTTERM 121212    # Circuit breaker for flight termination
+
+# Sensor timeout configuration for external simulator
+# Increase timeouts for network-based sensor data from AirSim
+COM_ARM_IMU_ACC 0.5       # Accelerometer inconsistency threshold (m/s²)
+COM_ARM_IMU_GYR 0.5       # Gyroscope inconsistency threshold (rad/s)
+COM_ARM_MAG_ANG 45        # Magnetometer inconsistency angle threshold (degrees)
+
+# EKF2 optimization for simulation environment
+EKF2_IMU_POS_X 0.0        # IMU X position in body frame
+EKF2_IMU_POS_Y 0.0        # IMU Y position in body frame
+EKF2_IMU_POS_Z 0.0        # IMU Z position in body frame
+EKF2_BARO_DELAY 0.0       # Barometer measurement delay (ms) - reduce for sim
+EKF2_GPS_DELAY 110        # GPS measurement delay (ms) - optimized for AirSim
+EKF2_MAG_DELAY 0.0        # Magnetometer delay (ms) - reduce for sim
+
+# Sensor noise configuration for simulation
+# These values are tuned for AirSim's sensor simulation characteristics
+EKF2_ACC_NOISE 0.35       # Accelerometer noise (m/s²)
+EKF2_GYR_NOISE 0.015      # Gyroscope noise (rad/s)
+EKF2_MAG_NOISE 0.05       # Magnetometer noise (Gauss)
+EKF2_BARO_NOISE 2.0       # Barometer noise (m)
+EKF2_GPS_P_NOISE 0.5      # GPS position noise (m)
+EKF2_GPS_V_NOISE 0.3      # GPS velocity noise (m/s)
+
+# Rate controller tuning for responsive simulation control
+MC_ROLLRATE_P 0.15        # Roll rate P gain
+MC_PITCHRATE_P 0.15       # Pitch rate P gain
+MC_YAWRATE_P 0.2          # Yaw rate P gain
+MC_ROLLRATE_I 0.2         # Roll rate I gain
+MC_PITCHRATE_I 0.2        # Pitch rate I gain
+MC_YAWRATE_I 0.1          # Yaw rate I gain
+MC_ROLLRATE_D 0.003       # Roll rate D gain
+MC_PITCHRATE_D 0.003      # Pitch rate D gain
+MC_YAWRATE_D 0.0          # Yaw rate D gain

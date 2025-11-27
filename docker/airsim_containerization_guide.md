@@ -2,7 +2,7 @@
 
 This guide explains how to containerize AirSim to solve the networking issues between Docker containers and host-based AirSim.
 
-## 🎯 Why Containerize AirSim?
+## Why Containerize AirSim?
 
 Based on our WSL2 vs Docker analysis, containerizing AirSim solves:
 - **UDP packet loss**: All components share the same Docker network
@@ -10,193 +10,156 @@ Based on our WSL2 vs Docker analysis, containerizing AirSim solves:
 - **Timeout issues**: Reduces network latency and improves reliability
 - **GPS HOME_POSITION**: Ensures reliable MAVLink message delivery
 
-## 🏗️ Container Architecture Options
+## Current Multi-Network Architecture (docker-compose-master.yml)
 
-### Option 1: Full Stack (Recommended)
+The current setup uses a sophisticated multi-network architecture that solves most networking issues while keeping AirSim on the host:
+
+### Network Topology
 ```
-┌─────────────────────────────────────────────────────┐
-│                Docker Network                       │
-│                172.25.0.0/16                       │
-│                                                     │
-│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐ │
-│  │   AirSim    │  │ PX4 Drone1  │  │ PX4 Drone2  │ │
-│  │ 172.25.0.20 │  │172.25.0.10  │  │172.25.0.11  │ │
-│  │             │  │             │  │             │ │
-│  │ API: 41451  │  │ TCP: 4561   │  │ TCP: 4562   │ │
-│  │ UDP: 14xxx  │  │ UDP: 14541  │  │ UDP: 14542  │ │
-│  └─────────────┘  └─────────────┘  └─────────────┘ │
-└─────────────────────────────────────────────────────┘
-```
-
-### Option 2: Hybrid (Current Setup)
-```
-┌─── Windows Host ────┐   ┌──── Docker Network ────┐
-│                    │   │                        │
-│     AirSim         │◄──┤  ┌─────────────────┐   │
-│   (Host: 41451)    │   │  │   PX4 Drone1    │   │
-│                    │   │  │ (172.25.0.10)   │   │
-└────────────────────┘   │  └─────────────────┘   │
-         ▲               │                        │
-         │               │  ┌─────────────────┐   │
-    Complex routing      │  │   PX4 Drone2    │   │
-    causes UDP packet    │  │ (172.25.0.11)   │   │
-    loss issues          │  └─────────────────┘   │
-                         └────────────────────────┘
-```
-
-## 🚀 Implementation Strategies
-
-### Strategy 1: Pre-built Binary Container (Fastest)
-Uses pre-compiled AirSim binaries with Unreal Engine runtime.
-
-### Strategy 2: Source Build Container (Most Flexible)
-Builds AirSim from source within the container.
-
-### Strategy 3: Headless Container (CI/CD)
-For automated testing and simulation without GUI.
-
-## 📁 File Structure
-
-We'll create these files in your project:
-```
-docker/
-├── airsim/
-│   ├── Dockerfile.binary          # Pre-built AirSim
-│   ├── Dockerfile.source          # Source-built AirSim
-│   ├── Dockerfile.headless        # Headless AirSim
-│   ├── docker-compose.yml         # Complete stack
-│   ├── entrypoint.sh              # Container startup script
-│   └── settings/
-│       ├── container_settings.json
-│       └── headless_settings.json
-└── scripts/
-    ├── build_airsim.sh            # Build script
-    └── run_full_stack.sh          # Launch script
+┌─── Windows Host ────┐   ┌──────────── Docker Multi-Network ──────────────┐
+│                     │   │                                                │
+│     AirSim          │◄──┤        airsim-ecosystem (172.30.0.0/16)        │
+│   (Host: 41451)     │   │  ┌─────────────────────────────────────────────┤
+│                     │   │  │ ┌─────────────┐  ┌─────────────────────────┐│
+└─────────────────────┘   │  │ │ ROS2 Node   │  │   Ecosystem Monitor     ││
+         ▲                │  │ │ (ros2)      │  │   (airsim-monitor)      ││
+         │                │  │ │ VNC: 5901   │  │   Health checks         ││
+         │                │  │ └─────────────┘  └─────────────────────────┘│
+         │                │  └─────────────────────────────────────────────┤
+    WSL2 vEthernet        │                                                │
+    (172.XX.XXX.1)        │  px4_network (172.20.0.0/16)                   │
+    detection via         │  ┌─────────────────────────────────────────────┤
+    PowerShell tools      │  │ ┌─────────────┐  ┌─────────────┐  ┌───────┐ │
+         │                │  │ │ PX4 Drone1  │  │ PX4 Drone2  │  │  ...  │ │
+         │                │  │ │(px4-drone-1)│  │(px4-drone-2)│  │Drone6 │ │
+         └────────────────┼──┤ │ TCP: 4560   │  │ TCP: 4561   │  │ 4565  │ │
+                          │  │ │ UDP: 14540  │  │ UDP: 14541  │  │       │ │
+                          │  │ └─────────────┘  └─────────────┘  └───────┘ │
+                          │  └─────────────────────────────────────────────┤
+                          │                                                │
+                          │  ros2-multi-node-network (172.26.0.0/16)       │
+                          │  ┌─────────────────────────────────────────────┤
+                          │  │ ┌─────────────────────────────────────────┐ │
+                          │  │ │        ROS2 Internal Network            │ │
+                          │  │ │     (Multi-vehicle coordination)        │ │
+                          │  │ └─────────────────────────────────────────┘ │
+                          │  └─────────────────────────────────────────────┘
+                          └────────────────────────────────────────────────┘
 ```
 
-## 🔧 Configuration Changes Required
+### Service Distribution by Network
 
-### 1. AirSim Settings for Containers
-```json
-{
-  "SettingsVersion": 2.0,
-  "SimMode": "Multirotor",
-  "ApiServerEndpoint": "0.0.0.0:41451",  // Listen on all interfaces
-  "ClockType": "SteppableClock",
-  "Vehicles": {
-    "PX4_Drone1": {
-      "VehicleType": "PX4Multirotor",
-      "ControlIp": "172.25.0.10",         // Container IP
-      "LocalHostIp": "172.25.0.20",       // AirSim container IP
-      "TcpPort": 4561,
-      "ControlPortLocal": 14541,
-      "ControlPortRemote": 14581
-    }
-  }
-}
+**airsim-ecosystem (172.30.0.0/16)**
+- ROS2 Multi-Node (ros2-node)
+- Ecosystem Monitor (airsim-monitor) 
+- Development Helper (airsim-dev-helper)
+- Cross-ecosystem communication bridge
+
+**px4_network (172.20.0.0/16)**
+- PX4 Drone 1-7 containers (px4-drone-1 through px4-drone-7)
+- Each drone with unique ports: 4560-4566 (TCP) and 14540-14546 (UDP)
+- PX4 SITL instances with proper instance IDs (0-6)
+
+**ros2-multi-node-network (172.26.0.0/16)**
+- ROS2 internal coordination
+- Multi-vehicle communication protocols
+
+## Network Communication Patterns
+
+### Current WSL2 IP Detection Flow
+1. **PowerShell Detection**: `get-wsl2-ip.ps1` finds vEthernet (WSL) adapter IP
+2. **Environment Variables**: `PX4_SIM_HOSTNAME` and `AIRSIM_HOST_IP` set to detected IP
+3. **Container Communication**: All containers use detected IP to reach Windows AirSim
+4. **Port Mapping**: Host ports exposed for external QGroundControl access
+
+### Service Dependencies
+```
+┌─ Windows AirSim (Host: 172.18.144.1:41451)
+│
+├─ PX4 Drones (px4_network)
+│  ├─ px4-drone-1 → AirSim:4560
+│  ├─ px4-drone-2 → AirSim:4561
+│  └─ ... → AirSim:456X
+│
+├─ ROS2 Ecosystem (airsim-ecosystem + ros2-multi-node-network)
+│  ├─ ros2-node → AirSim:41451 (API calls)
+│  └─ VNC Desktop → localhost:5901
+│
+└─ Monitoring (airsim-ecosystem)
+   ├─ ecosystem-monitor → Health checks
+   └─ dev-helper → Debugging tools
 ```
 
-### 2. Network Configuration
-```yaml
-networks:
-  airsim-network:
-    driver: bridge
-    ipam:
-      config:
-        - subnet: 172.25.0.0/16
-          gateway: 172.25.0.1
+## Future Containerized AirSim Architecture
+
+### Option 1: Full Stack Containerization (Future Goal)
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│                    airsim-ecosystem Network                         │
+│                         172.30.0.0/16                               │
+│                                                                     │
+│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐ │
+│  │   AirSim    │  │ PX4 Drone1  │  │ PX4 Drone2  │  │  ROS2 Node  │ │
+│  │ (Container) │  │172.30.0.10  │  │172.30.0.11  │  │172.30.0.20  │ │
+│  │             │  │             │  │             │  │             │ │
+│  │ API: 41451  │  │ TCP: 4560   │  │ TCP: 4561   │  │ VNC: 5901   │ │
+│  │ UDP: 14xxx  │  │ UDP: 14540  │  │ UDP: 14541  │  │ ROS: 7400   │ │
+│  └─────────────┘  └─────────────┘  └─────────────┘  └─────────────┘ │
+│                                                                     │
+│  Benefits:                                                          │
+│  - No WSL2 IP detection needed                                      │
+│  - Direct container-to-container communication                      │
+│  - Eliminates UDP packet loss issues                                │
+│  - Simplified networking configuration                              │
+└─────────────────────────────────────────────────────────────────────┘
 ```
 
-## 🎮 Display Options
+## Migration Strategy
 
-### Option A: VNC (Remote Desktop)
-- Access AirSim through web browser
-- Works on any platform
-- No GPU acceleration
+### Phase 1: Current State (Implemented)
+- Multi-network architecture with proper segmentation
+- WSL2 IP detection via PowerShell tools
+- External PowerShell-based IP detection (no container dependencies)
+- Support for 1-7 configurable PX4 drones
+- Cross-ecosystem monitoring and debugging
 
-### Option B: X11 Forwarding (Linux/WSL2)
-- Direct display forwarding
-- GPU acceleration possible
-- Requires X server on host
+### Phase 2: Hybrid Optimization (Next Steps)
+- Optimize network bridge performance
+- Add AirSim container health monitoring
+- Implement dynamic service discovery
 
-### Option C: Headless (No Display)
-- API-only operation
-- Perfect for CI/CD
-- Maximum performance
+### Phase 3: Full Containerization (Future)
+- Package AirSim in Docker container
+- Migrate to single-network architecture
+- Eliminate host networking dependencies
+- Add GPU passthrough for AirSim rendering
 
-## 🚀 Quick Start Commands
+## Key Advantages of Current Architecture
 
-### Build AirSim Container
+1. **Network Isolation**: Separate networks prevent interference between subsystems
+2. **Scalability**: Supports 1-7 drones with independent port assignments
+3. **Reliability**: PowerShell-based IP detection eliminates container race conditions
+4. **Monitoring**: Ecosystem health monitoring across all networks
+5. **Debugging**: Development helper service with network diagnostic tools
+6. **Modularity**: Profile-based deployment (integrated, px4-only, ros2-only, development)
+
+## Troubleshooting Network Issues
+
+### Common Problems
+- **UDP Packet Loss**: Usually caused by Windows Firewall or WSL2 bridge issues
+- **Connection Timeouts**: Check WSL2 IP detection and environment variables
+- **Port Conflicts**: Ensure unique port assignments for each drone instance
+
+### Diagnostic Commands
 ```bash
-cd docker/airsim
-docker build -f Dockerfile.binary -t airsim:latest .
+# Check network connectivity
+docker exec -it airsim-dev-helper nc -zv 172.18.144.1 41451
+
+# Monitor ecosystem health
+docker logs -f airsim-monitor
+
+# Test individual drone connections
+for port in 4560 4561 4562; do
+    nc -zv localhost $port
+done
 ```
-
-### Run Full Stack
-```bash
-docker-compose up --build
-```
-
-### Test Connection
-```python
-import cosysairsim as airsim
-client = airsim.MultirotorClient("172.25.0.20")  # Container IP
-client.confirmConnection()
-```
-
-## 📊 Expected Performance Improvements
-
-### Network Reliability
-- **UDP Success Rate**: 85-95% → 99.5%+
-- **GPS HOME_POSITION Success**: 20-60% → 95%+
-- **Average Latency**: 10-50ms → 0.1-1ms
-
-### Connection Stability
-- **MAVLink Timeouts**: Frequent → Rare
-- **Container Restarts**: Required → Optional
-- **GPS Home Setting**: Unreliable → Reliable
-
-## 🔍 Troubleshooting
-
-### Common Issues
-1. **Display not working**: Check X11 forwarding or VNC setup
-2. **GPU not available**: Ensure nvidia-docker is installed
-3. **Network conflicts**: Verify no port collisions
-4. **Settings not applied**: Check volume mounts
-
-### Debug Commands
-```bash
-# Check container networking
-docker exec airsim-container ip addr
-
-# Monitor MAVLink traffic
-docker exec airsim-container tcpdump -i any udp
-
-# Check AirSim logs
-docker logs airsim-container
-
-# Test internal connectivity
-docker exec px4-container ping 172.25.0.20
-```
-
-## 🎯 Benefits Summary
-
-### Reliability Benefits
-- **Eliminates** UDP packet loss issues
-- **Fixes** GPS HOME_POSITION setting
-- **Resolves** MAVLink timeout problems
-- **Provides** consistent networking
-
-### Development Benefits
-- **Reproducible** environments
-- **Version controlled** complete stack
-- **Easy scaling** for multi-drone setups
-- **Platform independent** deployment
-
-### Operational Benefits
-- **No network configuration** hassles
-- **Simplified deployment**
-- **Container orchestration** support
-- **Easy backup/restore**
-
-This containerization approach will eliminate the networking issues you've experienced and provide a much more reliable AirSim + PX4 integration. 

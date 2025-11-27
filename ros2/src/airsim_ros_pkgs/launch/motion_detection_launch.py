@@ -69,13 +69,20 @@ def generate_launch_description():
     )
 
     # Motion Detection Node with Person Following
+<<<<<<< HEAD
+=======
+    # Note: camera_topic parameter removed - node auto-generates from vehicle_name
+>>>>>>> main
     motion_detection_node = Node(
         package='airsim_ros_pkgs',
         executable='motion_detection_node.py',
         name='motion_detection_node',
         parameters=[{
             'vehicle_name': LaunchConfiguration('vehicle_name'),
+<<<<<<< HEAD
             'camera_topic': '/drone1/camera0/image',
+=======
+>>>>>>> main
             'confidence_threshold': LaunchConfiguration('confidence_threshold'),
             'motion_threshold': LaunchConfiguration('motion_threshold'),
             'enable_following': LaunchConfiguration('enable_following'),

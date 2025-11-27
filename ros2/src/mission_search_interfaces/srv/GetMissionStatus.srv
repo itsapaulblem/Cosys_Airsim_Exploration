@@ -1,0 +1,41 @@
+# Service to get comprehensive mission status
+# Available on both coordination node and individual vehicles
+
+# Request
+string mission_id           # Specific mission ID to query (empty = current mission)
+bool include_details        # Include detailed progress information
+bool include_vehicle_status # Include individual vehicle status (coordination node only)
+
+---
+# Response
+bool success
+string message
+
+# Mission overview
+MissionStatus mission_status          # Overall mission status
+bool mission_active                  # Is any mission currently active
+string active_mission_id             # ID of currently active mission
+
+# Mission progress (if mission active)
+float32 overall_progress_percentage  # Overall mission completion (0.0 to 100.0)
+uint32 total_targets_detected        # Total targets found across all vehicles
+float32 total_area_covered_sq_m      # Total area searched by all vehicles
+
+# Individual vehicle status (coordination node only)
+MissionStatus[] vehicle_statuses     # Status from each vehicle
+VehicleCapabilities[] vehicle_capabilities  # Current capabilities of each vehicle
+
+# Mission timeline
+builtin_interfaces/Time mission_start_time    # When mission started
+builtin_interfaces/Duration elapsed_time      # Time since mission start
+builtin_interfaces/Duration estimated_remaining_time  # Estimated time to completion
+
+# Performance metrics
+float32 average_search_efficiency    # Average coverage rate (sq_m/second)
+uint32 total_waypoints_completed     # Total waypoints completed by all vehicles
+float32 mission_area_coverage_percent # Percentage of mission area covered
+
+# Issues and alerts
+string[] active_warnings             # Current warnings or issues
+string[] recent_errors               # Recent error messages
+bool requires_intervention          # Human intervention recommended

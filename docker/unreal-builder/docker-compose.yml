@@ -1,0 +1,207 @@
+services:
+  airsim-unreal-builder:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: airsim-unreal-builder
+
+    # Mount entire AirSim repository for build
+    volumes:
+      # AirSim source code (read-write for build artifacts)
+      - ../../:/workspace/airsim:rw
+
+    # Set working directory inside container
+    working_dir: /workspace/airsim
+
+    # Environment variables for Epic toolchain (auto-configured in container)
+    environment:
+      # Epic toolchain environment (overrides docker-compose defaults)
+      - DEBIAN_FRONTEND=noninteractive
+      # UE5 runtime environment for cook process
+      - UE_LOG_LEVEL=Warning
+      - UE_DISABLE_CRASH_ANALYTICS=1
+      - UE_DISABLE_GPU_CRASH_DEBUGGING=1
+      - MALLOC_CHECK_=0
+      - MALLOC_PERTURB_=0
+
+    # Keep container running for interactive use
+    tty: true
+    stdin_open: true
+
+    # Grant privileged access for build operations (needed for ABI masking)
+    privileged: true
+
+    # Default command
+    command: /bin/bash
+
+    # Resource limits (adjust based on your system)
+    deploy:
+      resources:
+        limits:
+          cpus: '0'  # Use all available CPUs
+          memory: 16G
+        reservations:
+          memory: 4G
+
+  # Specialized service for BuildCookRun operations with proper user management
+  buildcookrun:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: buildcookrun-service
+    depends_on:
+      - airsim-unreal-builder
+
+    volumes:
+      # Same mounts as builder
+      - ../../:/workspace/airsim:rw
+
+    working_dir: /workspace/airsim
+
+    # Enhanced environment for UE5 operations
+    environment:
+      - DEBIAN_FRONTEND=noninteractive
+      # UE5 runtime environment (prevents initialization issues)
+      - UE_LOG_LEVEL=Warning
+      - UE_DISABLE_CRASH_ANALYTICS=1
+      - UE_DISABLE_GPU_CRASH_DEBUGGING=1
+      - MALLOC_CHECK_=0
+      - MALLOC_PERTURB_=0
+      # User management
+      - HOME=/home/ue4
+      - USER=ue4
+      - LOGNAME=ue4
+
+    tty: true
+    stdin_open: true
+
+    # Keep privileged for user switching capabilities
+    privileged: true
+
+    # Default to safe BuildCookRun script
+    command: /bin/bash
+
+    deploy:
+      resources:
+        limits:
+          cpus: '0'
+          memory: 16G
+        reservations:
+          memory: 4G
+
+  # Headless AirSim execution service - Solves Vulkan driver issues
+  airsim-headless:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: airsim-headless
+    depends_on:
+      - airsim-unreal-builder
+
+    volumes:
+      # AirSim source and built executables
+      - ../../:/workspace/airsim:rw
+      # Optional: Mount custom settings from host
+      # - ./settings.json:/home/ue4/Documents/AirSim/settings.json:ro
+
+    working_dir: /workspace/airsim
+
+    # Optimized environment for headless execution
+    environment:
+      - DEBIAN_FRONTEND=noninteractive
+      # Headless graphics environment (no display required)
+      - DISPLAY=:99
+      - LIBGL_ALWAYS_SOFTWARE=1
+      - MESA_GL_VERSION_OVERRIDE=4.3
+      # UE5 headless optimizations
+      - UE_LOG_LEVEL=Warning
+      - UE_DISABLE_CRASH_ANALYTICS=1
+      - UE_DISABLE_GPU_CRASH_DEBUGGING=1
+      - UE_ENABLE_NULL_RHI=1
+      # Memory and performance
+      - MALLOC_CHECK_=0
+      - MALLOC_PERTURB_=0
+      # AirSim API configuration
+      - AIRSIM_API_PORT=41451
+
+    # Expose AirSim API port
+    ports:
+      - "41451:41451"
+
+    tty: true
+    stdin_open: true
+
+    # Default command: Run headless launcher
+    command: /bin/bash -c "exec ./docker/unreal-airsim/utilities/launch-headless.sh"
+
+    # Resource optimization for headless execution
+    deploy:
+      resources:
+        limits:
+          cpus: '4.0'      # Headless needs fewer CPU cores
+          memory: 8G       # Reduced memory without graphics
+        reservations:
+          cpus: '2.0'
+          memory: 2G
+
+    # Health check to verify AirSim API is responding
+    healthcheck:
+      test: ["CMD", "timeout", "5", "bash", "-c", "echo >/dev/tcp/localhost/41451"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  # Xfs Project Builder - Dedicated service for building custom UE5.5 projects
+  xfs-builder:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: xfs-project-builder
+    depends_on:
+      - airsim-unreal-builder
+
+    volumes:
+      # Same mount as other services - entire repository
+      - ../../:/workspace/airsim:rw
+      # Optional: Dedicated output directory for packaged builds
+      - ../../docker/unreal_executable/packaged:/workspace/packaged:rw
+
+    working_dir: /workspace/airsim/docker/unreal_executable/Xfs
+
+    environment:
+      - DEBIAN_FRONTEND=noninteractive
+      # UE5 runtime environment
+      - UE_LOG_LEVEL=Warning
+      - UE_DISABLE_CRASH_ANALYTICS=1
+      - UE_DISABLE_GPU_CRASH_DEBUGGING=1
+      - MALLOC_CHECK_=0
+      - MALLOC_PERTURB_=0
+      # User management
+      - HOME=/home/ue4
+      - USER=ue4
+      - LOGNAME=ue4
+      # Xfs project-specific paths
+      - XFS_PROJECT_PATH=/workspace/airsim/docker/unreal_executable/Xfs/Xfs.uproject
+      - XFS_OUTPUT_DIR=/workspace/airsim/docker/unreal_executable/packaged/Xfs
+
+    tty: true
+    stdin_open: true
+
+    # Privileged access for build operations
+    privileged: true
+
+    # Default: Interactive bash for manual builds
+    # Can be overridden to run automated build script
+    command: /bin/bash
+
+    # Resource allocation - same as main builder
+    deploy:
+      resources:
+        limits:
+          cpus: '0'      # Use all available CPUs
+          memory: 16G
+        reservations:
+          memory: 4G
+
+# Production-ready configuration with ABI compatibility and user management

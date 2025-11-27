@@ -3,9 +3,7 @@
 #include "physics/ExternalPhysicsEngine.hpp"
 #include <exception>
 #include "AirBlueprintLib.h"
-#include "WeatherPhysicsBridge.h"
-#include "common/Common.hpp"
-#include "physics/WeatherPhysics.hpp"
+#include "api/WeatherApi.hpp"
 
 void ASimModeWorldBase::BeginPlay()
 {
@@ -170,11 +168,53 @@ void ASimModeWorldBase::Tick(float DeltaSeconds)
         physics_world_->unlock();
     }
 
+    // Update weather physics every frame
+    updateWeatherPhysics();
+
     //perform any expensive rendering update outside of lock region
     for (auto& api : getApiProvider()->getVehicleSimApis())
         api->updateRendering(DeltaSeconds);
 
     Super::Tick(DeltaSeconds);
+// --- Physics-based weather sync ---
+void ASimModeWorldBase::updateWeatherPhysics()
+{
+    // Get current weather parameters from UE5 weather system
+    float rain = getWeatherParamScalar(EWeatherParamScalar::Rain);
+    float snow = getWeatherParamScalar(EWeatherParamScalar::Snow);
+    float fog = getWeatherParamScalar(EWeatherParamScalar::Fog);
+    float dust = getWeatherParamScalar(EWeatherParamScalar::Dust);
+    float wind_speed = getWeatherParamScalar(EWeatherParamScalar::WindSpeed);
+    FVector wind_direction = getWeatherParamVector(EWeatherParamVector::WindDirection);
+
+    msr::airlib::Vector3r wind_velocity(
+        wind_direction.X * wind_speed,
+        wind_direction.Y * wind_speed,
+        wind_direction.Z * wind_speed
+    );
+
+    // Update environment for all vehicles
+    auto api_provider = getApiProvider();
+    if (api_provider) {
+        auto vehicle_apis = api_provider->getVehicleSimApis();
+        for (auto& pair : vehicle_apis) {
+            auto* vehicle_sim_api = pair.second;
+            if (vehicle_sim_api) {
+                auto* physics_body = vehicle_sim_api->getPhysicsBody();
+                if (physics_body && physics_body->hasEnvironment()) {
+                    auto& environment = physics_body->getEnvironment();
+                    environment.setWindVelocity(wind_velocity);
+                    environment.setRainIntensity(rain);
+                    environment.setSnowIntensity(snow);
+                    environment.setFogIntensity(fog);
+                    environment.setDustIntensity(dust);
+                    environment.setTurbulenceIntensity(wind_speed); // Optionally scale turbulence with wind
+                }
+            }
+        }
+    }
+}
+// --- End physics-based weather sync ---
 }
 
 void ASimModeWorldBase::updateWeatherPhysics(float DeltaSeconds)
@@ -216,7 +256,7 @@ void ASimModeWorldBase::reset()
     UAirBlueprintLib::RunCommandOnGameThread([this]() {
         physics_world_->reset();
     },
-                                             true);
+    true);
 
     //no need to call base reset because of our custom implementation
 }
@@ -225,3 +265,4 @@ std::string ASimModeWorldBase::getDebugReport()
 {
     return physics_world_->getDebugReport();
 }
+

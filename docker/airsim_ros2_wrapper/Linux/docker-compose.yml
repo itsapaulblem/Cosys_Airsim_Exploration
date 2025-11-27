@@ -1,0 +1,120 @@
+# Docker Compose for ROS2 X11-Forwarding (Linux Native)
+# Optimized for native Linux performance with direct X11 access
+
+services:
+  ros2-x11-node:
+    build:
+      context: ${PROJECT_ROOT}
+      dockerfile: docker/airsim_ros2_wrapper/Linux/Dockerfile.x11
+      target: runtime
+    image: tevv-airstack-ros2-x11-node:development
+    container_name: ros2-x11-node
+    hostname: ros2-x11-node
+
+    environment:
+      # X11 Display Forwarding (CRITICAL)
+      - DISPLAY=${DISPLAY:-:0}
+      - XAUTHORITY=/tmp/.Xauthority
+      - QT_X11_NO_MITSHM=1  # Fix for Qt apps in containers
+
+      # ROS2 Configuration
+      - ROS_DOMAIN_ID=${ROS_DOMAIN_ID:-0}
+
+      # AirSim Connection
+      - AIRSIM_HOST_IP=${AIRSIM_HOST_IP:-airsim-container}
+      - AIRSIM_HOST_PORT=${AIRSIM_HOST_PORT:-41451}
+
+      # Multi-Node Architecture Configuration
+      - LAUNCH_MODE=${LAUNCH_MODE:-multi}
+      - ENABLE_COORDINATION=${ENABLE_COORDINATION:-true}
+      - RPC_TIMEOUT=${RPC_TIMEOUT:-10.0}
+      - LAUNCH_RVIZ=${LAUNCH_RVIZ:-false}
+      - DEBUG=${DEBUG:-false}
+      - AUTO_BUILD=${AUTO_BUILD:-true}
+
+    volumes:
+      # X11 Socket Forwarding (CRITICAL for GUI apps)
+      - /tmp/.X11-unix:/tmp/.X11-unix:rw
+
+      # X11 Authentication (CRITICAL for security)
+      - ${XAUTHORITY:-$HOME/.Xauthority}:/tmp/.Xauthority:ro
+
+      # ROS2 Workspace (same as VNC setup)
+      - ${PROJECT_ROOT}/ros2/src:/airsim_ros2_ws/src:rw
+      - ${PROJECT_ROOT}/docker:/airsim_ros2_ws/docker:rw
+
+      # Persist build artifacts for faster rebuilds
+      - ros2_x11_build:/airsim_ros2_ws/build
+      - ros2_x11_install:/airsim_ros2_ws/install
+      - ros2_x11_logs:/airsim_ros2_ws/log
+
+    # GPU Configuration
+    # NVIDIA GPU support (for systems with NVIDIA GPUs like RTX series)
+    # For Intel/AMD GPUs, use: devices: - /dev/dri:/dev/dri
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu, compute, utility, graphics]
+
+    # Network Configuration
+    # Using airsim-ecosystem network for integration with AirSim container
+    networks:
+      - airsim-ecosystem
+      - ros2-x11-network
+
+    # Security Options for X11
+    security_opt:
+      - seccomp:unconfined  # Required for some X11 operations
+
+    # Run as host user to match X11 permissions
+    user: "${UID:-1000}:${GID:-1000}"
+
+    # Add user to video group for GPU access
+    group_add:
+      - video
+
+    # Proper init system for signal handling
+    init: true
+
+    restart: unless-stopped
+    stdin_open: true
+    tty: true
+
+    # Health check using X11 connection test
+    healthcheck:
+      test: ["CMD-SHELL", "xdpyinfo > /dev/null 2>&1 || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+
+    # Development-friendly settings
+    cap_add:
+      - SYS_PTRACE  # For debugging
+
+# Networks
+networks:
+  # Primary network for AirSim integration
+  airsim-ecosystem:
+    name: airsim-ecosystem
+    external: true  # Assumes this network exists from master compose
+
+  # ROS2-specific network
+  ros2-x11-network:
+    name: ros2-x11-network
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.27.0.0/16  # Different from VNC subnet
+
+# Volumes for build artifact persistence
+volumes:
+  ros2_x11_build:
+    driver: local
+  ros2_x11_install:
+    driver: local
+  ros2_x11_logs:
+    driver: local

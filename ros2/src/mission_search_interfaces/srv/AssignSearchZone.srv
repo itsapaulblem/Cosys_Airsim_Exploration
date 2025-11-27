@@ -1,0 +1,44 @@
+# Service to assign search zones to vehicles
+# Called on coordination node: /airsim_coordination_node/services/assign_search_zones
+
+# Request
+geometry_msgs/Polygon mission_area     # Overall mission area to divide
+string[] available_vehicles            # List of vehicle names available for mission
+uint8 num_zones                       # Number of zones to create (0 = auto-determine)
+
+# Zone allocation preferences
+string allocation_strategy    # "balanced", "capability_based", "priority_zones"
+float32 zone_overlap_percentage  # Overlap between adjacent zones (0.0 to 25.0)
+bool consider_vehicle_capabilities  # Factor in vehicle capabilities for assignment
+
+# Mission parameters
+float32 default_search_altitude      # Default altitude for all zones
+string default_search_pattern        # Default pattern for all zones
+float32 default_search_speed         # Default speed for all zones
+
+# Priority areas (optional)
+geometry_msgs/Polygon[] high_priority_areas   # Areas requiring extra attention
+geometry_msgs/Polygon[] no_search_zones       # Areas to exclude from search
+
+---
+# Response
+bool success
+string message
+
+# Generated zone assignments
+SearchZone[] assigned_zones           # Complete zone assignments
+string[] unassigned_vehicles          # Vehicles not given zones (if any)
+
+# Mission statistics
+uint32 total_zones_created           # Number of zones created
+float32 total_mission_area_sq_m      # Total area to be searched
+float32 average_zone_size_sq_m       # Average zone size
+builtin_interfaces/Duration estimated_total_time  # Total mission time estimate
+
+# Load balancing information
+float32 zone_size_variance           # How evenly zones are sized (lower = more even)
+string load_balancing_strategy       # Strategy used for zone allocation
+
+# Validation warnings
+string[] zone_warnings               # Warnings about zone assignments
+bool requires_coordination          # True if zones require inter-vehicle coordination

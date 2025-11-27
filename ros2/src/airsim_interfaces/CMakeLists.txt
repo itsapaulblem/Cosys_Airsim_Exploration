@@ -33,6 +33,8 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "msg/Altimeter.msg"
   "msg/Environment.msg"
   "msg/TargetDetection.msg"
+  "msg/ObjectDetection.msg"
+  "msg/ObjectDetectionArray.msg"
   "srv/GpsWaypoint.srv"
   "srv/SetGPSPosition.srv"
   "srv/Takeoff.srv"
@@ -46,6 +48,7 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "srv/ListSceneObjectTags.srv"
   "srv/SearchTarget.srv"
   "srv/TrackTarget.srv"
+  "srv/EnableAPIControl.srv"
   DEPENDENCIES std_msgs geometry_msgs geographic_msgs
 )
 

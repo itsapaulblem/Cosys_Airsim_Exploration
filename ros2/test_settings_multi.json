@@ -1,0 +1,33 @@
+{
+    "SeeDocsAt": "https://github.com/Microsoft/AirSim/blob/main/docs/settings.md",
+    "SettingsVersion": 1.2,
+    "SimMode": "Multirotor",
+    "ClockType": "SteppableClock",
+    "Vehicles": {
+        "Droan1": {
+            "VehicleType": "SimpleFlight",
+            "AutoCreate": true,
+            "X": 0, "Y": 0, "Z": -2,
+            "Sensors": {
+                "Barometer": {"SensorType": 1, "Enabled": true},
+                "Imu": {"SensorType": 2, "Enabled": true},
+                "Gps": {"SensorType": 3, "Enabled": true}
+            }
+        },
+        "Droan2": {
+            "VehicleType": "SimpleFlight", 
+            "AutoCreate": true,
+            "X": 5, "Y": 0, "Z": -2,
+            "Sensors": {
+                "Barometer": {"SensorType": 1, "Enabled": true},
+                "Imu": {"SensorType": 2, "Enabled": true},
+                "Gps": {"SensorType": 3, "Enabled": true}
+            }
+        },
+        "TestCar": {
+            "VehicleType": "PhysXCar",
+            "AutoCreate": true,
+            "X": -5, "Y": 0, "Z": 0
+        }
+    }
+}

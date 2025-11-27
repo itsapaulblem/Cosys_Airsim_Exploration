@@ -1,0 +1,11 @@
+# Core dependencies for MNSTEVV CLI
+click>=8.0.0
+PyYAML>=5.4.0
+rich>=10.0.0
+
+# Optional development dependencies
+# Install with: pip install -r requirements-dev.txt
+# pytest>=6.0
+# pytest-cov>=2.0  
+# black>=21.0
+# flake8>=3.9

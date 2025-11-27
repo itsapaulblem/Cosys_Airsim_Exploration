@@ -29,7 +29,11 @@ docker build -f Dockerfile.slim -t px4-airsim:slim .
 
 ### 2. Configure AirSim Integration
 ```bash
+<<<<<<< HEAD
 # Set AirSim host IP (Docker Desktop)
+=======
+# Set AirSim host IP (Docker Desktop) or whatever Windows IP
+>>>>>>> main
 export PX4_SIM_HOSTNAME=172.28.240.1
 
 # Or for WSL2 (auto-detect Windows IP)

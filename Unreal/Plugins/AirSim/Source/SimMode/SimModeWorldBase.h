@@ -38,6 +38,10 @@ public:
     virtual void setWind(const msr::airlib::Vector3r& wind) const override;
     virtual void setExtForce(const msr::airlib::Vector3r& ext_force) const override;
 
+    // Add weather control methods
+    UFUNCTION(BlueprintCallable, Category = "Weather")
+    void SetWeatherEffect(const FString& WeatherType, float Intensity);
+
 protected:
     void startAsyncUpdator();
     void stopAsyncUpdator();
@@ -52,6 +56,9 @@ protected:
 
     long long getPhysicsLoopPeriod() const;
     void setPhysicsLoopPeriod(long long period);
+
+    // Weather control helper
+    void updateEnvironmentWeather(const std::string& weather_type, float intensity);
 
 private:
     typedef msr::airlib::UpdatableObject UpdatableObject;

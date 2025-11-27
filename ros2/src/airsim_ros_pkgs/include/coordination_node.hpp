@@ -22,6 +22,8 @@
 #include <airsim_interfaces/msg/target_detection.hpp>
 #include <std_srvs/srv/set_bool.hpp>
 #include <rosgraph_msgs/msg/clock.hpp>
+#include <tf2_ros/static_transform_broadcaster.h>
+#include <geometry_msgs/msg/transform_stamped.hpp>
 
 class CoordinationNode : public rclcpp::Node
 {
@@ -38,6 +40,9 @@ private:
     // Timer callback
     void coordination_timer_callback();
     void publish_system_status();
+    
+    // Transform publishing
+    void publish_global_frame();
     
     // Service callbacks
     bool reset_all_callback(
@@ -60,17 +65,17 @@ private:
         const std::shared_ptr<airsim_interfaces::srv::ListSceneObjectTags::Request> request,
         std::shared_ptr<airsim_interfaces::srv::ListSceneObjectTags::Response> response);
 
-    // New: Search and tracking services
+    // Search and tracking services
     bool search_target_all_callback(
         const std::shared_ptr<airsim_interfaces::srv::SearchTarget::Request> request,
         std::shared_ptr<airsim_interfaces::srv::SearchTarget::Response> response);
-        
+
     bool track_target_all_callback(
         const std::shared_ptr<airsim_interfaces::srv::TrackTarget::Request> request,
         std::shared_ptr<airsim_interfaces::srv::TrackTarget::Response> response);
 
-private:
-    // Connection parameters
+protected:
+    // Connection parameters (protected for inheritance)
     std::string host_ip_;
     uint16_t host_port_;
     std::string world_frame_id_;
@@ -94,16 +99,18 @@ private:
     rclcpp::Publisher<airsim_interfaces::msg::GPSYaw>::SharedPtr origin_geo_point_pub_;
     rclcpp::Publisher<airsim_interfaces::msg::StringArray>::SharedPtr system_status_pub_;
     rclcpp::Publisher<rosgraph_msgs::msg::Clock>::SharedPtr clock_pub_;
-    
+
     // Target detection publisher
     rclcpp::Publisher<airsim_interfaces::msg::TargetDetection>::SharedPtr target_detection_pub_;
+
+    // Transform broadcaster (for global frame authority)
+    std::shared_ptr<tf2_ros::StaticTransformBroadcaster> static_tf_broadcaster_;
     
     // Timer
     rclcpp::TimerBase::SharedPtr coordination_timer_;
     
     // Messages
     airsim_interfaces::msg::GPSYaw origin_geo_point_msg_;
-    
     // Target tracking state
     struct TargetInfo {
         float x = 0.0f, y = 0.0f, z = 0.0f;
@@ -112,4 +119,7 @@ private:
     };
     std::map<std::string, TargetInfo> vehicle_targets_;
     std::mutex target_mutex_;
+
+    // GPS initialization state
+    bool gps_origin_initialized_ = false;
 };

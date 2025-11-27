@@ -1,0 +1,24 @@
+# Image files
+*.jpg
+*.jpeg
+*.png
+*.gif
+*.bmp
+*.tiff
+*.tif
+*.webp
+*.svg
+*.ico
+
+# Raw image formats
+*.raw
+*.cr2
+*.nef
+*.orf
+*.sr2
+
+# Generated image directories
+images/
+screenshots/
+captures/
+photos/

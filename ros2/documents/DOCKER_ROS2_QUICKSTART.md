@@ -47,8 +47,13 @@ This guide provides a quick reference for using the Cosys-AirSim ROS2 Docker env
 **These commands are run inside the Docker container:**
 
 ```bash
-# Quick launch AirSim ROS2 node
-./launch_airsim_ros2.sh
+# ULTRA-CLEAN LAUNCH (PRIMARY) - Automatic vehicle discovery with perfect naming
+ros2 launch airsim_ros_pkgs rpc_dynamic_vehicles.launch.py
+# Creates nodes: /Droan1, /PX4_Drone2, /airsim_coordination_node
+# Topics: /Droan1/odom_local_ned, /PX4_Drone2/imu, etc.
+
+# Legacy launch (backward compatibility)  
+ros2 launch airsim_ros_pkgs airsim_node.launch.py
 
 # Build commands (using aliases)
 build_interfaces    # Build only interface packages

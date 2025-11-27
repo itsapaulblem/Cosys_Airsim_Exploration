@@ -1,0 +1,399 @@
+Metadata-Version: 2.1
+Name: mnstevv
+Version: 1.0.1
+Summary: Multi-Node System Test Environment Vehicle Validator - CLI for AirSim Docker ecosystems
+Author: DSTA M&S TEVV Team
+Project-URL: Bug Reports, https://github.com/cosys-lab/airsim-issues
+Project-URL: Source, https://github.com/microsoft/airsim
+Project-URL: Documentation, https://microsoft.github.io/AirSim/
+Keywords: airsim docker ros2 px4 drone simulation cli
+Classifier: Development Status :: 4 - Beta
+Classifier: Intended Audience :: Developers
+Classifier: License :: OSI Approved :: MIT License
+Classifier: Operating System :: OS Independent
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3.7
+Classifier: Programming Language :: Python :: 3.8
+Classifier: Programming Language :: Python :: 3.9
+Classifier: Programming Language :: Python :: 3.10
+Classifier: Programming Language :: Python :: 3.11
+Classifier: Topic :: Software Development :: Build Tools
+Classifier: Topic :: System :: Systems Administration
+Classifier: Topic :: Scientific/Engineering :: Interface Engine/Protocol Translator
+Requires-Python: >=3.7
+Description-Content-Type: text/markdown
+Provides-Extra: dev
+
+# MNSTEVV - Multi-Node System Test Environment Vehicle Validator
+
+A powerful CLI tool that simplifies management of AirSim Docker Compose ecosystems. Transform complex 50+ character docker-compose commands into intuitive 10-character CLI calls.
+
+## Key Features
+
+**Intelligent Service Selection**: Automatically determines required services based on `--num_drones` parameter and deployment profiles
+**Profile-Based Deployments**: Support for `integrated`, `px4-only`, `ros2-only`, and `development` profiles  
+**Built-in Health Monitoring**: Real-time status checks with AirSim/ROS2/MAVLink connectivity validation
+**Configuration Profiles**: Save and reuse common setups for different test scenarios
+**Rich Terminal Output**: Beautiful status displays with health indicators and progress feedback
+
+## Quick Start
+
+### Installation
+
+```bash
+# Navigate to CLI directory
+cd docker/cli
+
+# Install dependencies
+pip install -r requirements.txt
+
+# Install CLI tool
+pip install -e .
+```
+
+### Basic Usage
+
+```bash
+# Start 3 drones (integrated profile with ROS2 + PX4 + monitoring)
+mnstevv up --num_drones 3
+
+# Start 2 PX4-only drones for testing
+mnstevv up --num_drones 2 --profile px4-only
+
+# Check service health status
+mnstevv status --detailed
+
+# Follow logs in real-time
+mnstevv logs --follow
+
+# Clean up everything
+mnstevv clean --all
+```
+
+## Command Reference
+
+### `mnstevv up` - Start Services
+
+Start drone swarm services with intelligent service selection.
+
+```bash
+mnstevv up [OPTIONS]
+
+Options:
+  --num_drones INTEGER RANGE    Number of drones (1-6) [default: 3]
+  --profile [integrated|px4-only|ros2-only|development]  
+                               Deployment profile [default: integrated]
+  --debug                      Enable debug logging
+  --ros-domain-id INTEGER      ROS domain ID [default: 0]
+  --airsim-host TEXT           AirSim host IP (auto-detected if not specified)
+  --airsim-port INTEGER        AirSim host port [default: 41451]
+  --dry-run                    Show commands without executing
+  --build                      Force rebuild of images
+  --follow-logs                Follow logs after startup
+```
+
+**Examples:**
+```bash
+# Default integrated setup
+mnstevv up --num_drones 3
+
+# PX4 testing environment
+mnstevv up --num_drones 4 --profile px4-only --debug
+
+# Development with single drone
+mnstevv up --num_drones 1 --profile development
+
+# Preview without executing
+mnstevv up --num_drones 2 --dry-run
+```
+
+### `mnstevv status` - Health Monitoring
+
+Show comprehensive service health status.
+
+```bash
+mnstevv status [OPTIONS]
+
+Options:
+  --profile [integrated|px4-only|ros2-only|development]
+                               Deployment profile [default: integrated]
+  --detailed                   Show detailed service information
+  --json                       Output status in JSON format
+```
+
+**Examples:**
+```bash
+# Basic status overview
+mnstevv status
+
+# Detailed health information
+mnstevv status --detailed
+
+# JSON output for automation
+mnstevv status --json
+```
+
+### `mnstevv logs` - Log Management  
+
+View service logs with filtering and aggregation.
+
+```bash
+mnstevv logs [SERVICES...] [OPTIONS]
+
+Arguments:
+  SERVICES                     Specific service names (optional)
+
+Options:
+  --profile [integrated|px4-only|ros2-only|development]
+                               Deployment profile [default: integrated]
+  --follow                     Follow log output (like tail -f)
+  --tail INTEGER               Number of lines from end [default: 50]
+  --timestamps                 Show timestamps in log output
+  --filter TEXT                Filter logs by pattern (grep-style)
+```
+
+**Examples:**
+```bash
+# All service logs
+mnstevv logs
+
+# Specific services
+mnstevv logs ros2-multi-node px4-bridge-drone-1
+
+# Follow logs live
+mnstevv logs --follow
+
+# Filter error messages
+mnstevv logs --filter "ERROR"
+```
+
+### `mnstevv config` - Configuration Management
+
+Manage saved configuration profiles.
+
+```bash
+# Save a configuration profile
+mnstevv config save <name> --num_drones 3 --profile integrated [OPTIONS]
+
+# Load/view a configuration profile
+mnstevv config load <name>
+
+# List all saved profiles  
+mnstevv config list
+
+# Delete a configuration profile
+mnstevv config delete <name>
+```
+
+**Examples:**
+```bash
+# Save test configuration
+mnstevv config save test-swarm --num_drones 3 --profile integrated --description "Standard test setup"
+
+# Use saved configuration
+mnstevv up --config test-swarm
+
+# List available profiles
+mnstevv config list
+```
+
+### `mnstevv down` - Stop Services
+
+Stop and remove services gracefully.
+
+```bash
+mnstevv down [OPTIONS]
+
+Options:
+  --profile [integrated|px4-only|ros2-only|development]
+                               Deployment profile [default: integrated]
+  --volumes                    Remove named volumes
+  --images [all|local]         Remove images (all: all images, local: locally built)
+  --dry-run                    Show commands without executing
+```
+
+### `mnstevv clean` - Comprehensive Cleanup
+
+Clean up Docker resources with granular control.
+
+```bash
+mnstevv clean [OPTIONS]
+
+Options:
+  --profile [integrated|px4-only|ros2-only|development]
+                               Deployment profile [default: integrated]
+  --volumes                    Remove named volumes
+  --images                     Remove built images
+  --networks                   Remove unused networks
+  --all                        Remove everything (volumes, images, networks)
+  --docker-system              Run docker system prune after cleanup
+  --dry-run                    Show what would be cleaned
+  --force                      Skip confirmation prompts
+```
+
+## Architecture
+
+### Deployment Profiles
+
+**`integrated`** (Default)
+- **Services**: WSL2 IP detector, ROS2 multi-node, PX4 drones (1-6), ecosystem monitor
+- **Use Case**: Full development and testing environment
+- **Best For**: Complete simulation with ROS2 + PX4 integration
+
+**`px4-only`**
+- **Services**: WSL2 IP detector, PX4 drones (1-6)
+- **Use Case**: PX4 SITL testing without ROS2
+- **Best For**: PX4 flight controller development and testing
+
+**`ros2-only`**
+- **Services**: WSL2 IP detector, ROS2 multi-node
+- **Use Case**: ROS2 development without PX4 drones
+- **Best For**: ROS2 node development and debugging
+
+**`development`**
+- **Services**: WSL2 IP detector, ROS2 multi-node, PX4 drones (1-6), development helper
+- **Use Case**: Development environment with debug tools
+- **Best For**: CLI debugging and development workflow testing
+
+### Service Selection Logic
+
+The CLI automatically determines which Docker Compose services to start based on:
+
+1. **Drone Count**: `--num_drones` parameter maps to `px4-bridge-drone-{1..N}` services
+2. **Profile**: Determines which ecosystem components are included
+3. **Dependencies**: Always includes required infrastructure (WSL2 IP detection)
+
+**Example Mappings:**
+```bash
+# mnstevv up --num_drones 2 --profile integrated
+# → Services: wsl2-ip-detector, ros2-multi-node, px4-bridge-drone-1, px4-bridge-drone-2, ecosystem-monitor
+
+# mnstevv up --num_drones 3 --profile px4-only  
+# → Services: wsl2-ip-detector, px4-bridge-drone-1, px4-bridge-drone-2, px4-bridge-drone-3
+
+# mnstevv up --num_drones 1 --profile development
+# → Services: wsl2-ip-detector, ros2-multi-node, px4-bridge-drone-1, dev-helper
+```
+
+### Environment Variable Management
+
+The CLI automatically sets appropriate environment variables:
+
+- `SWARM_SIZE` and `MAX_DRONES` ← `--num_drones`
+- `DEBUG` ← `--debug`  
+- `ROS_DOMAIN_ID` ← `--ros-domain-id`
+- `AIRSIM_HOST_IP` ← `--airsim-host` (or auto-detected WSL2 IP)
+
+## Configuration
+
+Configuration profiles are stored in `~/.mnstevv/config.yaml`:
+
+```yaml
+profiles:
+  test-swarm:
+    num_drones: 3
+    profile: integrated
+    debug: false
+    ros_domain_id: 0
+    description: "Standard test setup"
+  
+  px4-dev:
+    num_drones: 2
+    profile: px4-only
+    debug: true
+    description: "PX4 development environment"
+```
+
+## Development
+
+### Project Structure
+
+```
+docker/cli/
+├── mnstevv.py                # Main executable
+├── mnstevv/
+│   ├── main.py               # Click CLI framework entry
+│   ├── commands/             # Command implementations
+│   │   ├── up.py            # Service startup logic
+│   │   ├── down.py          # Service shutdown
+│   │   ├── status.py        # Health monitoring
+│   │   ├── logs.py          # Log management
+│   │   ├── config.py        # Configuration profiles
+│   │   └── clean.py         # Cleanup operations
+│   ├── core/
+│   │   ├── docker_compose.py    # Docker Compose wrapper
+│   │   └── service_selector.py  # Service selection logic
+│   └── utils/               # Shared utilities
+├── setup.py                 # Package installation
+├── requirements.txt         # Dependencies
+└── README.md               # This file
+```
+
+### Adding New Commands
+
+1. Create new command file in `mnstevv/commands/`
+2. Import and register in `main.py`
+3. Follow existing patterns for options and error handling
+
+### Testing
+
+```bash
+# Install in development mode
+pip install -e .
+
+# Test commands
+mnstevv --help
+mnstevv up --dry-run --num_drones 2
+```
+
+## Troubleshooting
+
+### Common Issues
+
+**"Docker compose file not found"**
+- Ensure you're running from the correct directory
+- Check that `docker-compose-master.yml` exists
+
+**"Profile 'xyz' not found"**  
+- Use `mnstevv config list` to see available profiles
+- Check spelling of profile name
+
+**"No services are currently running"**
+- Run `mnstevv up --num_drones 3` to start services
+- Check Docker daemon is running
+
+### Debug Mode
+
+Enable debug output for troubleshooting:
+
+```bash
+mnstevv up --num_drones 2 --debug --dry-run
+```
+
+This shows all environment variables and the exact docker-compose command that would be executed.
+
+## Usage Analytics
+
+**Before MNSTEVV:**
+```bash
+docker-compose -f docker/docker-compose-master.yml --profile integrated -e SWARM_SIZE=2 -e MAX_DRONES=2 up wsl2-ip-detector ros2-multi-node px4-bridge-drone-1 px4-bridge-drone-2 ecosystem-monitor
+```
+
+**With MNSTEVV:**
+```bash
+mnstevv up --num_drones 2
+```
+
+**90% reduction in command complexity** with intelligent defaults and service selection.
+
+## Contributing
+
+1. Fork the repository
+2. Create a feature branch
+3. Make changes following existing patterns
+4. Test thoroughly with `--dry-run` flag
+5. Submit pull request
+
+---
+
+**MNSTEVV** - Making drone swarm testing effortless, one command at a time.

@@ -3,8 +3,8 @@
 # and enable proper multi-drone operation in containerized environments
 
 # GPS Home Location (Seattle area - default coordinates)
-param set LPE_LAT 47.641468
-param set LPE_LON -122.140165
+param set LPE_LAT 42.76919401
+param set LPE_LON -115.59330958
 
 # GPS and EKF2 Configuration
 param set SYS_HAS_GPS 1              # Enable GPS hardware

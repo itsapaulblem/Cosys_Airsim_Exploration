@@ -1,0 +1,368 @@
+# Clean Multi-Stage Dockerfile for AirSim ROS2 with VNC
+# Reduces complexity by separating script logic from Docker build logic
+
+# =============================================================================
+# Stage 1: Builder - All build-time operations and dependencies
+# =============================================================================
+FROM osrf/ros:humble-desktop-full AS builder
+
+SHELL ["/bin/bash", "-c"]
+
+ENV DEBIAN_FRONTEND=noninteractive \
+    ROS_DISTRO=humble
+
+# Install build dependencies and development packages in single optimized layer
+RUN apt-get update -q && apt-get install -y --no-install-recommends \
+    # Build essentials
+    build-essential cmake git python3-pip dos2unix \
+    # Python development (for NumPy C extensions and ROS2 interfaces)
+    python3-dev python3-numpy-dev libpython3-dev \
+    # Additional build tools
+    curl wget \
+    # ROS2 build dependencies
+    python3-colcon-common-extensions python3-vcstool python3-rosdep \
+    # ROS2 runtime packages needed for building airsim_interfaces
+    ros-humble-geographic-msgs ros-humble-mavros-msgs ros-humble-rclcpp-action \
+    # EIGEN3 - Required for AirLib compilation
+    libeigen3-dev \
+    && rm -rf /var/lib/apt/lists/* && apt-get clean
+
+# Install Python dependencies with optimized caching
+RUN python3 -m pip install --no-cache-dir --upgrade pip && \
+    python3 -m pip install --no-cache-dir msgpack msgpack-rpc-python numpy opencv-python
+
+# Comprehensive NumPy header setup for ROS2 interface generation
+RUN echo "=== Setting up NumPy headers for ROS2 interface generation ===" && \
+    NUMPY_INCLUDE_PATH=$(python3 -c "import numpy; print(numpy.get_include())") && \
+    echo "NumPy include path: $NUMPY_INCLUDE_PATH" && \
+    # Create standard system include directories
+    mkdir -p /usr/include/numpy /usr/local/include/numpy && \
+    # Link NumPy headers to standard locations
+    if [ -d "$NUMPY_INCLUDE_PATH/numpy" ]; then \
+        ln -sf "$NUMPY_INCLUDE_PATH/numpy"/* /usr/include/numpy/ && \
+        ln -sf "$NUMPY_INCLUDE_PATH/numpy"/* /usr/local/include/numpy/ && \
+        echo "[SUCCESS] NumPy headers linked successfully"; \
+    else \
+        echo "[ERROR] NumPy headers not found at $NUMPY_INCLUDE_PATH"; \
+    fi && \
+    # Verify critical header exists
+    ls -la /usr/include/numpy/ndarrayobject.h && echo "[SUCCESS] NumPy headers verified"
+
+# Note: Removed C_INCLUDE_PATH and CPLUS_INCLUDE_PATH for general paths
+# These break #include_next directives in C++ standard library headers
+# GCC's default search paths already include /usr/include in correct order
+
+# Python include path for ROS2 message Python bindings (safe to add)
+ENV CPLUS_INCLUDE_PATH="/usr/include/python3.10:${CPLUS_INCLUDE_PATH}" \
+    C_INCLUDE_PATH="/usr/include/python3.10:${C_INCLUDE_PATH}"
+
+# Create workspace and copy AirSim components
+WORKDIR /build_workspace
+COPY cmake/ ./cmake/
+COPY AirLib/include/ ./AirLib/include/
+COPY AirLib/src/ ./AirLib/src/
+COPY AirLib/deps/ ./AirLib/deps/
+COPY MavLinkCom/src/ ./MavLinkCom/src/
+COPY MavLinkCom/include/ ./MavLinkCom/include/
+COPY MavLinkCom/common_utils/ ./MavLinkCom/common_utils/
+COPY MavLinkCom/mavlink/ ./MavLinkCom/mavlink/
+COPY external/rpclib/ ./external/rpclib/
+
+# Prepare Docker-friendly CMake configuration
+COPY cmake/cmake-modules/CommonSetupDocker.cmake ./cmake/cmake-modules/
+COPY cmake/rpclib_wrapper/CMakeLists_docker.txt ./cmake/rpclib_wrapper/
+RUN sed -i 's/add_subdirectory("MavLinkTest")/#add_subdirectory("MavLinkTest")/' ./cmake/MavLinkCom/CMakeLists.txt 2>/dev/null || true && \
+    mv ./cmake/rpclib_wrapper/CMakeLists_docker.txt ./cmake/rpclib_wrapper/CMakeLists.txt
+
+# Create clean build artifacts directory
+RUN mkdir -p /build_artifacts && \
+    cp -r . /build_artifacts/ && \
+    echo "[SUCCESS] Build artifacts prepared"
+
+# =============================================================================
+# Stage 1.5: ROS2 Package Builder - Build interfaces with PIE fix
+# =============================================================================
+FROM builder AS ros2_builder
+
+SHELL ["/bin/bash", "-c"]
+
+# Copy ROS2 source packages
+WORKDIR /airsim_ros2_ws
+COPY ros2/src ./src
+
+# Copy build artifacts from builder stage
+COPY --from=builder /build_artifacts ./
+RUN mkdir -p src/airsim && \
+    ln -sf /airsim_ros2_ws/cmake src/airsim/cmake && \
+    ln -sf /airsim_ros2_ws/AirLib src/airsim/AirLib && \
+    ln -sf /airsim_ros2_ws/MavLinkCom src/airsim/MavLinkCom && \
+    ln -sf /airsim_ros2_ws/external src/airsim/external
+
+# Step 1: Rebuild RPC library with -fPIC (PIE fix)
+RUN echo "=== Building RPC library with -fPIC ===" && \
+    cd /airsim_ros2_ws/external/rpclib/rpclib-2.3.1 && \
+    rm -rf build && \
+    mkdir build && cd build && \
+    cmake .. \
+        -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
+        -DCMAKE_CXX_FLAGS="-fPIC -O2" \
+        -DCMAKE_C_FLAGS="-fPIC -O2" \
+        -DRPCLIB_BUILD_STATIC=ON && \
+    make -j$(nproc) && \
+    echo "[SUCCESS] RPC library built with PIE support"
+
+# Step 2: Build all ROS2 packages with dependencies
+RUN echo "=== Building ROS2 interfaces and packages ===" && \
+    cd /airsim_ros2_ws && \
+    source /opt/ros/humble/setup.bash && \
+    colcon build --packages-up-to airsim_ros_pkgs \
+        --cmake-args \
+        -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
+        -DCMAKE_CXX_FLAGS="-fPIC -O2" \
+        -DCMAKE_BUILD_TYPE=Release && \
+    echo "[SUCCESS] All ROS2 packages built successfully"
+
+# Verify build outputs
+RUN ls -la /airsim_ros2_ws/install/ && \
+    echo "[VERIFICATION] Built packages:" && \
+    ls /airsim_ros2_ws/install/
+
+# =============================================================================
+# Stage 2: Runtime - Minimal runtime environment with VNC
+# =============================================================================
+FROM osrf/ros:humble-desktop-full AS runtime
+
+SHELL ["/bin/bash", "-c"]
+
+# Runtime environment variables
+ENV DEBIAN_FRONTEND=noninteractive \
+    ROS_DISTRO=humble \
+    DISPLAY=:1 \
+    VNC_PORT=5901 \
+    RESOLUTION=1920x1080 \
+    USER=Aortz \
+    PASSWD=ubuntu \
+    LAUNCH_MODE=multi \
+    ENABLE_COORDINATION=true \
+    RPC_TIMEOUT=10.0 \
+    LAUNCH_RVIZ=false \
+    DEBUG=false
+
+# Install runtime packages only (no build dependencies)
+RUN apt-get update -q && apt-get install -y --no-install-recommends \
+    # System essentials for runtime
+    supervisor tini curl wget sudo locales bash-completion tzdata \
+    python3 python3-pip dos2unix git \
+    # Network utilities
+    telnet iputils-ping net-tools dnsutils netcat-openbsd \
+    # VNC and desktop environment (minimal)
+    xfce4 xfce4-goodies tigervnc-standalone-server tigervnc-common \
+    tigervnc-tools dbus-x11 x11-xserver-utils x11-utils xauth \
+    xfonts-base xfonts-75dpi xfonts-100dpi fonts-liberation fonts-dejavu-core \
+    openssh-server \
+    # Desktop applications and icons (missing from ros:humble-desktop)
+    xfce4-appfinder xfce4-terminal thunar mousepad \
+    xfce4-panel xfce4-session xfce4-settings \
+    # Icon themes and desktop integration
+    elementary-xfce-icon-theme gnome-icon-theme \
+    desktop-file-utils shared-mime-info \
+    # Additional desktop accessories
+    xfce4-screenshooter xfce4-taskmanager \
+    # Advanced terminal management and system monitoring
+    terminator htop tree ncdu less \
+    # ROS2 runtime packages for AirSim
+    ros-humble-geographic-msgs ros-humble-mavros-msgs ros-humble-rclcpp-action \
+    # OctoMap 3D Mapping (4-drone LiDAR collaborative mapping)
+    ros-humble-octomap ros-humble-octomap-msgs \
+    ros-humble-octomap-server ros-humble-octomap-rviz-plugins \
+    # EIGEN3 RUNTIME DEPENDENCY - Required for AirLib compilation consistency
+    libeigen3-dev \
+    && rm -rf /var/lib/apt/lists/* && apt-get clean
+
+# Install Python runtime dependencies (lightweight)
+RUN python3 -m pip install --no-cache-dir --upgrade pip && \
+    python3 -m pip install --no-cache-dir msgpack msgpack-rpc-python numpy opencv-python
+
+# Copy NumPy headers from builder stage
+COPY --from=builder /usr/include/numpy /usr/include/numpy
+COPY --from=builder /usr/local/include/numpy /usr/local/include/numpy
+
+# Note: Removed C_INCLUDE_PATH and CPLUS_INCLUDE_PATH environment variables
+# These were breaking #include_next directives in C++ standard library headers
+# GCC's default search paths already include /usr/include and /usr/local/include
+# in the correct order for C++ compilation to work properly
+
+# Python include path for ROS2 message Python bindings
+# ONLY Python subdirectory path is added - this is safe and doesn't break #include_next
+ENV CPLUS_INCLUDE_PATH="/usr/include/python3.10:${CPLUS_INCLUDE_PATH}" \
+    C_INCLUDE_PATH="/usr/include/python3.10:${C_INCLUDE_PATH}"
+
+# Streamlined system configuration
+RUN mkdir -p /var/run/dbus /tmp/.X11-unix && \
+    dbus-uuidgen > /etc/machine-id && \
+    ln -sf /etc/machine-id /var/lib/dbus/machine-id && \
+    chmod 1777 /tmp/.X11-unix
+
+# Create user with proper permissions (single operation)
+RUN useradd -m -s /bin/bash -u 1000 Aortz && \
+    echo 'Aortz:ubuntu' | chpasswd && \
+    usermod -aG sudo Aortz && \
+    echo 'Aortz ALL=(ALL) NOPASSWD:ALL' >> /etc/sudoers
+
+# Optimized VNC configuration (combined operations)
+RUN mkdir -p /home/Aortz/.vnc && \
+    echo 'ubuntu' | vncpasswd -f > /home/Aortz/.vnc/passwd && \
+    chmod 600 /home/Aortz/.vnc/passwd && \
+    echo -e "session=xfce\ngeometry=1920x1080\nlocalhost=no\nalwaysshared=yes" > /home/Aortz/.vnc/config
+
+# Copy VNC xstartup script from extracted files
+COPY docker/airsim_ros2_wrapper/VNC/scripts/vnc/xstartup_enhanced.sh /home/Aortz/.vnc/xstartup
+RUN chmod +x /home/Aortz/.vnc/xstartup
+
+# Copy AirSim build artifacts AND pre-built ROS2 packages from ros2_builder stage
+WORKDIR /airsim_ros2_ws
+COPY --from=ros2_builder /airsim_ros2_ws/build ./build
+COPY --from=ros2_builder /airsim_ros2_ws/install ./install
+COPY --from=ros2_builder /airsim_ros2_ws/log ./log
+COPY --from=builder /build_artifacts ./
+RUN mkdir -p src/airsim && \
+    ln -sf /airsim_ros2_ws/cmake src/airsim/cmake && \
+    ln -sf /airsim_ros2_ws/AirLib src/airsim/AirLib && \
+    ln -sf /airsim_ros2_ws/MavLinkCom src/airsim/MavLinkCom && \
+    ln -sf /airsim_ros2_ws/external src/airsim/external
+
+# Copy and configure development scripts (early integration)
+COPY docker/airsim_ros2_wrapper/scripts/ ./scripts/
+# Copy RPC fix script for runtime PIE compatibility fix
+COPY ros2/fix_rpc_build.sh ./scripts/
+RUN dos2unix ./scripts/*.sh && chmod +x ./scripts/*.sh && \
+    # Run development aliases setup first
+    ./scripts/development_aliases.sh && \
+    # Ensure proper line endings after script modification
+    dos2unix /home/Aortz/.bashrc
+
+# Copy launch and debug scripts
+COPY docker/airsim_ros2_wrapper/VNC/launch_airsim_ros2.sh /launch_airsim_ros2.sh
+COPY docker/airsim_ros2_wrapper/VNC/launch_ros2_system.sh /launch_ros2_system.sh
+COPY docker/airsim_ros2_wrapper/VNC/debug_airsim_connection.sh /debug_airsim_connection.sh
+RUN dos2unix /launch_airsim_ros2.sh /launch_ros2_system.sh /debug_airsim_connection.sh && \
+    chmod +x /launch_airsim_ros2.sh /launch_ros2_system.sh /debug_airsim_connection.sh && \
+    ln -sf /launch_ros2_system.sh /usr/local/bin/ros2-system
+
+# Copy external Terminator configuration and create runtime override system
+COPY docker/airsim_ros2_wrapper/VNC/terminator-config /tmp/terminator-config-enhanced
+RUN mkdir -p /home/Aortz/.config/terminator /home/Aortz/.config/autostart && \
+    # Store enhanced config in system location for runtime override
+    cp /tmp/terminator-config-enhanced /etc/terminator-config-enhanced && \
+    # Build-time validation of 2-tab configuration
+    echo "[INFO] Validating 2-tab Terminator configuration during build..." && \
+    ENHANCED_SIZE=$(wc -c < /etc/terminator-config-enhanced) && \
+    ENHANCED_LINES=$(wc -l < /etc/terminator-config-enhanced) && \
+    echo "   [INFO] Enhanced config: ${ENHANCED_SIZE} bytes, ${ENHANCED_LINES} lines" && \
+    # Validate 2-tab structure
+    if grep -q "Drone Monitoring, ROS2 Development" /etc/terminator-config-enhanced; then \
+        echo "   [SUCCESS] Found 2-tab layout structure"; \
+    else \
+        echo "   [ERROR] 2-tab layout not found!" && exit 1; \
+    fi && \
+    # Validate ROS2 launch command
+    if grep -q "ros2 launch airsim_ros_pkgs rpc_dynamic_vehicles.launch.py mission_mode:=true" /etc/terminator-config-enhanced; then \
+        echo "   [SUCCESS] Found ROS2 launch command with mission_mode"; \
+    else \
+        echo "   [ERROR] ROS2 launch command missing!" && exit 1; \
+    fi && \
+    # Validate RViz command
+    if grep -q "rviz2 -d /airsim_ros2_ws/src/airsim_ros_pkgs/rviz/lidar_visualization.rviz" /etc/terminator-config-enhanced; then \
+        echo "   [SUCCESS] Found RViz command"; \
+    else \
+        echo "   [ERROR] RViz command missing!" && exit 1; \
+    fi && \
+    # Validate vertical split structure for Tab 2
+    if grep -A 5 -B 5 "ROS2 Development" /etc/terminator-config-enhanced | grep -q "VPaned"; then \
+        echo "   [SUCCESS] Found vertical split (VPaned) for ROS2 Development tab"; \
+    else \
+        echo "   [ERROR] Vertical split missing in ROS2 Development tab!" && exit 1; \
+    fi && \
+    echo "   [SUCCESS] 2-tab configuration validation passed!" && \
+    # Create initial placeholder config (will be overridden at runtime)
+    echo "# Placeholder config - will be replaced by enhanced version at runtime" > /home/Aortz/.config/terminator/config
+
+# Copy single XFCE autostart desktop entry (avoid duplicate Terminator launches)
+COPY docker/airsim_ros2_wrapper/VNC/configs/terminator/terminator_autostart.desktop /home/Aortz/.config/autostart/
+# NOTE: Removed terminator_session_launcher.desktop to prevent dual window issue
+
+# Copy and install Terminator launcher scripts
+COPY docker/airsim_ros2_wrapper/VNC/scripts/vnc/terminator_autostart_wrapper.sh /usr/local/bin/terminator-autostart-wrapper
+COPY docker/airsim_ros2_wrapper/VNC/scripts/vnc/terminator_multi_drone.sh /usr/local/bin/terminator-multi-drone
+COPY docker/airsim_ros2_wrapper/VNC/scripts/vnc/terminator_session_launcher.sh /usr/local/bin/terminator-session-launcher
+RUN chmod +x /usr/local/bin/terminator-autostart-wrapper \
+    /usr/local/bin/terminator-multi-drone \
+    /usr/local/bin/terminator-session-launcher
+
+# Copy and configure additional bash functions (coordinated with development_aliases.sh)
+COPY docker/airsim_ros2_wrapper/VNC/scripts/bash/terminator_functions.sh /tmp/
+
+# Append terminator debug functions to existing .bashrc (already configured by development_aliases.sh)
+RUN echo "" >> /home/Aortz/.bashrc && \
+    echo "# ===============================================" >> /home/Aortz/.bashrc && \
+    echo "# Terminator Debug and Management Functions" >> /home/Aortz/.bashrc && \
+    echo "# ===============================================" >> /home/Aortz/.bashrc && \
+    cat /tmp/terminator_functions.sh >> /home/Aortz/.bashrc && \
+    # Clean up temporary files
+    rm /tmp/terminator_functions.sh
+
+# Comprehensive dos2unix conversion for all files
+RUN dos2unix /home/Aortz/.bashrc \
+    /home/Aortz/.vnc/xstartup \
+    /home/Aortz/.config/autostart/*.desktop \
+    /usr/local/bin/terminator-* \
+    /etc/terminator-config-enhanced 2>/dev/null || true
+
+# Additional safety measures for line ending issues
+RUN find /home/Aortz/.config -name "*.desktop" -exec dos2unix {} \; 2>/dev/null || true && \
+    find /usr/local/bin -name "terminator-*" -exec dos2unix {} \; 2>/dev/null || true
+
+# Set proper ownership (single operation)
+RUN chown -R Aortz:Aortz /airsim_ros2_ws /home/Aortz
+
+# Configure optimized runtime environment paths
+ENV PYTHONPATH="/opt/ros/humble/lib/python3.10/site-packages:/airsim_ros2_ws/install/airsim_interfaces/lib/python3.10/site-packages:/airsim_ros2_ws/install/airsim_ros_pkgs/lib/python3.10/site-packages:${PYTHONPATH}" \
+    PATH="/opt/ros/humble/bin:/airsim_ros2_ws/install/airsim_ros_pkgs/bin:${PATH}" \
+    LD_LIBRARY_PATH="/opt/ros/humble/lib:/airsim_ros2_ws/install/airsim_interfaces/lib:/airsim_ros2_ws/install/airsim_ros_pkgs/lib:${LD_LIBRARY_PATH}" \
+    CMAKE_PREFIX_PATH="/opt/ros/humble:/airsim_ros2_ws/install/airsim_interfaces:/airsim_ros2_ws/install/airsim_ros_pkgs:${CMAKE_PREFIX_PATH}"
+
+# Runtime configuration
+WORKDIR /airsim_ros2_ws
+VOLUME ["/airsim_ros2_ws/src"]
+EXPOSE 5901 7400/udp 7401/udp 7402/udp
+
+# Optimized health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=15s --retries=3 \
+    CMD pgrep -f "X.*vnc.*:1" > /dev/null || exit 1
+
+# Copy and configure entrypoint
+COPY docker/airsim_ros2_wrapper/VNC/entrypoint_lightweight.sh /
+RUN dos2unix /entrypoint_lightweight.sh && chmod +x /entrypoint_lightweight.sh
+
+# Add PIE compatibility fix aliases
+RUN cat >> /home/Aortz/.bashrc << 'EOF'
+
+# ===============================================
+# PIE Compatibility Fix for RPC Library
+# ===============================================
+alias fix-rpc-pie='/airsim_ros2_ws/scripts/fix_rpc_build.sh'
+alias manual-pie-fix='/airsim_ros2_ws/scripts/fix_rpc_build.sh'
+alias check-pie-status='echo "PIE fix is automatically applied with build alias. Use build_no_fix to skip."'
+EOF
+
+# Final user configuration with enhanced line ending protection
+USER Aortz
+RUN printf '\ncd /airsim_ros2_ws\n' >> /home/Aortz/.bashrc && \
+    dos2unix /home/Aortz/.bashrc 2>/dev/null || true && \
+    # Final verification of .bashrc syntax
+    bash -n /home/Aortz/.bashrc || { echo "ERROR: .bashrc syntax check failed" && cat -n /home/Aortz/.bashrc && exit 1; }
+
+# Switch back for entrypoint execution
+USER root
+
+ENTRYPOINT ["/entrypoint_lightweight.sh"]

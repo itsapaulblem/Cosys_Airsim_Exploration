@@ -1,0 +1,77 @@
+global:
+  scrape_interval: 15s  # OPTIMIZED: Reduced from 2s to lower monitoring overhead
+  evaluation_interval: 30s  # OPTIMIZED: Reduced from 5s
+  external_labels:
+    monitor: 'airsim-ecosystem-monitor'
+    environment: 'simulation'
+
+# Alert manager configuration (optional)
+# alerting:
+#   alertmanagers:
+#     - static_configs:
+#         - targets: ['alertmanager:9093']
+
+# Load alert rules
+rule_files:
+  - '/etc/prometheus/alerts/*.yml'
+
+scrape_configs:
+  # Prometheus self-monitoring
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+
+  # Host system metrics
+  - job_name: 'node-exporter'
+    static_configs:
+      - targets: ['node-exporter:9100']
+
+  # Container resource metrics (cAdvisor)
+  - job_name: 'cadvisor'
+    scrape_interval: 30s  # OPTIMIZED: Heavy metrics, reduce frequency
+    static_configs:
+      - targets: ['cadvisor:8080']
+    metric_relabel_configs:
+      # Add drone container labels
+      - source_labels: [name]
+        regex: '/(px4-drone-.*)'
+        target_label: drone_container
+        replacement: '${1}'
+
+  # ROS2 Metrics Exporter
+  - job_name: 'ros2-metrics'
+    scrape_interval: 5s  # OPTIMIZED: Reduced from 2s, still frequent enough for control monitoring
+    static_configs:
+      - targets: ['ros2-exporter:9200']
+
+  # AirSim API Metrics Exporter
+  - job_name: 'airsim-api-metrics'
+    scrape_interval: 2s  # OPTIMIZED: Reduced from 1s, balance monitoring vs overhead
+    static_configs:
+      - targets: ['airsim-exporter:9201']
+
+  # PX4 MAVLink Metrics Exporter
+  - job_name: 'px4-mavlink-metrics'
+    scrape_interval: 2s  # OPTIMIZED: Reduced from 1s, balance monitoring vs overhead
+    static_configs:
+      - targets: ['px4-exporter:9202']
+
+  # Docker daemon metrics (if enabled)
+  # - job_name: 'docker'
+  #   static_configs:
+  #     - targets: ['host.docker.internal:9323']
+
+  # AirSim container health (optional direct scraping if exporter exposes /metrics)
+  # - job_name: 'airsim-container'
+  #   static_configs:
+  #     - targets: ['airsim-container:41451']
+
+  # ROS2 nodes (optional if they expose Prometheus metrics)
+  # - job_name: 'ros2-nodes'
+  #   static_configs:
+  #     - targets: ['ros2-x11-node:8080']
+
+  # QGroundControl (optional if monitoring is needed)
+  # - job_name: 'qgroundcontrol'
+  #   static_configs:
+  #     - targets: ['qgroundcontrol-x11:8080']

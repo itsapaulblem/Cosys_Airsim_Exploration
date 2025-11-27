@@ -1,0 +1,13 @@
+[Desktop Entry]
+Type=Application
+Name=Terminator Multi-Drone Development
+Exec=/usr/local/bin/terminator-autostart-wrapper
+Hidden=false
+NoDisplay=false
+X-GNOME-Autostart-enabled=true
+X-GNOME-Autostart-Delay=3
+StartupNotify=false
+Comment=Auto-launch Terminator with multi-drone ROS2 development layout
+Categories=Development;TerminalEmulator;
+Icon=terminator
+OnlyShowIn=XFCE;

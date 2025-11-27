@@ -1,0 +1,114 @@
+# Execute Mission Action - Comprehensive mission execution for coordination node
+# Action server available on coordination node: /airsim_coordination_node/actions/execute_mission
+
+# Goal  
+MissionPlan mission_plan           # Complete mission plan to execute
+bool dry_run                       # Execute planning only, don't actually fly
+bool allow_plan_modifications      # Allow real-time plan adjustments during execution
+
+# Execution parameters
+float32 inter_vehicle_coordination_interval  # How often vehicles coordinate (seconds)
+bool require_all_vehicles_ready    # Wait for all vehicles before starting
+builtin_interfaces/Duration max_mission_duration  # Hard limit on mission time
+
+# Monitoring and control
+bool enable_human_oversight        # Allow human intervention during mission
+float32 abort_threshold_failures   # Abort if this percentage of vehicles fail
+bool auto_reallocate_on_failure   # Automatically reassign zones if vehicle fails
+
+# Communication parameters
+bool maintain_formation            # Vehicles should maintain formation when possible
+float32 communication_check_interval  # How often to verify vehicle communication (seconds)
+bool require_periodic_checkin      # Vehicles must check in periodically
+
+---
+# Result
+bool success                       # Mission completed successfully
+string completion_reason           # "completed", "aborted", "timeout", "vehicle_failures"
+
+# Mission execution summary
+builtin_interfaces/Duration total_mission_time  # Actual mission duration
+float32 mission_area_covered_sq_m  # Total area covered by all vehicles
+uint32 total_targets_detected      # Total targets found across all vehicles
+uint32 participating_vehicles_count # Number of vehicles that participated
+
+# Vehicle performance summary
+string[] successful_vehicles       # Vehicles that completed their assignments
+string[] failed_vehicles          # Vehicles that failed during mission
+string[] partially_successful_vehicles  # Vehicles that completed some objectives
+
+# Coverage and detection results
+float32 planned_vs_actual_coverage # Actual coverage / planned coverage ratio
+TargetDetection[] all_target_detections  # All targets detected during mission
+float32 detection_density_per_sq_km     # Detections per square kilometer
+
+# Mission efficiency metrics
+float32 overall_mission_efficiency # Overall efficiency rating (0.0-1.0)
+float32 vehicle_utilization_avg    # Average vehicle utilization percentage
+float32 coordination_overhead_percent  # Time spent on coordination vs searching
+
+# Plan modifications made during execution
+uint32 plan_modifications_count    # Number of times plan was modified
+string[] modification_reasons      # Reasons for each plan modification
+bool mission_replanned_entirely    # Whether mission required complete replanning
+
+# Issues and incidents
+string[] mission_warnings          # Non-critical issues encountered
+string[] mission_errors            # Critical problems that occurred
+uint32 communication_failures_count # Number of communication failures
+uint32 weather_delays_minutes      # Total time delayed due to weather
+
+---
+# Feedback
+float32 progress_percentage        # Overall mission progress (0.0-100.0)
+builtin_interfaces/Duration elapsed_time        # Time since mission started
+builtin_interfaces/Duration estimated_remaining_time  # Estimated time to completion
+
+# Mission-wide status
+uint32 vehicles_active             # Number of vehicles currently active
+uint32 vehicles_completed          # Number of vehicles that completed their zones
+uint32 vehicles_failed             # Number of vehicles that have failed
+string current_mission_phase       # "initialization", "deployment", "search", "consolidation", "return"
+
+# Coverage progress
+float32 total_area_covered_sq_m_so_far  # Area covered by all vehicles so far
+float32 coverage_rate_sq_m_per_second   # Current rate of area coverage
+geometry_msgs/Point mission_center_of_mass  # Average position of all active vehicles
+
+# Detection summary
+uint32 total_targets_detected_so_far    # Running total of all detections
+uint32 confirmed_targets                # Targets confirmed by multiple vehicles  
+uint32 false_positives                  # Detections marked as false positives
+TargetDetection[] recent_detections     # New detections since last feedback
+
+# Individual vehicle status updates
+string[] vehicle_names                  # Names of all participating vehicles
+MissionStatus[] vehicle_statuses        # Current status of each vehicle
+float32[] vehicle_progress_percentages  # Individual vehicle progress
+string[] vehicle_current_activities     # What each vehicle is currently doing
+
+# Resource monitoring
+float32[] vehicle_battery_levels        # Battery level of each vehicle
+builtin_interfaces/Duration[] vehicle_estimated_remaining_time  # Time each vehicle can continue
+
+# Coordination metrics
+uint32 inter_vehicle_communications_count  # Number of vehicle-to-vehicle communications
+float32 formation_integrity            # How well vehicles maintain formation (0.0-1.0)
+bool coordination_functioning          # Overall coordination system health
+
+# Environmental conditions
+float32 current_wind_speed             # Current wind conditions
+string weather_status                  # Current weather conditions
+bool environmental_conditions_acceptable  # Conditions suitable for continued operation
+
+# Human oversight status (if enabled)
+bool human_oversight_active            # Human operator is monitoring
+string[] operator_notifications        # Messages for human operator
+bool requires_operator_decision        # Waiting for human input
+string pending_decision_description    # Description of decision needed
+
+# Status messages
+string overall_status_message          # High-level mission status
+string[] individual_vehicle_status_messages  # Status from each vehicle
+bool mission_on_track                  # Mission progressing as planned
+uint8 overall_mission_health           # Mission health score (1-5, 5=excellent)

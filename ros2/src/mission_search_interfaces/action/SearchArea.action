@@ -1,0 +1,91 @@
+# Search Area Action - Long-running search operation for individual vehicles
+# Action server available on vehicle nodes: /VehicleName/actions/search_area
+
+# Goal
+geometry_msgs/Polygon search_boundary  # Area boundary to search
+string search_pattern                  # "spiral", "lawnmower", "grid", "random"
+float32 search_altitude               # Search altitude in meters  
+float32 search_speed                  # Flight speed in m/s
+float32 pattern_spacing               # Distance between search paths (meters)
+
+# Detection parameters
+bool enable_detection                 # Enable target detection during search
+string[] detection_types              # Types to detect: ["person", "vehicle", "object"]
+float32 detection_confidence_threshold # Minimum confidence for valid detection (0.0-1.0)
+bool capture_images                   # Capture images during search
+float32 image_capture_interval        # Interval between image captures (seconds)
+
+# Advanced search parameters
+bool adaptive_altitude                # Adjust altitude based on terrain
+float32 overlap_percentage           # Path overlap percentage (0.0-50.0)
+bool optimize_path                   # Optimize path for efficiency
+geometry_msgs/Point forced_start_point  # Force specific start point (optional)
+
+# Safety parameters
+float32 abort_on_wind_speed          # Abort if wind exceeds this speed (m/s)
+float32 return_home_battery_percent  # Return home when battery drops to this level
+builtin_interfaces/Duration max_search_time  # Maximum time to spend searching
+
+---
+# Result
+bool success                         # Search completed successfully
+string completion_reason             # Why search ended: "completed", "aborted", "battery_low"
+
+# Coverage statistics
+float32 area_covered_sq_m            # Total area actually searched
+float32 coverage_percentage          # Percentage of requested area covered
+float32 search_efficiency            # Coverage rate (sq_m per second)
+builtin_interfaces/Duration total_search_time  # Actual time spent searching
+
+# Detection results
+uint32 targets_detected              # Number of targets found
+TargetDetection[] target_detections  # Detailed detection information
+uint32 images_captured              # Number of images captured
+string[] image_file_paths           # Paths to captured images
+
+# Navigation statistics
+uint32 waypoints_completed          # Number of waypoints successfully reached
+float32 total_distance_flown        # Total distance covered during search
+geometry_msgs/Point[] actual_path   # Actual path flown by vehicle
+
+# Performance metrics
+float32 average_speed               # Average speed during search
+float32 battery_consumed_percent    # Battery percentage consumed
+uint32 detection_false_positives   # Number of false positive detections
+
+# Issues encountered
+string[] warnings                   # Non-critical issues encountered
+string[] errors                     # Critical errors that occurred
+bool manual_intervention_required   # Human intervention needed
+
+---
+# Feedback
+float32 progress_percentage         # Search completion percentage (0.0-100.0)
+float32 current_area_covered_sq_m   # Area covered so far
+geometry_msgs/Point current_position # Current vehicle position
+float32 current_altitude           # Current altitude
+float32 current_speed              # Current speed
+
+# Real-time detection updates
+uint32 targets_detected_so_far     # Running count of detections
+TargetDetection[] recent_detections # New detections since last feedback
+
+# Current search state
+string current_activity            # "navigating", "searching", "investigating", "returning"
+geometry_msgs/Point next_waypoint  # Next planned waypoint
+uint32 waypoints_remaining         # Waypoints left to visit
+
+# Performance monitoring
+float32 search_efficiency_current  # Current coverage rate (sq_m/second)
+builtin_interfaces/Duration time_elapsed     # Time since search started
+builtin_interfaces/Duration estimated_remaining_time # Estimated time to completion
+
+# Resource monitoring
+float32 battery_percentage_remaining  # Current battery level
+float32 data_storage_used_mb         # Storage used for images/data
+bool low_battery_warning            # Battery getting low
+
+# Status messages
+string status_message              # Human-readable status update
+bool requires_attention            # Needs operator attention
+uint8 search_health               # Overall search health (1-5, 5=excellent)

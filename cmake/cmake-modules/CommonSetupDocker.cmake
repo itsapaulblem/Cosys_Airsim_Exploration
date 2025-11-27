@@ -81,7 +81,8 @@ macro(CommonSetup)
 
             # make sure to match the compiler flags with which the Unreal
             # Engine is built with, in case of runtime issues, check these
-            set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fPIC -fno-pie")
+            # Changed: Use -fPIC only (removed -fno-pie for Docker/ROS2 compatibility)
+            set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fPIC")
         endif()
 
         set(BUILD_PLATFORM "x64")
@@ -98,7 +99,8 @@ macro(CommonSetup)
         endif()
 
         #setup compiler flags
-        set(CXX_EXP_LIB "-stdlib=libc++ -lc++ -lc++abi")
+        # Use default libstdc++ for ROS2 compatibility (not libc++)
+        set(CXX_EXP_LIB "")
 
     ELSE()
         #windows cmake build is experimental
@@ -118,7 +120,12 @@ macro(CommonSetup)
     ENDIF()
 
     ## Hint for find_package
-    set(RPC_LIB ${AIRSIM_ROOT}/build_debug/output/lib/${BUILD_PLATFORM}/${BUILD_CONFIG}/${RPC_LIB_NAME})
+    # For Docker builds, RPC library is in external/rpclib build directory
+    if(EXISTS "/airsim_ros2_ws")
+        set(RPC_LIB ${AIRSIM_ROOT}/external/rpclib/${RPCLIB_VERSION_FOLDER}/build/${RPC_LIB_NAME})
+    else()
+        set(RPC_LIB ${AIRSIM_ROOT}/build_debug/output/lib/${BUILD_PLATFORM}/${BUILD_CONFIG}/${RPC_LIB_NAME})
+    endif()
     set(RPC_INCLUDE_DIRS
         ${RPC_LIB_INCLUDES})
 endmacro(CommonSetup)

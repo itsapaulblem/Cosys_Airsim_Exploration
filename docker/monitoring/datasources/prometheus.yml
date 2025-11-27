@@ -1,0 +1,23 @@
+# Grafana Datasource Provisioning for Prometheus
+# This file automatically configures the Prometheus datasource when Grafana starts
+# Documentation: https://grafana.com/docs/grafana/latest/administration/provisioning/#data-sources
+
+apiVersion: 1
+
+datasources:
+  - name: Prometheus
+    type: prometheus
+    access: proxy
+    url: http://prometheus:9090
+    isDefault: true
+    version: 1
+    editable: false
+    jsonData:
+      httpMethod: POST
+      timeInterval: "2s"
+      queryTimeout: "60s"
+      # Keep time series data for dashboard queries
+      keepCookies: []
+    # Optional: Add custom HTTP headers if needed
+    # secureJsonData:
+    #   httpHeaderValue1: 'value'

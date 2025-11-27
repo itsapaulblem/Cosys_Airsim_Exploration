@@ -1,0 +1,107 @@
+# Track Target Action - Continuously follow and monitor a moving target  
+# Action server available on vehicle nodes: /VehicleName/actions/track_target
+
+# Goal
+string target_id                    # Unique identifier for target to track
+geometry_msgs/Point initial_target_location  # Last known target location
+float32 tracking_altitude           # Preferred altitude for tracking
+float32 tracking_distance          # Preferred distance from target (meters)
+
+# Tracking parameters
+string tracking_mode               # "active", "passive", "predictive"
+float32 max_tracking_speed         # Maximum speed while tracking (m/s)
+bool maintain_visual_contact       # Keep target in camera view at all times
+builtin_interfaces/Duration max_tracking_time  # Maximum time to track target
+
+# Camera and sensor parameters
+string primary_camera              # Camera to use for tracking
+bool enable_zoom                   # Use camera zoom for better tracking
+bool record_tracking_video         # Record video during tracking
+float32 image_capture_interval     # Interval for still image capture (seconds)
+
+# Behavior parameters  
+float32 target_lost_search_radius  # Radius to search if target is lost (meters)
+builtin_interfaces/Duration target_lost_timeout  # Time before giving up on lost target
+bool predict_target_movement       # Use prediction algorithms for target motion
+bool share_tracking_data           # Share target location with other vehicles
+
+# Safety and constraints
+float32 minimum_tracking_altitude  # Never go below this altitude while tracking
+float32 maximum_tracking_altitude  # Never go above this altitude while tracking
+geometry_msgs/Polygon[] no_fly_zones  # Areas to avoid while tracking
+float32 abort_on_wind_speed        # Abort tracking if wind exceeds this (m/s)
+
+---
+# Result
+bool success                       # Tracking completed successfully
+string completion_reason           # "target_stopped", "lost_target", "timeout", "aborted"
+
+# Tracking statistics
+builtin_interfaces/Duration total_tracking_time  # Time spent actively tracking
+float32 total_distance_tracked     # Distance traveled while tracking
+float32 target_distance_traveled   # Distance target moved during tracking
+float32 average_tracking_distance  # Average distance maintained from target
+
+# Target behavior analysis
+geometry_msgs/Point final_target_location  # Last confirmed target location
+float32 target_average_speed       # Average speed of target movement
+string target_movement_pattern     # "linear", "circular", "random", "stationary"
+float32 target_direction_consistency  # How consistent target's direction was (0.0-1.0)
+
+# Data collection results
+uint32 images_captured             # Total images captured during tracking
+string[] image_file_paths          # Paths to captured images
+uint32 video_duration_seconds      # Total video duration recorded
+string video_file_path             # Path to tracking video file
+
+# Tracking performance
+float32 target_lost_incidents      # Number of times target was temporarily lost
+builtin_interfaces/Duration longest_target_lost_duration  # Longest time target was lost
+float32 tracking_accuracy         # How well vehicle maintained desired distance/position
+float32 prediction_accuracy       # Accuracy of movement predictions (if used)
+
+# Final target assessment
+string final_target_classification  # Final assessment of what target is
+float32 final_confidence_score     # Final confidence in target identity (0.0-1.0)
+bool target_behavior_suspicious    # Target exhibited suspicious behavior
+string[] notable_observations      # Interesting behaviors or characteristics observed
+
+---
+# Feedback
+float32 progress_percentage        # Time-based progress (0.0-100.0)
+geometry_msgs/Point current_position  # Current vehicle position
+geometry_msgs/Point current_target_location  # Current target position
+float32 current_distance_to_target # Current distance from target (meters)
+
+# Tracking status
+bool target_in_sight               # Target currently visible
+float32 target_bearing             # Bearing to target from vehicle (degrees)
+float32 target_speed               # Current target speed (m/s)
+float32 target_heading             # Current target heading (degrees)
+
+# Tracking quality metrics
+float32 visual_tracking_quality    # Quality of visual lock (0.0-1.0)
+float32 position_estimate_confidence  # Confidence in target position (0.0-1.0)
+uint8 tracking_mode_active         # Current tracking mode being used
+string tracking_difficulty        # "easy", "moderate", "difficult", "very_difficult"
+
+# Prediction and analysis
+geometry_msgs/Point predicted_target_location  # Where target will be next
+float32 prediction_confidence      # Confidence in prediction (0.0-1.0)
+string current_target_behavior    # Current behavior: "moving", "stopped", "circling"
+
+# Data capture status
+uint32 images_captured_so_far      # Images captured during this session
+uint32 video_seconds_recorded      # Video duration recorded so far
+float32 data_storage_used_mb       # Storage used for tracking data
+
+# Resource and system status
+float32 battery_percentage_remaining  # Current battery level
+builtin_interfaces/Duration max_remaining_tracking_time  # Max time can continue tracking
+bool low_battery_warning           # Battery getting critically low
+
+# Alert conditions
+bool target_behaving_unexpectedly  # Target doing something unusual
+bool target_entering_restricted_area  # Target moving into no-fly zone
+bool weather_affecting_tracking    # Weather impacting tracking ability
+string status_message             # Human-readable status update

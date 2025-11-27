@@ -1,0 +1,2 @@
+[console_scripts]
+mnstevv = mnstevv.main:cli

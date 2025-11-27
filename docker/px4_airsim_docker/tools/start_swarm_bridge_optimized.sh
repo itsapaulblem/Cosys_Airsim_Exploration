@@ -9,10 +9,10 @@ set -e
 # Configuration
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
-COMPOSE_FILE="$PROJECT_DIR/docker-compose-slim.yml"
+COMPOSE_FILE="$PROJECT_DIR/docker-compose-px4.yml"
 
 # Default PX4 simulation hostname (can be overridden)
-DEFAULT_PX4_SIM_HOSTNAME="172.28.240.1"
+DEFAULT_PX4_SIM_HOSTNAME="172.18.144.1"
 CUSTOM_PX4_SIM_HOSTNAME=""
 
 # Container configuration
@@ -350,9 +350,9 @@ show_config() {
     esac
     
     if [[ -f "$COMPOSE_FILE" ]]; then
-        log "Compose file: $COMPOSE_FILE (slim configuration)"
+        log "Compose file: $COMPOSE_FILE (px4 configuration)"
         log "Network: Custom bridge network (172.20.0.0/16)"
-        log "Image: px4-airsim:slim (optimized multi-stage build)"
+        log "Image: px4-airsim:px4 (optimized multi-stage build)"
         log "Scripts: Ultra-swarm configuration with GPS"
         log "PX4_SIM_HOSTNAME: $(get_px4_sim_hostname)"
     else
@@ -382,7 +382,7 @@ shell_access() {
 
 show_help() {
     cat << EOF
-Optimized Bridge Network PX4 Swarm Management Script (Slim Configuration)
+Optimized Bridge Network PX4 Swarm Management Script (px4 Configuration)
 Compatible with Docker Desktop limitations on Windows/WSL2
 
 Usage: $0 [--PX4-Sim-IP <ip>] <command> [options]
@@ -411,7 +411,7 @@ Network:
   help                 Show this help
 
 Configuration:
-  • Uses docker-compose-slim.yml with optimized images
+  • Uses docker-compose-px4.yml with optimized images
   • Bridge network: px4_network (172.20.0.0/16)
   • Port mapping: localhost:4561-4569 → containers
   • AirSim SITL scripts with MAVLink broadcast for QGroundControl

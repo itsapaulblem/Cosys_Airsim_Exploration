@@ -1,0 +1,1281 @@
+# Master AirSim Ecosystem Docker Compose - Clean Orchestration
+# Orchestrates specialized compose files for PX4 and ROS2 subsystems
+
+name: tevv-airstack
+# 
+# CONFIGURABLE DRONE COUNT (1-6 drones supported):
+# Each PX4 drone runs proper SITL with ./Scripts/run_airsim_sitl.sh <instance_id>
+# Instance mapping: drone-1=0, drone-2=1, drone-3=2, drone-4=3, drone-5=4, drone-6=5
+#
+# CONFIGURATION:
+# - Use get-wsl2-ip.ps1 or mnstevv-auto.bat for automatic WSL2 IP detection
+# - Set AIRSIM_HOST_IP and PX4_SIM_HOSTNAME environment variables
+# - Requires PROJECT_ROOT to be set in .env file (see docker/.env)
+# - Automatically applies RPC library -fPIC fix from ${PROJECT_ROOT}/ros2/fix_rpc_build.sh
+# - Mounts only the fix script (not entire directory) to avoid package duplication
+# - Rebuilds rpclib with Position Independent Code for modern Linux systems
+# - Ensures ROS2 nodes compile successfully and rpc_dynamic_vehicles.launch.py works
+#
+# Usage Examples:
+#   # Default 3-drone setup
+#   docker-compose -f docker-compose-master.yml --profile integrated up
+#
+#   # Single drone testing
+#   docker-compose -f docker-compose-master.yml --profile integrated up px4-bridge-drone-1 ros2-multi-node
+#
+#   # Large swarm (6 drones)
+#   docker-compose -f docker-compose-master.yml --profile integrated up px4-bridge-drone-{1..6} ros2-multi-node
+#
+#   # WITH MONITORING (Prometheus + Grafana + Alerts)
+#   docker-compose -f docker-compose-master.yml --profile linux-integrated --profile monitoring up
+#   # Access: Grafana http://localhost:3000 (admin/P@ssw0rd), Prometheus http://localhost:9090
+#
+#   # Profile-based deployment
+#   docker-compose -f docker-compose-master.yml --profile px4-only up      # PX4 swarm only
+#   docker-compose -f docker-compose-master.yml --profile ros2-only up     # ROS2 multi-node only
+#   docker-compose -f docker-compose-master.yml --profile development up   # Development environment
+#   docker-compose -f docker-compose-master.yml --profile monitoring up    # Monitoring only (requires ecosystem networks)
+#
+#   # LINUX NATIVE X11 FORWARDING (60-70% lower resource usage)
+#   # Prerequisites: xhost +local:docker
+#   docker-compose -f docker-compose-master.yml --profile linux-integrated up
+#
+#   # Linux X11 with specific services
+#   xhost +local:docker
+#   docker-compose -f docker-compose-master.yml --profile linux-integrated up airsim-container px4-bridge-drone-{1..3} ros2-x11-node
+#
+#   # Platform Selection:
+#   # - Linux native:        --profile linux-integrated   (X11 forwarding, max performance)
+#   # - Windows/Mac/Remote:  --profile integrated         (VNC, cross-platform)
+#   # - With monitoring:     --profile linux-integrated --profile monitoring  (includes Prometheus/Grafana)
+
+# =================================
+# SHARED NETWORKS FOR INTEGRATION
+# =================================
+networks:
+  # Bridge network for cross-ecosystem communication
+  airsim-ecosystem:
+    name: airsim-ecosystem
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.30.0.0/16
+  
+  # External networks from specialized compose files
+  px4_network:
+    name: px4_network  
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
+        
+  ros2-multi-node-network:
+    name: ros2-multi-node-network
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.26.0.0/16
+
+  # Linux X11 ROS2 network (for native X11 forwarding setup)
+  ros2-x11-network:
+    name: ros2-x11-network
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.27.0.0/16
+
+  # PostgreSQL internal network for database cluster communication
+  # postgres-internal:
+  #   name: postgres-internal
+  #   driver: bridge
+  #   ipam:
+  #     config:
+  #       - subnet: 172.25.0.0/16
+
+# =================================
+# SHARED ENVIRONMENT TEMPLATES
+# =================================
+x-airsim-common-env: &airsim-env
+  # AirSim Connection (configurable via .env file)
+  AIRSIM_HOST_IP: ${AIRSIM_HOST_IP:-airsim-container}
+  AIRSIM_HOST_PORT: ${AIRSIM_HOST_PORT:-41451}
+  
+  # ROS2 Configuration  
+  ROS_DOMAIN_ID: ${ROS_DOMAIN_ID:-0}
+  
+  # Multi-node Architecture
+  LAUNCH_MODE: ${LAUNCH_MODE:-multi}
+  ENABLE_COORDINATION: ${ENABLE_COORDINATION:-true}
+  RPC_TIMEOUT: ${RPC_TIMEOUT:-10.0}
+  DEBUG: ${DEBUG:-false}
+
+x-px4-common-env: &px4-env
+  # PX4 Simulation Configuration
+  PX4_SIM_HOSTNAME: ${PX4_SIM_HOSTNAME:-airsim-container}
+  PX4_SIM_MODEL: ${PX4_SIM_MODEL:-none_iris}
+  PX4_SIMULATOR: none
+  PX4_HOME_LAT: ${PX4_HOME_LAT:-43.06659659989448}
+  PX4_HOME_LON: ${PX4_HOME_LON:--115.59330958}
+  PX4_HOME_ALT: ${PX4_HOME_ALT:-0.0}
+  PX4_SYS_AUTOSTART: ${PX4_SYS_AUTOSTART:-10016}
+  
+  # MAVLink Configuration
+  MAV_0_BROADCAST: 1
+  MAV_1_BROADCAST: 1
+  MAV_2_BROADCAST: 1
+  
+  # Swarm Configuration
+  SWARM_ID: ${SWARM_ID:-1}
+  SWARM_SIZE: ${SWARM_SIZE:-3}
+  
+  # Drone spawning configuration
+  MAX_DRONES: ${MAX_DRONES:-3}
+
+# x-postgres-env: &postgres-env
+#   # Database Configuration
+#   POSTGRES_DB: ${POSTGRES_DB:-drone_statistics}
+#   POSTGRES_USER: ${POSTGRES_USER:-airsim_user}
+#   POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}  # Required: Set secure password via environment variable
+#   PGDATA: /var/lib/postgresql/data/pgdata
+  
+#   # TimescaleDB Configuration
+#   TIMESCALEDB_TELEMETRY: off
+#   TS_TUNE_MEMORY: ${TS_TUNE_MEMORY:-1GB}
+#   TS_TUNE_MAX_CONNS: ${TS_TUNE_MAX_CONNS:-100}
+  
+#   # Performance Tuning
+#   POSTGRES_INITDB_ARGS: "--encoding=UTF-8 --locale=C"
+#   POSTGRES_HOST_AUTH_METHOD: md5
+  
+#   # Backup Configuration
+#   BACKUP_ENABLED: ${BACKUP_ENABLED:-true}
+#   BACKUP_INTERVAL: ${BACKUP_INTERVAL:-daily}
+#   BACKUP_RETENTION: ${BACKUP_RETENTION:-7}
+
+# =================================
+# ORCHESTRATED SERVICES 
+# =================================
+services:
+
+  # =================================
+  # ROS2 Multi-Node Architecture
+  # =================================
+  ros2-multi-node:
+    extends:
+      file: airsim_ros2_wrapper/docker-compose.yml
+      service: ros2-multi-node
+    container_name: ros2-node
+    hostname: ros2
+    # Simplified command - packages are pre-built during image creation
+    command: >
+      bash -c "
+        echo 'Using AIRSIM_HOST_IP: '$$AIRSIM_HOST_IP &&
+        echo 'ROS2 packages pre-built during image creation (PIE-compliant)' &&
+        source /opt/ros/humble/setup.bash &&
+        source /airsim_ros2_ws/install/setup.bash &&
+        echo 'ROS2 environment ready for rpc_dynamic_vehicles.launch.py' &&
+        exec /entrypoint_lightweight.sh
+      "
+    environment:
+      # ROS2 Configuration  
+      ROS_DOMAIN_ID: ${ROS_DOMAIN_ID:-0}
+      # Multi-node Architecture
+      LAUNCH_MODE: ${LAUNCH_MODE:-multi}
+      ENABLE_COORDINATION: ${ENABLE_COORDINATION:-true}
+      RPC_TIMEOUT: ${RPC_TIMEOUT:-10.0}
+      DEBUG: ${DEBUG:-false}
+      # VNC Configuration
+      DISPLAY: ":1"
+      VNC_PORT: 5901
+      RESOLUTION: "1920x1080"
+      USER: Aortz
+      PASSWD: ubuntu
+      LAUNCH_RVIZ: ${LAUNCH_RVIZ:-false}
+      # AirSim connection (set via environment variables)
+      AIRSIM_HOST_IP: ${AIRSIM_HOST_IP:-airsim-container}
+      AIRSIM_HOST_PORT: ${AIRSIM_HOST_PORT:-41451}
+    # Note: RPC fix script volume mount removed - PIE fix applied during image build
+    networks:
+      - airsim-ecosystem
+      - ros2-multi-node-network
+    profiles:
+      - ros2-only
+      - integrated
+      - development
+
+  # =================================
+  # ROS2 X11 Forwarding (Linux Native)
+  # =================================
+  ros2-x11-node:
+    extends:
+      file: airsim_ros2_wrapper/Linux/docker-compose.yml
+      service: ros2-x11-node
+    container_name: ros2-x11-node
+    hostname: ros2-x11
+
+    # Override environment to use master's config
+    environment:
+      # X11 Display Forwarding (host variables)
+      - DISPLAY=${DISPLAY:-:0}
+      - XAUTHORITY=/tmp/.Xauthority
+      - QT_X11_NO_MITSHM=1
+
+      # Inherit ROS2 config from master .env
+      - ROS_DOMAIN_ID=${ROS_DOMAIN_ID:-0}
+      - AIRSIM_HOST_IP=${AIRSIM_HOST_IP:-airsim-container}
+      - AIRSIM_HOST_PORT=${AIRSIM_HOST_PORT:-41451}
+
+      # Multi-node architecture
+      - LAUNCH_MODE=${LAUNCH_MODE:-multi}
+      - ENABLE_COORDINATION=${ENABLE_COORDINATION:-true}
+      - RPC_TIMEOUT=${RPC_TIMEOUT:-10.0}
+      - LAUNCH_RVIZ=${LAUNCH_RVIZ:-false}
+      - DEBUG=${DEBUG:-false}
+      - AUTO_BUILD=${AUTO_BUILD:-true}
+
+      # MAVROS configuration for PX4 connection
+      - MAVROS_FCU_URL=${MAVROS_FCU_URL:-udp://px4-drone-1:14540@14550}
+      - MAVROS_NUM_DRONES=${MAVROS_NUM_DRONES:-4}
+      - MAVROS_USE_HOST_NETWORK=${MAVROS_USE_HOST_NETWORK:-false}
+      # MAVROS network mode: bridge (default), host, or localhost
+      # - bridge: ROS2 bridge → PX4 bridge (udp://px4-drone-{i}:14540@14550)
+      # - host: ROS2 bridge → PX4 host (udp://host.docker.internal:14540@14550)
+      # - localhost: ROS2 host → PX4 host (udp://localhost:14540@14550)
+      - MAVROS_PX4_NETWORK_MODE=${MAVROS_PX4_NETWORK_MODE:-bridge}
+
+    # Override networks to use master's unified network
+    # IMPORTANT: Must be on px4_network to reach PX4 containers via DNS
+    networks:
+      - airsim-ecosystem
+      - ros2-multi-node-network
+      - px4_network  # Added: Required for MAVROS to connect to PX4 containers
+
+    # Add dependency on AirSim and PX4 (at least one drone)
+    depends_on:
+      airsim-container:
+        condition: service_healthy
+      px4-bridge-drone-1:
+        condition: service_started
+
+    # Linux-specific profile
+    profiles:
+      - linux-integrated
+      - linux-dev
+      - development
+
+  # =================================
+  # YOLOV10 DETECTION MICROSERVICE
+  # =================================
+  yolov10-detection-service:
+    build:
+      context: ${PROJECT_ROOT:-.}/docker/yolo_detection_service
+      dockerfile: Dockerfile
+    image: yolov10-detection-service:latest
+    container_name: yolov10-detection
+    hostname: yolov10-detection
+
+    # GPU Runtime Configuration for 100x YOLO inference speedup
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
+    environment:
+      # ROS2 Configuration
+      - ROS_DOMAIN_ID=${ROS_DOMAIN_ID:-0}
+      - ROS_LOCALHOST_ONLY=0
+
+      # Detection Service Parameters
+      - CONF_THRESHOLD=${DETECTION_CONF_THRESHOLD:-0.25}
+      - IOU_THRESHOLD=${DETECTION_IOU_THRESHOLD:-0.45}
+      - MODEL_NAME=${YOLO_MODEL_NAME:-jameslahm/yolov10n}
+
+      # Class Filtering (Runtime Configurable via ROS2 params)
+      # Default: Track people and vehicles only (person, car, truck, bus, motorcycle)
+      # To detect all 80 COCO classes, set ENABLE_CLASS_FILTER=false
+      - ALLOWED_CLASSES=${ALLOWED_CLASSES:-person,car,truck,bus,motorcycle}
+      - ENABLE_CLASS_FILTER=${ENABLE_CLASS_FILTER:-false}
+
+    volumes:
+      # Mount full YOLOv10-DeepSORT repository (includes yolov10/ subdirectory)
+      - ${PROJECT_ROOT:-.}/ros2/src/airsim_ros_pkgs/scripts/YOLOv10-DeepSORT:/detection_ws/yolov10_tracking:ro
+
+      # Mount detection service node
+      - ${PROJECT_ROOT:-.}/docker/yolo_detection_service/detection_service_node.py:/detection_ws/detection_service_node.py:ro
+
+      # Mount ONLY the ROS2 install directory (not entire filesystem) for airsim_interfaces access
+      # This avoids Python package conflicts from volumes_from
+      - ros2_x11_install:/airsim_ros2_ws/install:ro
+
+    networks:
+      - airsim-ecosystem
+      - ros2-multi-node-network
+      - ros2-x11-network
+
+    # Wait for ROS2 workspace to be ready
+    depends_on:
+      ros2-x11-node:
+        condition: service_started
+
+    restart: unless-stopped
+
+    # Available in integrated profiles
+    profiles:
+      - linux-integrated
+      - integrated
+      - development
+
+    healthcheck:
+      test: ["CMD-SHELL", "python3 -c 'from ultralytics import YOLOv10; import rclpy' || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  # =================================
+  # PX4 Swarm Services (Selective)
+  # =================================
+  px4-bridge-drone-1:
+    extends:
+      file: px4_airsim_docker/docker-compose-px4.yml
+      service: px4-bridge-drone-1
+    build:
+      context: ./px4_airsim_docker
+      dockerfile: Dockerfile.px4
+    image: px4-airsim:px4
+    container_name: px4-drone-1
+    hostname: px4-drone-1
+    depends_on:
+      airsim-container:
+        condition: service_healthy
+    command: >
+      bash -c "
+        echo 'Using PX4_SIM_HOSTNAME: '$$PX4_SIM_HOSTNAME &&
+        echo 'Waiting for AirSim simulation to fully initialize...' &&
+        sleep 20 &&
+        cd /px4_workspace/PX4-Autopilot &&
+        echo 'Starting PX4 SITL for drone 1 (instance 0)...' &&
+        exec ./Scripts/run_airsim_sitl.sh 0
+      "
+    environment:
+      # Use environment template but allow override by detected IP
+      PX4_SIM_HOSTNAME: ${PX4_SIM_HOSTNAME:-airsim-container}
+      PX4_SIM_MODEL: ${PX4_SIM_MODEL:-none_iris}
+      PX4_SIMULATOR: none
+      PX4_HOME_LAT: ${PX4_HOME_LAT:-43.06659659989448}
+      PX4_HOME_LON: ${PX4_HOME_LON:--115.59330958}
+      PX4_HOME_ALT: ${PX4_HOME_ALT:-0.0}
+      PX4_SYS_AUTOSTART: ${PX4_SYS_AUTOSTART:-10016}
+      PX4_INSTANCE: 0
+      MAV_0_BROADCAST: 1
+      MAV_1_BROADCAST: 1
+      MAV_2_BROADCAST: 1
+      SWARM_ID: ${SWARM_ID:-1}
+      SWARM_SIZE: ${SWARM_SIZE:-3}
+    networks:
+      - airsim-ecosystem
+      - px4_network
+    profiles:
+      - px4-only
+      - integrated
+      - linux-integrated
+      - development
+
+  px4-bridge-drone-2:
+    extends:
+      file: px4_airsim_docker/docker-compose-px4.yml
+      service: px4-bridge-drone-2
+    image: px4-airsim:px4
+    container_name: px4-drone-2
+    hostname: px4-drone-2
+    command: >
+      bash -c "
+        echo 'Using PX4_SIM_HOSTNAME: '$$PX4_SIM_HOSTNAME &&
+        echo 'Waiting for AirSim simulation to fully initialize (staggered)...' &&
+        sleep 20 &&
+        cd /px4_workspace/PX4-Autopilot &&
+        echo 'Starting PX4 SITL for drone 2 (instance 1)...' &&
+        exec ./Scripts/run_airsim_sitl.sh 1
+      "
+    environment:
+      PX4_SIM_MODEL: ${PX4_SIM_MODEL:-none_iris}
+      PX4_SIMULATOR: none
+      PX4_HOME_LAT: ${PX4_HOME_LAT:-43.06659659989448}
+      PX4_HOME_LON: ${PX4_HOME_LON:--115.59330958}
+      PX4_HOME_ALT: ${PX4_HOME_ALT:-0.0}
+      PX4_SYS_AUTOSTART: ${PX4_SYS_AUTOSTART:-10016}
+      PX4_INSTANCE: 1
+      MAV_0_BROADCAST: 1
+      MAV_1_BROADCAST: 1
+      MAV_2_BROADCAST: 1
+      SWARM_ID: ${SWARM_ID:-1}
+      SWARM_SIZE: ${SWARM_SIZE:-3}
+    networks:
+      - airsim-ecosystem
+      - px4_network
+    depends_on:
+      airsim-container:
+        condition: service_healthy
+      px4-bridge-drone-1:
+        condition: service_started
+    profiles:
+      - px4-only
+      - integrated
+      - linux-integrated
+      - development
+
+  px4-bridge-drone-3:
+    extends:
+      file: px4_airsim_docker/docker-compose-px4.yml
+      service: px4-bridge-drone-3
+    image: px4-airsim:px4
+    container_name: px4-drone-3
+    hostname: px4-drone-3
+    command: >
+      bash -c "
+        echo 'Using PX4_SIM_HOSTNAME: '$$PX4_SIM_HOSTNAME &&
+        echo 'Waiting for AirSim simulation to fully initialize (staggered)...' &&
+        sleep 20 &&
+        cd /px4_workspace/PX4-Autopilot &&
+        echo 'Starting PX4 SITL for drone 3 (instance 2)...' &&
+        exec ./Scripts/run_airsim_sitl.sh 2
+      "
+    environment:
+      PX4_SIM_MODEL: ${PX4_SIM_MODEL:-none_iris}
+      PX4_SIMULATOR: none
+      PX4_HOME_LAT: ${PX4_HOME_LAT:-43.06659659989448}
+      PX4_HOME_LON: ${PX4_HOME_LON:--115.59330958}
+      PX4_HOME_ALT: ${PX4_HOME_ALT:-0.0}
+      PX4_SYS_AUTOSTART: ${PX4_SYS_AUTOSTART:-10016}
+      PX4_INSTANCE: 2
+      MAV_0_BROADCAST: 1
+      MAV_1_BROADCAST: 1
+      MAV_2_BROADCAST: 1
+      SWARM_ID: ${SWARM_ID:-1}
+      SWARM_SIZE: ${SWARM_SIZE:-3}
+    networks:
+      - airsim-ecosystem
+      - px4_network
+    depends_on:
+      airsim-container:
+        condition: service_healthy
+      px4-bridge-drone-1:
+        condition: service_started
+    profiles:
+      - px4-only
+      - integrated
+      - linux-integrated
+      - development
+
+  # Additional configurable drone services (4-6) - Independent definitions
+  px4-bridge-drone-4:
+    extends:
+        file: px4_airsim_docker/docker-compose-px4.yml
+        service: px4-bridge-drone-4
+    image: px4-airsim:px4
+    container_name: px4-drone-4
+    hostname: px4-drone-4
+    command: >
+      bash -c "
+        echo 'Using PX4_SIM_HOSTNAME: '$$PX4_SIM_HOSTNAME &&
+        echo 'Waiting for AirSim simulation to fully initialize...' &&
+        sleep 20 &&
+        cd /px4_workspace/PX4-Autopilot &&
+        echo 'Starting PX4 SITL for drone 4 (instance 3)...' &&
+        exec ./Scripts/run_airsim_sitl.sh 3
+      "
+    environment:
+      PX4_SIM_MODEL: ${PX4_SIM_MODEL:-none_iris}
+      PX4_SIMULATOR: none
+      PX4_HOME_LAT: ${PX4_HOME_LAT:-43.06659659989448}
+      PX4_HOME_LON: ${PX4_HOME_LON:--115.59330958}
+      PX4_HOME_ALT: ${PX4_HOME_ALT:-0.0}
+      PX4_SYS_AUTOSTART: ${PX4_SYS_AUTOSTART:-10016}
+      PX4_INSTANCE: 3
+      MAV_0_BROADCAST: 1
+      MAV_1_BROADCAST: 1
+      MAV_2_BROADCAST: 1
+      SWARM_ID: ${SWARM_ID:-1}
+      SWARM_SIZE: ${SWARM_SIZE:-3}
+    networks:
+      - airsim-ecosystem
+      - px4_network
+    depends_on:
+      airsim-container:
+        condition: service_healthy
+      px4-bridge-drone-1:
+        condition: service_started
+    restart: unless-stopped
+    profiles:
+      - px4-only
+      # - integrated
+      - development
+      - linux-integrated
+
+  px4-bridge-drone-5:
+    extends:
+        file: px4_airsim_docker/docker-compose-px4.yml
+        service: px4-bridge-drone-5
+    image: px4-airsim:px4
+    container_name: px4-drone-5
+    hostname: px4-drone-5
+    command: >
+      bash -c "
+        echo 'Using PX4_SIM_HOSTNAME: '$$PX4_SIM_HOSTNAME &&
+        echo 'Waiting for AirSim simulation to fully initialize...' &&
+        sleep 20 &&
+        cd /px4_workspace/PX4-Autopilot &&
+        echo 'Starting PX4 SITL for drone 5 (instance 4)...' &&
+        exec ./Scripts/run_airsim_sitl.sh 4
+      "
+    environment:
+      PX4_SIM_MODEL: ${PX4_SIM_MODEL:-none_iris}
+      PX4_SIMULATOR: none
+      PX4_HOME_LAT: ${PX4_HOME_LAT:-43.06659659989448}
+      PX4_HOME_LON: ${PX4_HOME_LON:--115.59330958}
+      PX4_HOME_ALT: ${PX4_HOME_ALT:-0.0}
+      PX4_SYS_AUTOSTART: ${PX4_SYS_AUTOSTART:-10016}
+      PX4_INSTANCE: 4
+      MAV_0_BROADCAST: 1
+      MAV_1_BROADCAST: 1
+      MAV_2_BROADCAST: 1
+      SWARM_ID: ${SWARM_ID:-1}
+      SWARM_SIZE: ${SWARM_SIZE:-3}
+    networks:
+      - airsim-ecosystem
+      - px4_network
+    depends_on:
+      airsim-container:
+        condition: service_healthy
+      px4-bridge-drone-1:
+        condition: service_started
+    restart: unless-stopped
+    profiles:
+      - px4-only
+      # - integrated
+      - development
+      # - linux-integrated
+
+  px4-bridge-drone-6:
+    extends:
+          file: px4_airsim_docker/docker-compose-px4.yml
+          service: px4-bridge-drone-6
+    image: px4-airsim:px4
+    container_name: px4-drone-6
+    hostname: px4-drone-6
+    command: >
+      bash -c "
+        echo 'Using PX4_SIM_HOSTNAME: '$$PX4_SIM_HOSTNAME &&
+        echo 'Waiting for AirSim simulation to fully initialize...' &&
+        sleep 20 &&
+        cd /px4_workspace/PX4-Autopilot &&
+        echo 'Starting PX4 SITL for drone 6 (instance 5)...' &&
+        exec ./Scripts/run_airsim_sitl.sh 5
+      "
+    environment:
+      PX4_SIM_MODEL: ${PX4_SIM_MODEL:-none_iris}
+      PX4_SIMULATOR: none
+      PX4_HOME_LAT: ${PX4_HOME_LAT:-43.06659659989448}
+      PX4_HOME_LON: ${PX4_HOME_LON:--115.59330958}
+      PX4_HOME_ALT: ${PX4_HOME_ALT:-0.0}
+      PX4_SYS_AUTOSTART: ${PX4_SYS_AUTOSTART:-10016}
+      PX4_INSTANCE: 5
+      MAV_0_BROADCAST: 1
+      MAV_1_BROADCAST: 1
+      MAV_2_BROADCAST: 1
+      SWARM_ID: ${SWARM_ID:-1}
+      SWARM_SIZE: ${SWARM_SIZE:-3}
+    networks:
+      - airsim-ecosystem
+      - px4_network
+    depends_on:
+      airsim-container:
+        condition: service_healthy
+      px4-bridge-drone-1:
+        condition: service_started
+    restart: unless-stopped
+    profiles:
+      - px4-only
+      # - integrated
+      - development
+      # - linux-integrated
+
+  px4-bridge-drone-7:
+    extends:
+          file: px4_airsim_docker/docker-compose-px4.yml
+          service: px4-bridge-drone-7
+    image: px4-airsim:px4
+    container_name: px4-drone-7
+    hostname: px4-drone-7
+    command: >
+      bash -c "
+        echo 'Using PX4_SIM_HOSTNAME: '$$PX4_SIM_HOSTNAME &&
+        echo 'Waiting for AirSim simulation to fully initialize...' &&
+        sleep 20 &&
+        cd /px4_workspace/PX4-Autopilot &&
+        echo 'Starting PX4 SITL for drone 7 (instance 6)...' &&
+        exec ./Scripts/run_airsim_sitl.sh 6
+      "
+    environment:
+      PX4_SIM_MODEL: ${PX4_SIM_MODEL:-none_iris}
+      PX4_SIMULATOR: none
+      PX4_HOME_LAT: ${PX4_HOME_LAT:-43.06659659989448}
+      PX4_HOME_LON: ${PX4_HOME_LON:--115.59330958}
+      PX4_HOME_ALT: ${PX4_HOME_ALT:-0.0}
+      PX4_SYS_AUTOSTART: ${PX4_SYS_AUTOSTART:-10016}
+      PX4_INSTANCE: 6
+      MAV_0_BROADCAST: 1
+      MAV_1_BROADCAST: 1
+      MAV_2_BROADCAST: 1
+      SWARM_ID: ${SWARM_ID:-1}
+      SWARM_SIZE: ${SWARM_SIZE:-3}
+    networks:
+      - airsim-ecosystem
+      - px4_network
+    depends_on:
+      airsim-container:
+        condition: service_healthy
+      px4-bridge-drone-1:
+        condition: service_started
+    restart: unless-stopped
+    profiles:
+      - px4-only
+      # - integrated
+      - development
+      # - linux-integrated
+
+  # =================================
+  # GROUND CONTROL STATION SERVICES
+  # =================================
+
+  qgroundcontrol:
+    build:
+      context: qgroundcontrol
+      dockerfile: Dockerfile.qgc
+    image: airsim-qgc:latest
+    container_name: qgroundcontrol
+    hostname: qgc
+
+    # Connect to PX4 network for MAVLink communication
+    # and airsim-ecosystem for coordination
+    networks:
+      - px4_network
+      - airsim-ecosystem
+
+    # Expose VNC ports only
+    # MAVLink communication happens within px4_network (no host port mapping needed)
+    ports:
+      - "5900:5900"          # VNC server
+      - "6080:6080"          # noVNC web interface
+
+    environment:
+      # VNC configuration
+      - DISPLAY=:1
+      - VNC_PASSWORD=${QGC_VNC_PASSWORD:-airsim}
+      - VNC_RESOLUTION=${QGC_VNC_RESOLUTION:-1920x1080}
+
+      # QGroundControl configuration
+      - QGC_APPIMAGE=/opt/qgroundcontrol/QGroundControl.AppImage
+      - APPIMAGE_EXTRACT_AND_RUN=1  # Run AppImage without FUSE (container-friendly)
+
+      # MAVLink configuration
+      # QGC listens on UDP 14550 by default
+      # PX4 instances broadcast to this port (MAV_1_BROADCAST=1)
+
+    # Wait for at least one PX4 drone to be ready
+    depends_on:
+      px4-bridge-drone-1:
+        condition: service_started
+
+    restart: unless-stopped
+
+    # Available in multiple profiles
+    profiles:
+      - integrated         # Full stack deployment
+      - px4-only          # PX4 swarm with GCS
+      - gcs-tools         # GCS utilities only
+      - development       # Development environment
+      # - linux-integrated  # Linux native deployment
+
+  # =================================
+  # QGroundControl X11 (Linux Native)
+  # =================================
+  qgroundcontrol-x11:
+    build:
+      context: qgroundcontrol
+      dockerfile: Dockerfile.qgc-x11
+    image: airsim-qgc-x11:latest
+    container_name: qgroundcontrol-x11
+    hostname: qgc-x11
+
+    # Connect to PX4 network for MAVLink communication
+    # and airsim-ecosystem for coordination
+    networks:
+      - px4_network
+      - airsim-ecosystem
+
+    # X11 Socket forwarding (NO port mapping needed - uses host display)
+    # MAVLink communication happens within px4_network (no host port mapping needed)
+    # No ports section needed - X11 uses socket forwarding, MAVLink uses internal network
+
+    environment:
+      # X11 Display Forwarding (CRITICAL for GUI)
+      - DISPLAY=${DISPLAY:-:0}
+      - XAUTHORITY=/tmp/.Xauthority
+      - QT_X11_NO_MITSHM=1  # Fix for Qt apps in containers
+
+      # QGroundControl configuration
+      - QGC_APPIMAGE=/opt/qgroundcontrol/QGroundControl.AppImage
+      - APPIMAGE_EXTRACT_AND_RUN=1  # Run AppImage without FUSE (container-friendly)
+
+      # Graphics configuration (fallback to software rendering if GPU unavailable)
+      - LIBGL_ALWAYS_SOFTWARE=1
+
+      # MAVLink configuration
+      # QGC listens on UDP 14550 by default
+      # PX4 instances broadcast to this port (MAV_1_BROADCAST=1)
+
+    volumes:
+      # X11 Socket Forwarding (CRITICAL for GUI apps)
+      - /tmp/.X11-unix:/tmp/.X11-unix:rw
+
+      # X11 Authentication (CRITICAL for security)
+      - ${XAUTHORITY:-$HOME/.Xauthority}:/tmp/.Xauthority:ro
+
+      # QGroundControl Configuration Template (optional - for bridge network mode)
+      # Auto-generated comm links for PX4 drones
+      # Generate with: cd qgroundcontrol && python3 generate_qgc_config.py
+      # Template mounted read-only, injected on startup if no config exists
+      # Comment out to disable auto-configuration (not needed in hybrid/host network mode)
+      - ./qgroundcontrol/qgc_config:/config-template:ro
+
+      # QGroundControl Persistent User Configuration
+      # Survives container restarts (compose down/up)
+      # Template auto-injected on first run if this directory is empty
+      # User modifications (custom comm links, UI settings) persist here
+      - ./qgroundcontrol/user_config:/home/qgc/.config/QGroundControl
+
+    # GPU device access for hardware acceleration (optional, gracefully degrades to software rendering)
+    devices:
+      - /dev/dri:/dev/dri
+
+    # Shared memory size for X11 applications (increases from default 64MB)
+    shm_size: '2gb'
+
+    # GPU Configuration for hardware acceleration
+    # NVIDIA GPU support (uncomment if available)
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: 1
+    #           capabilities: [gpu, compute, utility, graphics]
+
+    # Security Options for X11
+    security_opt:
+      - seccomp:unconfined  # Required for some X11 operations
+
+    # Run as host user to match X11 permissions
+    user: "${UID:-1000}:${GID:-1000}"
+
+    # Add user to video group for GPU access
+    group_add:
+      - video
+
+    # Proper init system for signal handling
+    init: true
+
+    # Wait for at least one PX4 drone to be ready
+    depends_on:
+      px4-bridge-drone-1:
+        condition: service_started
+
+    restart: unless-stopped
+
+    # Linux native performance profiles only
+    profiles:
+      - linux-integrated  # Linux native deployment
+      - linux-dev         # Linux development
+      - development       # Development environment
+
+    # Health check using X11 connection test
+    healthcheck:
+      test: ["CMD-SHELL", "xdpyinfo > /dev/null 2>&1 || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+
+  # =================================
+  # DATABASE SERVICES
+  # =================================
+  
+  # PostgreSQL with TimescaleDB for drone statistics
+  # postgres-stats:
+  #   extends:
+  #     file: postgres/docker-compose-postgres.yml
+  #     service: postgres-stats
+  #   container_name: postgres-drone-stats
+  #   hostname: postgres-stats
+  #   restart: unless-stopped
+    
+  #   environment:
+  #     <<: *postgres-env
+  #     # AirSim ecosystem integration
+  #     AIRSIM_HOST_IP: ${AIRSIM_HOST_IP:-airsim-container}
+  #     ROS_DOMAIN_ID: ${ROS_DOMAIN_ID:-0}
+    
+  #   ports:
+  #     - "${POSTGRES_HOST_PORT:-5432}:5432"
+    
+  #   volumes:
+  #     # Persistent data storage
+  #     - postgres_stats_data:/var/lib/postgresql/data
+  #     - postgres_stats_logs:/var/log/postgresql
+  #     - postgres_stats_backups:/var/backups/postgresql
+      
+  #     # Configuration files
+  #     - ./postgres/config/postgresql.conf:/etc/postgresql/postgresql.conf:ro
+  #     - ./postgres/config/pg_hba.conf:/etc/postgresql/pg_hba.conf:ro
+      
+  #     # Initialization scripts
+  #     - ./postgres/init-scripts:/docker-entrypoint-initdb.d:ro
+      
+  #     # Backup scripts
+  #     - ./postgres/backup-scripts:/usr/local/bin/backup:ro
+      
+  #     # Timezone data
+  #     - /etc/timezone:/etc/timezone:ro
+  #     - /etc/localtime:/etc/localtime:ro
+    
+  #   networks:
+  #     - airsim-ecosystem
+  #     - ros2-multi-node-network
+  #     - postgres-internal
+    
+  #   healthcheck:
+  #     test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+  #     interval: 30s
+  #     timeout: 10s
+  #     retries: 3
+  #     start_period: 60s
+    
+  #   profiles:
+  #     - stats-only
+  #     - integrated
+  #     - development
+  #     - production
+
+  # # pgAdmin for database administration (development only)
+  # pgadmin-stats:
+  #   image: dpage/pgadmin4:latest
+  #   container_name: pgadmin-drone-stats
+  #   hostname: pgadmin-stats
+  #   restart: unless-stopped
+    
+  #   environment:
+  #     PGADMIN_DEFAULT_EMAIL: ${PGADMIN_EMAIL:-admin@example.com}
+  #     PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_PASSWORD}  # Required: Set secure password via environment variable
+  #     PGADMIN_CONFIG_SERVER_MODE: 'False'
+  #     PGADMIN_CONFIG_MASTER_PASSWORD_REQUIRED: 'False'
+    
+  #   ports:
+  #     - "${PGADMIN_HOST_PORT:-8080}:80"
+    
+  #   volumes:
+  #     - pgadmin_data:/var/lib/pgadmin
+    
+  #   networks:
+  #     - airsim-ecosystem
+  #     - postgres-internal
+    
+  #   depends_on:
+  #     postgres-stats:
+  #       condition: service_healthy
+    
+  #   profiles:
+  #     - development
+  #     - admin-tools
+
+  # # Database backup service (DISABLED for development - uncomment for production)
+  # postgres-backup:
+  #   image: airsim-postgres:timescale
+  #   container_name: postgres-backup-service
+  #   hostname: postgres-backup
+  #   restart: unless-stopped
+  #   
+  #   environment:
+  #     <<: *postgres-env
+  #     BACKUP_SCHEDULE: ${BACKUP_SCHEDULE:-0 2 * * *}
+  #     BACKUP_COMPRESSION: ${BACKUP_COMPRESSION:-gzip}
+  #     BACKUP_FORMAT: ${BACKUP_FORMAT:-custom}
+  #   
+  #   volumes:
+  #     - postgres_stats_backups:/var/backups/postgresql
+  #     - ./postgres/backup-scripts:/usr/local/bin/backup:ro
+  #     - /etc/timezone:/etc/timezone:ro
+  #     - /etc/localtime:/etc/localtime:ro
+  #   
+  #   networks:
+  #     - airsim-ecosystem
+  #     - postgres-internal
+  #   
+  #   depends_on:
+  #     postgres-stats:
+  #       condition: service_healthy
+  #   
+  #   command: >
+  #     bash -c "
+  #       echo 'Starting backup service...' &&
+  #       while true; do
+  #         echo 'Running scheduled backup at $(date)' &&
+  #         /usr/local/bin/backup/backup_stats.sh &&
+  #         echo 'Backup completed. Sleeping until next schedule...' &&
+  #         sleep 86400
+  #       done
+  #     "
+  #   
+  #   profiles:
+  #     - production
+  #     - backup-service
+      
+  # NOTE: To re-enable backup service for production:
+  # 1. Uncomment the postgres-backup service above
+  # 2. Fix line endings in backup scripts: dos2unix postgres/backup-scripts/*.sh
+  # 3. Add 'postgres-backup' back to POSTGRES_SERVICES in CLI service_selector.py
+
+  # =================================
+  # AIRSIM CONTAINERIZED SERVICES
+  # =================================
+
+  airsim-container:
+    extends:
+      file: unreal_executable/docker-compose-binary.yml
+      service: airsim-container
+    image: ${DOCKER_IMAGE_NAME}
+    container_name: airsim-container
+    hostname: airsim-container
+    user: "${UID}:${GID}"
+    shm_size: '4gb'  # Critical for GPU LiDAR high-bandwidth point clouds (10-50 MB per frame)
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              capabilities: [gpu]
+              count: all
+    networks:
+      - airsim-ecosystem
+      - px4_network
+      - ros2-multi-node-network
+    profiles:
+      - integrated
+      - linux-integrated
+      - development
+
+  # =================================
+  # SHARED INFRASTRUCTURE SERVICES
+  # =================================
+  
+  # Cross-Ecosystem Network Monitor
+  ecosystem-monitor:
+    image: alpine:latest
+    container_name: airsim-monitor
+    command: >
+      sh -c "
+        apk add --no-cache curl netcat-openbsd nmap &&
+        echo 'AirSim Ecosystem Monitor Started' &&
+        while true; do
+          echo '╭─── Ecosystem Status: $(date) ───────╮' &&
+          echo '│ Testing AirSim API Connection...' &&
+          timeout 3 nc -zv ${AIRSIM_HOST_IP:-airsim-container} ${AIRSIM_HOST_PORT:-41451} 2>&1 | head -1 &&
+          echo '╰─────────────────────────────────────╯' &&
+          sleep 60
+        done
+      "
+    networks:
+      - airsim-ecosystem
+      - px4_network
+      - ros2-multi-node-network
+    environment:
+      # AirSim Connection (configurable via .env file)
+      AIRSIM_HOST_IP: ${AIRSIM_HOST_IP:-airsim-container}
+      AIRSIM_HOST_PORT: ${AIRSIM_HOST_PORT:-41451}
+      
+      # ROS2 Configuration  
+      ROS_DOMAIN_ID: ${ROS_DOMAIN_ID:-0}
+      
+      # Multi-node Architecture
+      LAUNCH_MODE: ${LAUNCH_MODE:-multi}
+      ENABLE_COORDINATION: ${ENABLE_COORDINATION:-true}
+      RPC_TIMEOUT: ${RPC_TIMEOUT:-10.0}
+      DEBUG: ${DEBUG:-false}
+      
+      # PX4 Simulation Configuration
+      PX4_SIM_HOSTNAME: ${PX4_SIM_HOSTNAME:-airsim-container}
+      PX4_SIM_MODEL: ${PX4_SIM_MODEL:-none_iris}
+      PX4_SIMULATOR: none
+      PX4_HOME_LAT: ${PX4_HOME_LAT:-43.06659659989448}
+      PX4_HOME_LON: ${PX4_HOME_LON:--115.59330958}
+      PX4_HOME_ALT: ${PX4_HOME_ALT:-0.0}
+      PX4_SYS_AUTOSTART: ${PX4_SYS_AUTOSTART:-10016}
+      
+      # MAVLink Configuration
+      MAV_0_BROADCAST: 1
+      MAV_1_BROADCAST: 1
+      MAV_2_BROADCAST: 1
+      
+      # Swarm Configuration
+      SWARM_ID: ${SWARM_ID:-1}
+      SWARM_SIZE: ${SWARM_SIZE:-3}
+    depends_on:
+      airsim-container:
+        condition: service_healthy
+      # - px4-bridge-drone-1
+    restart: unless-stopped
+    profiles:
+      - integrated
+      # - linux-integrated
+      - development
+
+  # Development Helper Service
+  dev-helper:
+    image: alpine:latest
+    container_name: airsim-dev-helper
+    command: >
+      sh -c "
+        apk add --no-cache curl jq netcat-openbsd &&
+        echo 'Development Helper Service Started' &&
+        echo 'Available Commands:' &&
+        echo '  - docker exec -it airsim-dev-helper sh' &&
+        echo '  - Network diagnostics and debugging tools' &&
+        echo '  - Configuration validation' &&
+        echo 'Sleeping... (use docker exec to access)' &&
+        while true; do sleep 3600; done
+      "
+    networks:
+      - airsim-ecosystem  
+      - px4_network
+      - ros2-multi-node-network
+    volumes:
+      # Mount compose files for inspection
+      - ./:/docker-configs:ro
+    restart: unless-stopped
+    profiles:
+      - development
+
+  # =================================
+  # MONITORING SERVICES
+  # =================================
+
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: prometheus
+    volumes:
+      - ./monitoring/prometheus-integrated.yml:/etc/prometheus/prometheus.yml
+      - /home/mnsuser/monitoring/prometheus_db:/var/lib/prometheus
+      - ./monitoring/alerts:/etc/prometheus/alerts
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--web.route-prefix=/'
+      - '--storage.tsdb.retention.time=200h'
+      - '--web.enable-lifecycle'
+      - '--storage.tsdb.min-block-duration=2h'  # OPTIMIZED: Reduce write frequency
+      - '--storage.tsdb.max-block-duration=2h'  # OPTIMIZED: Consistent block size
+    restart: unless-stopped
+    ports:
+      - '9090:9090'
+    networks:
+      - airsim-ecosystem
+      - px4_network
+      - ros2-multi-node-network
+    depends_on:
+      airsim-container:
+        condition: service_healthy
+    profiles:
+      - monitoring
+      - integrated
+      - linux-integrated
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: grafana
+    user: "1000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=P@ssw0rd
+      - GF_INSTALL_PLUGINS=grafana-clock-panel,grafana-simple-json-datasource
+    volumes:
+      - /home/mnsuser/monitoring/grafana_db:/var/lib/grafana
+      - ./monitoring/dashboards:/etc/grafana/provisioning/dashboards
+      - ./monitoring/datasources:/etc/grafana/provisioning/datasources
+    depends_on:
+      - prometheus
+    ports:
+      - '3000:3000'
+    networks:
+      - airsim-ecosystem
+    restart: unless-stopped
+    profiles:
+      - monitoring
+      - integrated
+      - linux-integrated
+
+  cadvisor:
+    image: gcr.io/cadvisor/cadvisor:latest
+    container_name: cadvisor
+    privileged: true
+    ports:
+      - '8080:8080'
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /var/lib/docker/:/var/lib/docker:ro
+      - /dev/disk/:/dev/disk:ro
+    networks:
+      - airsim-ecosystem
+    restart: unless-stopped
+    profiles:
+      - monitoring
+      - integrated
+      - linux-integrated
+
+  node-exporter:
+    image: prom/node-exporter:latest
+    container_name: node-exporter
+    ports:
+      - '9100:9100'
+    networks:
+      - airsim-ecosystem
+    restart: unless-stopped
+    profiles:
+      - monitoring
+      - integrated
+      - linux-integrated
+
+  ros2-exporter:
+    build:
+      context: ${PROJECT_ROOT:-.}
+      dockerfile: docker/monitoring/exporters/Dockerfile.exporters
+    image: airsim-metrics-exporters:latest
+    container_name: ros2-metrics-exporter
+    environment:
+      - EXPORTER_TYPE=ros2
+      - ROS_DOMAIN_ID=${ROS_DOMAIN_ID:-0}
+    ports:
+      - '9200:9200'
+    networks:
+      - ros2-multi-node-network
+      - airsim-ecosystem
+    restart: unless-stopped
+    depends_on:
+      - prometheus
+    profiles:
+      - monitoring
+      - integrated
+      - linux-integrated
+
+  airsim-exporter:
+    image: airsim-metrics-exporters:latest
+    container_name: airsim-api-exporter
+    environment:
+      - EXPORTER_TYPE=airsim
+      - AIRSIM_HOST_IP=${AIRSIM_HOST_IP:-airsim-container}
+      - AIRSIM_HOST_PORT=${AIRSIM_HOST_PORT:-41451}
+      - METRICS_PORT=9201
+      - POLL_INTERVAL=1.0
+    ports:
+      - '9201:9201'
+    networks:
+      - airsim-ecosystem
+    restart: unless-stopped
+    depends_on:
+      prometheus:
+        condition: service_started
+      airsim-container:
+        condition: service_healthy
+    profiles:
+      - monitoring
+      - integrated
+      - linux-integrated
+
+  px4-exporter:
+    image: airsim-metrics-exporters:latest
+    container_name: px4-mavlink-exporter
+    environment:
+      - EXPORTER_TYPE=px4
+      - PX4_NUM_DRONES=${PX4_NUM_DRONES:-4}
+      - PX4_BASE_PORT=14550
+      - METRICS_PORT=9202
+    ports:
+      - '9202:9202'
+    networks:
+      - px4_network
+      - airsim-ecosystem
+    restart: unless-stopped
+    depends_on:
+      - prometheus
+    profiles:
+      - monitoring
+      - integrated
+      - linux-integrated
+
+# =================================
+# SHARED VOLUMES
+# =================================  
+volumes:
+  # ROS2 volumes for ecosystem services
+  ros2_multi_node_build:
+    driver: local
+  ros2_multi_node_install:
+    driver: local
+  ros2_multi_node_logs:
+    driver: local
+  vnc_home:
+    driver: local
+
+  # Linux X11 ROS2 volumes (for native X11 forwarding)
+  ros2_x11_build:
+    driver: local
+  ros2_x11_install:
+    driver: local
+  ros2_x11_logs:
+    driver: local
+
+  # PX4 volumes for ecosystem services
+  px4-shared-data:
+    driver: local
+    
+  # =================================
+  # DATABASE VOLUMES
+  # =================================
+
+  # PostgreSQL data volumes for drone statistics
+  # postgres_stats_data:
+  #   driver: local
+  #   driver_opts:
+  #     type: none
+  #     o: bind
+  #     device: ${POSTGRES_DATA_PATH:-./data/postgres_stats_data}
+
+  # postgres_stats_logs:
+  #   driver: local
+  #   driver_opts:
+  #     type: none
+  #     o: bind
+  #     device: ${POSTGRES_LOGS_PATH:-./data/postgres_stats_logs}
+
+  # postgres_stats_backups:
+  #   driver: local
+  #   driver_opts:
+  #     type: none
+  #     o: bind
+  #     device: ${POSTGRES_BACKUPS_PATH:-./data/postgres_stats_backups}
+
+  # # pgAdmin data volume
+  # pgadmin_data:
+  #   driver: local

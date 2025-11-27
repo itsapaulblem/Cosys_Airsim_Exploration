@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=Terminator Session Launcher
+Exec=/usr/local/bin/terminator-session-launcher
+Hidden=false
+NoDisplay=true
+X-GNOME-Autostart-enabled=true
+X-GNOME-Autostart-Delay=5
+StartupNotify=false
+Comment=Session-based Terminator launcher (fallback mechanism)
+Categories=Development;TerminalEmulator;
+OnlyShowIn=XFCE;

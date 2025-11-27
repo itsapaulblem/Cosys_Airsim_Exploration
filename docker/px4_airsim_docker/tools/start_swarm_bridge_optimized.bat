@@ -8,7 +8,7 @@ REM Compatible with Docker Desktop limitations on Windows/WSL2
 REM Configuration
 set "SCRIPT_DIR=%~dp0"
 set "PROJECT_DIR=%SCRIPT_DIR%.."
-set "COMPOSE_FILE=%PROJECT_DIR%\docker-compose-slim.yml"
+set "COMPOSE_FILE=%PROJECT_DIR%\docker-compose-px4.yml"
 
 REM Default PX4 simulation hostname (can be overridden)
 set "DEFAULT_PX4_SIM_HOSTNAME=172.28.240.1"
@@ -366,9 +366,9 @@ if "%ENVIRONMENT_CACHE%"=="wsl2" (
 )
 
 if exist "%COMPOSE_FILE%" (
-    call :log "Compose file: %COMPOSE_FILE% (slim configuration)"
+    call :log "Compose file: %COMPOSE_FILE% (px4 configuration)"
     call :log "Network: Custom bridge network (172.20.0.0/16)"
-    call :log "Image: px4-airsim:slim (optimized multi-stage build)"
+    call :log "Image: px4-airsim:px4 (optimized multi-stage build)"
     call :log "Scripts: Ultra-swarm configuration with GPS"
     call :log "PX4_SIM_HOSTNAME: %PX4_SIM_HOST%"
 ) else (
@@ -429,7 +429,7 @@ echo   show-config          Show bridge network configuration
 echo   help                 Show this help
 echo.
 echo Configuration:
-echo   • Uses docker-compose-slim.yml with optimized images
+echo   • Uses docker-compose-px4.yml with optimized images
 echo   • Bridge network: px4_network (172.20.0.0/16)
 echo   • Port mapping: localhost:4561-4569 → containers
 echo   • Ultra-swarm scripts with GPS configuration

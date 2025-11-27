@@ -1,0 +1,7 @@
+CONTAINER ID   NAME               CPU %     MEM USAGE / LIMIT     MEM %     NET I/O         BLOCK I/O        PIDS
+5195ff266425   px4-drone-3        0.00%     852KiB / 62.25GiB     0.00%     8.71kB / 252B   0B / 0B          2
+fa978782944d   px4-drone-2        0.00%     844KiB / 62.25GiB     0.00%     8.59kB / 252B   0B / 0B          2
+e12a253dfcf3   px4-drone-1        0.00%     848KiB / 62.25GiB     0.00%     8.88kB / 252B   0B / 0B          2
+e7a43ef54094   airsim-monitor     0.00%     22.39MiB / 62.25GiB   0.04%     9.19MB / 20kB   0B / 0B          2
+7f907204efc0   ros2-node          0.07%     189.6MiB / 62.25GiB   0.30%     19.8kB / 252B   4.1kB / 24.6kB   94
+ed03ff09a381   airsim-container   794.60%   2.46GiB / 15GiB       16.40%    29.1kB / 668B   0B / 193kB       108

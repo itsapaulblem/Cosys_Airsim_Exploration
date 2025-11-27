@@ -9,7 +9,11 @@ def generate_launch_description():
         DeclareLaunchArgument('host_ip', default_value='localhost'),
         DeclareLaunchArgument('host_port', default_value='41451'),
 
+<<<<<<< HEAD
         # Drone 1
+=======
+        # Drone 1 with enhanced parallel processing
+>>>>>>> main
         GroupAction([
             PushRosNamespace('drone1'),
             Node(
@@ -23,9 +27,17 @@ def generate_launch_description():
                     'host_port': LaunchConfiguration('host_port'),
                     'world_frame_id': 'world_ned',
                     'odom_frame_id': 'drone1_odom_local_ned',
+<<<<<<< HEAD
                     'state_timer_freq': 0.01,
                     'image_timer_freq': 0.05,
                     'lidar_timer_freq': 0.01,
+=======
+                    # Enhanced parallel processing frequencies
+                    'state_timer_freq': 0.02,   # 50Hz for responsive control
+                    'image_timer_freq': 0.033,  # 30Hz for smooth video
+                    'lidar_timer_freq': 0.05,   # 20Hz for lidar data
+                    'echo_timer_freq': 0.1,     # 10Hz for other sensors
+>>>>>>> main
                 }],
                 arguments=['Drone1']
             )

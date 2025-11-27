@@ -3,7 +3,7 @@
 # Configures PX4 to directly send MAVLink messages to external IPs
 # This bypasses the need for mavlink-router in simple scenarios
 
-echo "🚀 Starting PX4 MAVLink with Direct External Connectivity"
+echo "Starting PX4 MAVLink with Direct External Connectivity"
 
 # Configuration from environment variables with sensible defaults
 MAVLINK_TARGET=${MAVLINK_TARGET:-192.168.65.254}
@@ -173,4 +173,4 @@ if [ "$DEBUG_MAVLINK" = "true" ]; then
     echo ""
 fi
 
-echo "🚀 PX4 MAVLink Direct Configuration Complete!"
+echo "PX4 MAVLink Direct Configuration Complete!"

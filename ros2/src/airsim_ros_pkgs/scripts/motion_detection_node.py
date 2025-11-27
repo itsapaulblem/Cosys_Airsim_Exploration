@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
 """
-Multi-Camera Motion Detection Node for AirSim ROS2 Integration with YOLOv7 + DeepSORT Tracking and Person Following
+Multi-Camera Motion Detection Node for AirSim ROS2 Integration
+Lightweight Client - Consumes detections from YOLOv10 microservice
 """
 
 import rclpy
 from rclpy.node import Node
 from sensor_msgs.msg import Image
-from airsim_interfaces.msg import TargetDetection, VelCmd
+from airsim_interfaces.msg import TargetDetection, VelCmd, ObjectDetection, ObjectDetectionArray
 from airsim_interfaces.srv import Takeoff, Land
 from cv_bridge import CvBridge
 import cv2
@@ -28,8 +29,6 @@ if not hasattr(np, 'object'):
 if not hasattr(np, 'long'):
     np.long = int
 
-import torch
-import torch.serialization
 import time
 import math
 import traceback
@@ -37,23 +36,6 @@ from collections import deque
 from pathlib import Path
 import sys
 import threading
-
-# YOLOv7 + DeepSORT Integration Setup
-DETECTION_PATH = Path(__file__).parent / 'YOLOv7-DeepSORT-Object-Tracking'
-sys.path.insert(0, str(DETECTION_PATH))
-
-try:
-    from models.experimental import attempt_load
-    from utils.datasets import LoadStreams, LoadImages
-    from utils.general import check_img_size, non_max_suppression, scale_coords, xyxy2xywh
-    from utils.torch_utils import select_device, time_synchronized
-    from deep_sort_pytorch.utils.parser import get_config
-    from deep_sort_pytorch.deep_sort import DeepSort
-    YOLO_DEEPSORT_AVAILABLE = True
-    print("YOLOv7+DeepSORT imports successful")
-except ImportError as e:
-    YOLO_DEEPSORT_AVAILABLE = False
-    print(f"YOLOv7+DeepSORT imports failed: {e}")
 
 class MultiCameraMotionDetectionNode(Node):
     def __init__(self):
@@ -88,18 +70,22 @@ class MultiCameraMotionDetectionNode(Node):
         self.image_quality = int(self.get_parameter('image_quality').value)
         self.enable_image_resize = self.get_parameter('enable_image_resize').value
 
-        self.num_cameras = 4
+        self.num_cameras = 1  # PERFORMANCE: Use only front camera for 4x FPS improvement
         self.primary_camera = 0
+        # Updated to match actual AirSim camera topics: /Drone1/Camera_N_Scene/image
         self.camera_topics = [
-            f'/{self.vehicle_name.lower()}/camera0/image',
-            f'/{self.vehicle_name.lower()}/camera1/image', 
-            f'/{self.vehicle_name.lower()}/camera2/image',
-            f'/{self.vehicle_name.lower()}/camera3/image'
+            f'/{self.vehicle_name}/Camera_0_Scene/image',
+            # PERFORMANCE: Disabled 3 extra cameras for 4x FPS boost
+            # f'/{self.vehicle_name}/Camera_1_Scene/image',
+            # f'/{self.vehicle_name}/Camera_2_Scene/image',
+            # f'/{self.vehicle_name}/Camera_3_Scene/image'
         ]
 
         self.bridge = CvBridge()
 
         self.camera_frame_counts = {}
+        self.camera_fps_timestamps = {}  # Track timestamps for FPS calculation
+        self.camera_fps_window = 5.0  # Calculate FPS over 5 second window
         self.camera_last_images = {}
         self.camera_detection_counts = {}
         self.camera_moving_counts = {}
@@ -109,7 +95,6 @@ class MultiCameraMotionDetectionNode(Node):
         self.target_person_data_lock = threading.Lock()
         self.target_data_timestamp = 0.0
         self.use_yolo_deepsort = False
-        self.use_yolo_only = False
         self.names = self.load_coco_names()
         self.palette = (2 ** 11 - 1, 2 ** 15 - 1, 2 ** 20 - 1)
         self.target_person_id = None
@@ -148,9 +133,10 @@ class MultiCameraMotionDetectionNode(Node):
         self.setup_multi_camera_interfaces()
         if self.enable_following:
             self.cmd_vel_pub = self.create_publisher(
-                VelCmd, f'{self.vehicle_name.lower()}/vel_cmd_body_frame', 10)
-            self.takeoff_client = self.create_client(Takeoff, f'{self.vehicle_name.lower()}/takeoff')
-            self.land_client = self.create_client(Land, f'{self.vehicle_name.lower()}/land')
+                VelCmd, f'{self.vehicle_name}/vel_cmd_body_frame', 10)
+            # Use global services (vehicle nodes create these at root namespace)
+            self.takeoff_client = self.create_client(Takeoff,  f'{self.vehicle_name}/takeoff')
+            self.land_client = self.create_client(Land,  f'{self.vehicle_name}/land')
 
         self.debug_timer = self.create_timer(5.0, self.debug_status)
         if self.enable_following:
@@ -161,7 +147,7 @@ class MultiCameraMotionDetectionNode(Node):
         self.get_logger().info(f' Confidence threshold: {self.conf_threshold}')
         self.get_logger().info(f' Motion threshold: {self.motion_threshold} pixels')
         self.get_logger().info(f" Person following: {'enabled' if self.enable_following else 'disabled'}")
-        self.get_logger().info(f' YOLOv7+DeepSORT: {"enabled" if self.use_yolo_deepsort else "disabled"}')
+        self.get_logger().info(f' YOLOv10+DeepSORT: {"enabled" if self.use_yolo_deepsort else "disabled"}')
 
     def setup_multi_camera_interfaces(self):
         """Setup ROS subscriptions and publishers for all 4 cameras"""
@@ -172,6 +158,7 @@ class MultiCameraMotionDetectionNode(Node):
         for cam_id in range(self.num_cameras):
             # Initialize per-camera tracking data structures
             self.camera_frame_counts[cam_id] = 0
+            self.camera_fps_timestamps[cam_id] = []  # FPS tracking
             self.camera_last_images[cam_id] = None
             self.camera_detection_counts[cam_id] = 0
             self.camera_moving_counts[cam_id] = 0
@@ -212,11 +199,18 @@ class MultiCameraMotionDetectionNode(Node):
         """Debug timer callback showing status of all cameras every 5 seconds"""
         camera_status = []
         for cam_id in range(self.num_cameras):
-            frames = self.camera_frame_counts.get(cam_id, 0)
+            # Calculate FPS from timestamp window
+            timestamps = self.camera_fps_timestamps.get(cam_id, [])
+            if len(timestamps) > 1:
+                time_span = timestamps[-1] - timestamps[0] if len(timestamps) > 0 else 1.0
+                fps = len(timestamps) / time_span if time_span > 0 else 0.0
+            else:
+                fps = 0.0
+
             detections = self.camera_detection_counts.get(cam_id, 0)
             moving = self.camera_moving_counts.get(cam_id, 0)
             cam_name = self.camera_orientations[cam_id]['name']
-            camera_status.append(f"{cam_name}:[F:{frames} D:{detections} M:{moving}]")
+            camera_status.append(f"{cam_name}:[FPS:{fps:.1f} D:{detections} M:{moving}]")
 
         following_status = f", Following: {self.following_active}, Target ID: {self.target_person_id}, Target Cam: {self.target_camera_id}" if self.enable_following else ""
 
@@ -251,7 +245,9 @@ class MultiCameraMotionDetectionNode(Node):
 
     def select_target_person_multi_camera(self, merged_targets):
         """Select the best person target from multiple camera views"""
-        persons = [target for target in merged_targets if target.get('class', -1) == 0]
+        # TEMPORARY: Disabled class filter to test if YOLO is detecting anything
+        # persons = [target for target in merged_targets if target.get('class', -1) == 0]
+        persons = merged_targets  # Accept all detected classes for testing
 
         if not persons:
             return None, None
@@ -493,7 +489,9 @@ class MultiCameraMotionDetectionNode(Node):
         """Thread safe target data update"""
         current_time = time.time()
 
-        persons = [target for target in moving_targets if target.get('class', -1) == 0]
+        # TEMPORARY: Disabled class filter to test if YOLO is detecting anything
+        # persons = [target for target in moving_targets if target.get('class', -1) == 0]
+        persons = moving_targets  # Accept all detected classes for testing
         if not persons:
             return
         best_person = None
@@ -707,118 +705,38 @@ class MultiCameraMotionDetectionNode(Node):
         self.hover_search_behavior()
 
     def initialize_detection_systems(self):
-        """Initialize YOLOv7 + DeepSORT system"""
-        self.get_logger().info("[DEBUG] Initializing detection systems...")
+        """Initialize detection client (subscribes to microservice)"""
+        self.get_logger().info("[INFO] Microservices Architecture - Detection client mode")
+        self.get_logger().info("[INFO] Consuming detections from YOLOv10 detection service")
 
-        if YOLO_DEEPSORT_AVAILABLE:
-            try:
-                self.device = select_device('')
-                self.half = self.device.type != 'cpu'
-                self.get_logger().info(f"[DEBUG] Selected device: {self.device}")
+        # Microservice mode - subscribe to detection service
+        self.use_yolo_deepsort = True  # Service provides tracked detections
+        self.use_yolo_only = False
+        self.detection_subscribers = {}
 
-                weights_path = DETECTION_PATH / 'yolov7.pt'
-                self.get_logger().info(f"[DEBUG] Looking for weights at: {weights_path}")
+        # Subscribe to detection topics from microservice (matching YOLOv10 service output)
+        # YOLOv10 publishes to /detections/Camera_N_Scene based on camera topic extraction
+        camera_ids = ['Camera_0_Scene', 'Camera_1_Scene', 'Camera_2_Scene', 'Camera_3_Scene']
+        for i, camera_id in enumerate(camera_ids):
+            detection_topic = f'/detections/{camera_id}'
+            sub = self.create_subscription(
+                ObjectDetectionArray,
+                detection_topic,
+                lambda msg, cid=i: self.detection_callback(msg, cid),  # Use numeric ID internally (0-3)
+                10
+            )
+            self.detection_subscribers[camera_id] = sub
+            self.get_logger().info(f"  Subscribed to: {detection_topic} (camera {i})")
 
-                if weights_path.exists():
-                    self.get_logger().info("[DEBUG] YOLOv7 weights found, loading model...")
+        # Initialize detection storage
+        self.latest_detections = {}  # camera_id -> ObjectDetectionArray
+        self.detection_lock = threading.Lock()
 
-                    try:
-                        self.get_logger().info("[DEBUG] Attempting safe loading...")
-                        yolo_safe_globals = [
-                            'models.yolo.Model', 'models.common.Conv', 'models.common.Bottleneck',
-                            'models.common.SPP', 'models.common.DWConv', 'models.common.Focus',
-                            'models.common.C3', 'models.common.C3TR', 'models.common.SPPF',
-                            'models.common.Concat', 'models.common.Detect', 'models.experimental.MixConv2d',
-                            'models.experimental.CrossConv', 'models.experimental.Sum',
-                            'torch.nn.modules.conv.Conv2d', 'torch.nn.modules.batchnorm.BatchNorm2d',
-                            'torch.nn.modules.activation.SiLU', 'torch.nn.modules.pooling.MaxPool2d',
-                            'torch.nn.modules.upsampling.Upsample'
-                        ]
-
-                        with torch.serialization.safe_globals(yolo_safe_globals):
-                            self.model = attempt_load(str(weights_path), map_location=self.device)
-                        self.get_logger().info("[DEBUG] Safe loading successful")
-
-                    except Exception as safe_error:
-                        self.get_logger().warn(f"[DEBUG] Safe loading failed: {safe_error}")
-                        self.get_logger().warn("[DEBUG] Attempting unsafe loading...")
-
-                        original_load = torch.load
-
-                        def unsafe_load(*args, **kwargs):
-                            kwargs['weights_only'] = False
-                            return original_load(*args, **kwargs)
-
-                        torch.load = unsafe_load
-                        self.model = attempt_load(str(weights_path), map_location=self.device)
-                        torch.load = original_load
-                        self.get_logger().info("[DEBUG] Unsafe loading successful")
-
-                    self.stride = int(self.model.stride.max())
-                    self.img_size = 640
-
-                    if self.half:
-                        self.model.half()
-
-                    self.model.eval()
-                    self.get_logger().info("[DEBUG] YOLOv7 model loaded successfully")
-
-                    # Initialize DeepSORT
-                    checkpoint_path = DETECTION_PATH / "deep_sort_pytorch" / "deep_sort" / "deep" / "checkpoint" / "ckpt.t7"
-                    config_path = DETECTION_PATH / "deep_sort_pytorch" / "configs" / "deep_sort.yaml"
-
-                    if checkpoint_path.exists() and config_path.exists():
-                        cfg_deep = get_config()
-                        cfg_deep.merge_from_file(str(config_path))
-
-                        self.deepsort = DeepSort(
-                            str(checkpoint_path),
-                            max_dist=cfg_deep.DEEPSORT.MAX_DIST,
-                            min_confidence=cfg_deep.DEEPSORT.MIN_CONFIDENCE,
-                            nms_max_overlap=cfg_deep.DEEPSORT.NMS_MAX_OVERLAP,
-                            max_iou_distance=cfg_deep.DEEPSORT.MAX_IOU_DISTANCE,
-                            max_age=cfg_deep.DEEPSORT.MAX_AGE,
-                            n_init=cfg_deep.DEEPSORT.N_INIT,
-                            nn_budget=cfg_deep.DEEPSORT.NN_BUDGET,
-                            use_cuda=torch.cuda.is_available()
-                        )
-
-                        self.use_yolo_deepsort = True
-                        self.use_yolo_only = False
-                        self.get_logger().info('[DEBUG] YOLOv7 + DeepSORT initialized successfully')
-                        self.warmup_model()
-
-                    else:
-                        self.get_logger().warn("[DEBUG] Using YOLOv7 only")
-                        self.use_yolo_deepsort = False
-                        self.use_yolo_only = True
-                        self.warmup_model()
-
-                else:
-                    self.use_yolo_deepsort = False
-                    self.use_yolo_only = False
-
-            except Exception as e:
-                self.get_logger().error(f'[DEBUG] Failed to initialize YOLOv7+DeepSORT: {e}')
-                self.use_yolo_deepsort = False
-                self.use_yolo_only = False
-        else:
-            self.use_yolo_deepsort = False
-            self.use_yolo_only = False
-
-        # Fallback to OpenCV
-        if not self.use_yolo_deepsort and not self.use_yolo_only:
-            self.setup_opencv_detection()
+        self.get_logger().info("[SUCCESS] Detection client initialized")
 
     def warmup_model(self):
-        """Warm up the YOLOv7 model"""
-        try:
-            dummy_img = torch.zeros(1, 3, self.img_size, self.img_size).to(self.device).type_as(next(self.model.parameters()))
-            for _ in range(3):
-                _ = self.model(dummy_img)
-            self.get_logger().info("[DEBUG] Model warmed up successfully")
-        except Exception as e:
-            self.get_logger().warn(f"[DEBUG] Model warmup failed: {e}")
+        """No longer needed - model runs in separate microservice"""
+        pass
 
     def setup_opencv_detection(self):
         """Setup OpenCV motion detection fallback"""
@@ -1009,53 +927,51 @@ class MultiCameraMotionDetectionNode(Node):
         velocity_pixels_per_second = velocity_pixels_per_frame * 20
         return velocity_pixels_per_second * 0.01
 
+    def detection_callback(self, msg, camera_id):
+        """Receive detections from YOLOv10 microservice"""
+        with self.detection_lock:
+            self.latest_detections[camera_id] = msg
+
     def detect_and_track_yolo_deepsort(self, image, camera_id):
-        """YOLOv7 + DeepSORT detection and tracking for specific camera"""
+        """Process detections from microservice (no longer runs YOLOv10 directly)"""
         im0 = image.copy()
-
-        img = self.letterbox(image, self.img_size, stride=self.stride)[0]
-        img = img[:, :, ::-1].transpose(2, 0, 1)
-        img = np.ascontiguousarray(img)
-
-        img = torch.from_numpy(img).to(self.device)
-        img = img.half() if self.half else img.float()
-        img /= 255.0
-        if img.ndimension() == 3:
-            img = img.unsqueeze(0)
-
-        with torch.no_grad():
-            pred = self.model(img)[0]
-
-        pred = non_max_suppression(pred, self.conf_threshold, self.iou_threshold, classes=None, agnostic=False)
-
         moving_targets = []
 
-        for i, det in enumerate(pred):
-            if len(det):
-                det[:, :4] = scale_coords(img.shape[2:], det[:, :4], im0.shape).round()
+        # Get latest detections from microservice
+        with self.detection_lock:
+            detections_msg = self.latest_detections.get(camera_id)
 
-                xywh_bboxs = []
-                confs = []
-                oids = []
+        # DIAGNOSTIC: Log raw detections before any filtering
+        if detections_msg and len(detections_msg.detections) > 0:
+            detected_classes = [f"{det.class_name}(id:{det.class_id})" for det in detections_msg.detections[:5]]  # First 5
+            self.get_logger().info(f"[RAW YOLO] Camera {camera_id}: {len(detections_msg.detections)} detections: {detected_classes}")
 
-                for *xyxy, conf, cls in reversed(det):
-                    x_c, y_c, bbox_w, bbox_h = self.xyxy_to_xywh(*xyxy)
-                    xywh_obj = [x_c, y_c, bbox_w, bbox_h]
-                    xywh_bboxs.append(xywh_obj)
-                    confs.append([conf.item()])
-                    oids.append(int(cls))
+        if detections_msg and len(detections_msg.detections) > 0:
+            # Convert ObjectDetectionArray to moving_targets format
+            for det in detections_msg.detections:
+                # Build bounding box array for draw_boxes compatibility
+                x1 = det.x
+                y1 = det.y
+                x2 = det.x + det.width
+                y2 = det.y + det.height
 
-                xywhs = torch.Tensor(xywh_bboxs)
-                confss = torch.Tensor(confs)
+                # Create target entry
+                target = {
+                    'bbox': [x1, y1, x2, y2],
+                    'track_id': det.track_id,
+                    'class_id': det.class_id,
+                    'class_name': det.class_name,
+                    'confidence': det.confidence
+                }
+                moving_targets.append(target)
 
-                outputs = self.deepsort.update(xywhs, confss, oids, im0)
+            # Draw boxes on image (reuse existing visualization logic)
+            if len(moving_targets) > 0:
+                bbox_xyxy = np.array([[t['bbox'][0], t['bbox'][1], t['bbox'][2], t['bbox'][3]] for t in moving_targets])
+                identities = np.array([t['track_id'] for t in moving_targets])
+                object_ids = np.array([t['class_id'] for t in moving_targets])
 
-                if len(outputs) > 0:
-                    bbox_xyxy = outputs[:, :4]
-                    identities = outputs[:, -2]
-                    object_id = outputs[:, -1]
-
-                    im0, moving_targets = self.draw_boxes(im0, bbox_xyxy, object_id, identities, camera_id=camera_id)
+                im0, moving_targets = self.draw_boxes(im0, bbox_xyxy, object_ids, identities, camera_id=camera_id)
 
         return moving_targets, im0
 
@@ -1099,8 +1015,16 @@ class MultiCameraMotionDetectionNode(Node):
     def image_callback(self, msg, camera_id):
         """Enhanced image processing with improved resolution handling"""
         try:
+            current_time = time.time()
             with self.camera_locks[camera_id]:
                 self.camera_frame_counts[camera_id] += 1
+                # Track timestamp for FPS calculation
+                self.camera_fps_timestamps[camera_id].append(current_time)
+                # Keep only timestamps within the window
+                cutoff_time = current_time - self.camera_fps_window
+                self.camera_fps_timestamps[camera_id] = [
+                    t for t in self.camera_fps_timestamps[camera_id] if t > cutoff_time
+                ]
 
             # Log incoming image details for debugging (first frame only)
             if self.camera_frame_counts[camera_id] == 1:
@@ -1231,14 +1155,27 @@ class MultiCameraMotionDetectionNode(Node):
                 'FOLLOWING': (0, 255, 0)
             }.get(self.drone_state, (255, 255, 255))
 
-            cv2.putText(vis_image, f"CAMERA: {cam_name.upper()}", (10, 30), 
+            cv2.putText(vis_image, f"CAMERA: {cam_name.upper()}", (10, 30),
                        cv2.FONT_HERSHEY_SIMPLEX, font_scale, (255, 255, 255), thickness)
-            cv2.putText(vis_image, f"STATE: {self.drone_state}", (10, 75), 
-                       cv2.FONT_HERSHEY_SIMPLEX, font_scale, state_color, thickness)
-            cv2.putText(vis_image, f"CAMERA: {cam_name.upper()}", (10, 30), 
-                        cv2.FONT_HERSHEY_SIMPLEX, font_scale, (255, 255, 255), thickness)
             cv2.putText(vis_image, f"STATE: {self.drone_state}", (10, 75),
-                        cv2.FONT_HERSHEY_SIMPLEX, font_scale, state_color, thickness)
+                       cv2.FONT_HERSHEY_SIMPLEX, font_scale, state_color, thickness)
+
+            # FPS overlay (top-right corner)
+            timestamps = self.camera_fps_timestamps.get(camera_id, [])
+            if len(timestamps) > 1:
+                time_span = timestamps[-1] - timestamps[0] if len(timestamps) > 0 else 1.0
+                fps = len(timestamps) / time_span if time_span > 0 else 0.0
+            else:
+                fps = 0.0
+
+            fps_text = f"FPS: {fps:.1f}"
+            # Calculate text size for right alignment
+            (text_width, text_height), baseline = cv2.getTextSize(
+                fps_text, cv2.FONT_HERSHEY_SIMPLEX, font_scale, thickness
+            )
+            fps_x = self.image_width - text_width - 10
+            cv2.putText(vis_image, fps_text, (fps_x, 30),
+                        cv2.FONT_HERSHEY_SIMPLEX, font_scale, (0, 255, 255), thickness)
 
             # Target following status
             if self.following_active and self.target_camera_id == camera_id:

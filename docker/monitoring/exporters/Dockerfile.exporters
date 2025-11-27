@@ -1,0 +1,78 @@
+# Multi-stage Dockerfile for AirSim Metrics Exporters
+# Builds 3 exporters: ROS2, AirSim API, PX4 MAVLink
+
+FROM ros:humble-ros-base-jammy
+
+# Install only pip (ROS2 packages already in base image as ros-humble-*)
+RUN apt-get update && apt-get install -y \
+    python3-pip \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Python packages (including AirSim client dependencies)
+RUN pip3 install --no-cache-dir \
+    msgpack-rpc-python==0.4.1 \
+    numpy \
+    opencv-contrib-python \
+    prometheus-client==0.18.0 \
+    psutil==5.9.5 \
+    pymavlink==2.4.40
+
+# Copy Cosys-AirSim Python client directly (avoid setup.py circular import issue)
+COPY PythonClient/cosysairsim /usr/local/lib/python3.10/dist-packages/cosysairsim
+
+# Create working directory
+WORKDIR /app
+
+# Copy exporter scripts (from docker/monitoring/exporters/ relative to build context)
+COPY docker/monitoring/exporters/ros2_metrics_exporter.py /app/
+COPY docker/monitoring/exporters/airsim_metrics_exporter.py /app/
+COPY docker/monitoring/exporters/px4_mavlink_exporter.py /app/
+
+# Make scripts executable
+RUN chmod +x /app/*.py
+
+# Create entrypoint script with proper ROS2 environment sourcing
+RUN echo '#!/bin/bash\n\
+set -e\n\
+\n\
+# Source ROS2 environment (required for ROS2 exporter)\n\
+source /opt/ros/humble/setup.bash\n\
+\n\
+echo "=== Metrics Exporter Starting ==="\n\
+echo "EXPORTER_TYPE: ${EXPORTER_TYPE}"\n\
+echo "ROS_DOMAIN_ID: ${ROS_DOMAIN_ID:-0}"\n\
+\n\
+# Determine which exporter to run based on EXPORTER_TYPE env var\n\
+case "${EXPORTER_TYPE}" in\n\
+  "ros2")\n\
+    echo "Starting ROS2 Metrics Exporter on port 9200..."\n\
+    exec python3 /app/ros2_metrics_exporter.py\n\
+    ;;\n\
+  "airsim")\n\
+    echo "Starting AirSim API Metrics Exporter on port 9201..."\n\
+    echo "  Connecting to: ${AIRSIM_HOST_IP}:${AIRSIM_HOST_PORT}"\n\
+    exec python3 /app/airsim_metrics_exporter.py\n\
+    ;;\n\
+  "px4")\n\
+    echo "Starting PX4 MAVLink Metrics Exporter on port 9202..."\n\
+    echo "  Monitoring ${PX4_NUM_DRONES} drones starting at port ${PX4_BASE_PORT}"\n\
+    exec python3 /app/px4_mavlink_exporter.py\n\
+    ;;\n\
+  *)\n\
+    echo "ERROR: EXPORTER_TYPE must be set to: ros2, airsim, or px4"\n\
+    echo "Current value: ${EXPORTER_TYPE}"\n\
+    exit 1\n\
+    ;;\n\
+esac' > /app/entrypoint.sh && chmod +x /app/entrypoint.sh
+
+# Default environment variables
+ENV ROS_DOMAIN_ID=0
+ENV AIRSIM_HOST_IP=airsim-container
+ENV AIRSIM_HOST_PORT=41451
+ENV PX4_NUM_DRONES=4
+ENV PX4_BASE_PORT=14550
+
+# Expose metrics ports
+EXPOSE 9200 9201 9202
+
+ENTRYPOINT ["/app/entrypoint.sh"]

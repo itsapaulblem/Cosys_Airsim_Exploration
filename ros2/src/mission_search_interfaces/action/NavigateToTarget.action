@@ -1,0 +1,98 @@
+# Navigate to Target Action - Move vehicle to investigate a target
+# Action server available on vehicle nodes: /VehicleName/actions/navigate_to_target
+
+# Goal
+geometry_msgs/Point target_location    # Target position to navigate to
+string target_id                       # Unique identifier for the target
+float32 approach_altitude              # Altitude to maintain when approaching target
+float32 standoff_distance              # Distance to maintain from target (meters)
+
+# Navigation parameters
+float32 navigation_speed               # Speed to use during navigation (m/s)
+string approach_pattern               # "direct", "spiral", "orbit", "hover_above"
+float32 orbit_radius                  # Radius for orbit pattern (meters)
+bool maintain_visual_contact          # Keep target in camera view during approach
+
+# Investigation parameters
+builtin_interfaces/Duration investigation_time  # Time to spend investigating target
+bool capture_detailed_images          # Take high-resolution images of target
+bool capture_video                    # Record video of target
+string[] required_camera_angles       # Specific angles to capture: ["front", "side", "top"]
+
+# Safety parameters
+float32 minimum_safe_altitude         # Never go below this altitude
+geometry_msgs/Polygon[] no_fly_zones  # Areas to avoid during navigation
+float32 abort_on_wind_speed          # Abort if wind exceeds this speed (m/s)
+bool return_on_target_lost           # Return home if target is lost
+
+---
+# Result
+bool success                         # Navigation and investigation completed successfully
+string completion_reason             # "completed", "target_lost", "aborted", "weather"
+
+# Navigation results
+bool target_reached                  # Successfully reached target location
+float32 final_distance_to_target     # Final distance from target (meters)
+geometry_msgs/Point final_position   # Final vehicle position
+builtin_interfaces/Duration navigation_time  # Time spent navigating to target
+
+# Investigation results
+bool investigation_completed         # Investigation phase completed
+uint32 images_captured              # Number of images captured of target
+string[] image_file_paths           # Paths to captured image files
+uint32 video_duration_seconds       # Duration of video captured (if any)
+string video_file_path              # Path to captured video file
+
+# Target analysis
+bool target_confirmed               # Target confirmed as valid detection
+string target_classification        # Updated target classification
+float32 target_confidence_score     # Updated confidence in target (0.0-1.0)
+string target_description           # Detailed description of target
+geometry_msgs/Point refined_target_location  # More accurate target location
+
+# Navigation performance
+float32 total_distance_traveled     # Total distance traveled to reach target
+float32 average_navigation_speed    # Average speed during navigation
+float32 navigation_efficiency       # Direct distance / actual distance traveled
+
+# Issues and challenges
+string[] navigation_warnings        # Issues encountered during navigation
+string[] investigation_warnings     # Issues during investigation phase
+bool weather_impacted_mission      # Weather affected the mission
+bool manual_override_used          # Operator had to intervene
+
+---
+# Feedback
+float32 progress_percentage         # Overall progress to target (0.0-100.0)
+geometry_msgs/Point current_position # Current vehicle position
+float32 current_altitude           # Current altitude
+float32 current_speed              # Current speed
+
+# Navigation status
+float32 distance_to_target         # Current distance to target (meters)
+float32 bearing_to_target          # Bearing to target (degrees)
+builtin_interfaces/Duration estimated_arrival_time  # ETA to target
+
+# Current phase
+string current_phase               # "navigating", "approaching", "investigating", "returning"
+string phase_description           # Detailed description of current activity
+
+# Target tracking
+bool target_in_visual_range        # Target visible to cameras
+bool target_position_updated       # Target position has been refined
+geometry_msgs/Point current_target_estimate  # Current best estimate of target location
+
+# Investigation progress (when in investigation phase)
+uint32 images_captured_so_far      # Images captured during investigation
+float32 investigation_completeness  # Investigation progress (0.0-1.0)
+string[] completed_camera_angles   # Camera angles already captured
+
+# Resource monitoring  
+float32 battery_percentage_remaining  # Current battery level
+builtin_interfaces/Duration estimated_return_time  # Time needed to return home
+bool fuel_sufficient_for_mission    # Enough fuel/battery to complete mission
+
+# Status updates
+string status_message              # Human-readable status update
+bool target_lost_warning           # Target is no longer detectable
+bool weather_degrading_warning     # Weather conditions worsening

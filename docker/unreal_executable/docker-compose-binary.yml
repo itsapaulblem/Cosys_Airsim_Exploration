@@ -1,0 +1,57 @@
+services:
+  airsim-container:
+    image: ${DOCKER_IMAGE_NAME}
+    user: "${UID}:${GID}"
+    deploy:
+      resources:
+        limits:
+          cpus: "20.0"
+          memory: 40G
+        reservations:
+          cpus: "16.0"
+          memory: 25G
+          devices:
+            - driver: nvidia
+              capabilities: [gpu]
+              count: all
+    cpu_shares: 4096
+    shm_size: 16gb
+    oom_score_adj: -500
+    environment:
+      - DISPLAY=${DISPLAY}
+      - SDL_VIDEODRIVER=${SDL_VIDEODRIVER:-x11}
+        #- VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/nvidia_icd.json
+    volumes:
+      - /tmp/.X11-unix:/tmp/.X11-unix
+      - ${UNREAL_BINARY_PATH}:${UNREAL_BINARY_PATH} #mount the project
+        #- /usr/share/vulkan/icd.d:/usr/share/vulkan/icd.d:ro
+      #- ./settings.json:${UNREAL_BINARY_PATH}/settings.json
+    # devices config only works in linux. wont not work in windows
+    devices:
+      - /dev/nvidia0:/dev/nvidia0
+      - /dev/nvidiactl:/dev/nvidiactl
+      - /dev/nvidia-modeset:/dev/nvidia-modeset
+
+    command: /bin/bash -c "${UNREAL_BINARY_SHELL_ABSPATH} ${UNREAL_ARG1} ${UNREAL_ARG2} ${UNREAL_ARG3}"
+    stdin_open: true #equivalent to -i
+    tty: true # equivalent to -t
+    working_dir: ${UNREAL_BINARY_PATH}
+
+    ports:
+      - "41451:41451"
+
+    networks:
+      - airsim-ecosystem
+      - px4_network
+      - ros2-multi-node-network
+
+    healthcheck:
+      test: ["CMD-SHELL", "timeout 3 bash -c 'echo > /dev/tcp/localhost/41451' 2>/dev/null || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 90s
+
+    profiles:
+      - integrated
+      - development

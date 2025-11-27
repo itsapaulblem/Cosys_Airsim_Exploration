@@ -1,4 +1,6 @@
 bool wait_on_last_task
+float32 target_altitude  # Optional target altitude in meters (0.0 = use default takeoff altitude)
 ---
 bool success
 string message
+float32 final_altitude   # Actual altitude achieved after takeoff

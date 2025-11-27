@@ -509,35 +509,16 @@ void WorldSimApi::enableWeather(bool enable)
 
 void WorldSimApi::setWeatherParameter(WeatherParameter param, float val)
 {
-    // Propagate to all vehicles' environments
-    if (simmode_) {
-        auto* api_provider = simmode_->getApiProvider();
-        if (api_provider) {
-            auto vehicle_apis = api_provider->getVehicleSimApis();
-            for (auto& pair : vehicle_apis) {
-                auto* vehicle_sim_api = pair.second;
-                if (vehicle_sim_api) {
-                    auto* physics_body = vehicle_sim_api->getPhysicsBody();
-                    if (physics_body && physics_body->hasEnvironment()) {
-                        auto& env = physics_body->getEnvironment();
-                        switch (param) {
-                            case msr::airlib::WorldSimApiBase::WeatherParameter::Rain:
-                                env.setRainIntensity(val); break;
-                            case msr::airlib::WorldSimApiBase::WeatherParameter::Snow:
-                                env.setSnowIntensity(val); break;
-                            case msr::airlib::WorldSimApiBase::WeatherParameter::Dust:
-                                env.setDustIntensity(val); break;
-                            case msr::airlib::WorldSimApiBase::WeatherParameter::Fog:
-                                env.setFogIntensity(val); break;
-                            case msr::airlib::WorldSimApiBase::WeatherParameter::MapleLeaf:
-                                env.setFallingLeavesIntensity(val); break;
-                            default: break;
-                        }
-                    }
-                }
-            }
-        }
-    }
+    unsigned char param_n = static_cast<unsigned char>(msr::airlib::Utils::toNumeric<WeatherParameter>(param));
+    EWeatherParamScalar param_e = msr::airlib::Utils::toEnum<EWeatherParamScalar>(param_n);
+
+    UAirBlueprintLib::RunCommandOnGameThread([this, param_e, val, param]() {
+        UWeatherLib::setWeatherParamScalar(simmode_->GetWorld(), param_e, val);
+        
+        // Weather physics handled directly in WeatherLib setWeatherParamScalar
+        UE_LOG(LogTemp, Log, TEXT("Weather Parameter Updated: %d=%.2f"), (int)param, val);
+    },
+                                             true);
 }
 
 std::unique_ptr<std::vector<std::string>> WorldSimApi::swapTextures(const std::string& tag, int tex_id, int component_id, int material_id)

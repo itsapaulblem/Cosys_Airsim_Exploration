@@ -1,0 +1,35 @@
+{
+    "SeeDocsAt": "https://github.com/Microsoft/AirSim/blob/main/docs/settings.md",
+    "SettingsVersion": 1.2,
+    "SimMode": "Multirotor",
+    "ClockType": "SteppableClock",
+    "Vehicles": {
+        "Droan1": {
+            "VehicleType": "SimpleFlight",
+            "AutoCreate": true,
+            "PawnBP": "Class'/AirSim/VehicleAdv/Vehicle/VehicleAdvPawn.VehicleAdvPawn_C'",
+            "Sensors": {
+                "Barometer": {
+                    "SensorType": 1,
+                    "Enabled": true
+                },
+                "Imu": {
+                    "SensorType": 2,
+                    "Enabled": true
+                },
+                "Gps": {
+                    "SensorType": 3,
+                    "Enabled": true
+                },
+                "Magnetometer": {
+                    "SensorType": 4,
+                    "Enabled": true
+                },
+                "Distance": {
+                    "SensorType": 5,
+                    "Enabled": true
+                }
+            }
+        }
+    }
+}

@@ -23,6 +23,16 @@ VNC_PORT=${VNC_PORT:-5901}
 DISPLAY_NUM=${DISPLAY_NUM:-1}
 
 print_info "=== AirSim ROS2 VNC Container Starting ==="
+<<<<<<< HEAD
+=======
+
+# Runtime line ending conversion for mounted files (fix Windows CRLF issues)
+print_info "Converting line endings for mounted files..."
+dos2unix /launch_airsim_ros2.sh /launch_ros2_system.sh /debug_airsim_connection.sh 2>/dev/null || true
+dos2unix /airsim_ros2_ws/scripts/*.sh 2>/dev/null || true
+dos2unix /airsim_ros2_ws/fix_rpc_build.sh 2>/dev/null || true
+
+>>>>>>> main
 print_info "User: $USER"
 print_info "VNC Resolution: $RESOLUTION"
 print_info "VNC Port: $VNC_PORT"
@@ -105,6 +115,51 @@ if ! grep -q "source /airsim_ros2_ws/install/setup.bash" "$USER_HOME/.bashrc"; t
     echo "source /airsim_ros2_ws/install/setup.bash" >> "$USER_HOME/.bashrc"
 fi
 
+<<<<<<< HEAD
+=======
+# Convert .bashrc line endings after modifications (fix Windows CRLF issues)
+dos2unix "$USER_HOME/.bashrc" 2>/dev/null || true
+
+# Apply enhanced Terminator configuration
+print_info "Applying enhanced Terminator configuration"
+ENHANCED_CONFIG="/etc/terminator-config-enhanced"
+USER_CONFIG="$USER_HOME/.config/terminator/config"
+
+if [ -f "$ENHANCED_CONFIG" ]; then
+    # Ensure config directory exists
+    sudo -u "$USER" mkdir -p "$USER_HOME/.config/terminator"
+
+    # Copy enhanced config to user location
+    cp "$ENHANCED_CONFIG" "$USER_CONFIG"
+    chown "$USER:$USER" "$USER_CONFIG"
+    chmod 644 "$USER_CONFIG"
+
+    # Verify config was applied correctly
+    CONFIG_SIZE=$(wc -c < "$USER_CONFIG" 2>/dev/null || echo "0")
+    if [ "$CONFIG_SIZE" -gt 1000 ]; then
+        print_info "Enhanced Terminator config applied successfully (${CONFIG_SIZE} bytes)"
+
+        # Validate critical components
+        if grep -q "Drone Monitoring, ROS2 Development" "$USER_CONFIG"; then
+            print_info "✓ 2-tab layout configuration verified"
+        else
+            print_warning "⚠ 2-tab layout not found in applied config"
+        fi
+    else
+        print_error "✗ Enhanced config appears too small (${CONFIG_SIZE} bytes)"
+        print_warning "Using fallback basic configuration"
+    fi
+else
+    print_warning "Enhanced Terminator config not found at $ENHANCED_CONFIG"
+    print_info "Creating basic fallback configuration"
+    sudo -u "$USER" mkdir -p "$USER_HOME/.config/terminator"
+    echo "[global_config]" > "$USER_CONFIG"
+    echo "[profiles]" >> "$USER_CONFIG"
+    echo "  [[default]]" >> "$USER_CONFIG"
+    chown "$USER:$USER" "$USER_CONFIG"
+fi
+
+>>>>>>> main
 # Create .Xauthority file
 sudo -u "$USER" touch "$USER_HOME/.Xauthority"
 sudo -u "$USER" chmod 600 "$USER_HOME/.Xauthority"

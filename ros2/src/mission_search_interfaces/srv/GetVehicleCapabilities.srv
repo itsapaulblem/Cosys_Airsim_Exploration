@@ -1,0 +1,43 @@
+# Service to query vehicle capabilities
+# Called on individual vehicle nodes: /VehicleName/services/get_capabilities
+
+# Request
+bool include_current_status    # Include current battery, position, etc.
+bool include_sensor_details    # Include detailed sensor information
+bool include_performance_history  # Include historical performance data
+
+---
+# Response
+bool success
+string message
+
+# Core capabilities
+VehicleCapabilities capabilities  # Complete vehicle capabilities
+
+# Current operational status
+bool currently_available         # Available for new missions
+float32 current_battery_percent  # Current battery level
+geometry_msgs/Point current_position  # Current GPS position
+float32 current_altitude         # Current altitude
+
+# Sensor status (if requested)
+string[] active_sensors          # Currently active sensors
+bool[] sensor_health_status      # Health status of each sensor
+string[] sensor_error_messages   # Any sensor-specific errors
+
+# Performance history (if requested)
+float32 avg_search_efficiency_history   # Historical search efficiency
+uint32 total_missions_completed         # Number of completed missions
+builtin_interfaces/Duration total_flight_time_history  # Total flight time
+float32 detection_accuracy_history      # Historical detection accuracy
+
+# Maintenance information
+builtin_interfaces/Time last_maintenance_time  # When last maintained
+bool requires_maintenance               # Maintenance needed soon
+string[] maintenance_notes              # Maintenance recommendations
+
+# Environmental capabilities
+float32 max_wind_tolerance        # Maximum wind speed for operation
+float32 temperature_operating_range_min  # Minimum operating temperature
+float32 temperature_operating_range_max  # Maximum operating temperature
+bool night_vision_capable         # Can operate in low light

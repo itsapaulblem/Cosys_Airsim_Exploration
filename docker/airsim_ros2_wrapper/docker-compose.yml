@@ -1,36 +1,48 @@
-version: '3.8'
-
 services:
-  airsim-ros2-vnc:
-    build: 
-      context: ../../
-      dockerfile: docker/airsim_ros2_wrapper/VNC/Dockerfile.ros2_vnc
-    container_name: airsim-ros2-vnc
-    hostname: airsim-ros2-vnc
+  ros2-multi-node:
+    build:
+      context: ${PROJECT_ROOT}
+      dockerfile: docker/airsim_ros2_wrapper/VNC/Dockerfile.clean
+      target: runtime 
+    container_name: ros2-multi-node
+    hostname: ros2-multi-node
     environment:
+      # VNC Configuration
       - DISPLAY=:1
       - VNC_PORT=5901
       - RESOLUTION=1920x1080
-      - USER=airsim
-      - PASSWD=airsim
+      - USER=Aortz
+      - PASSWD=ubuntu
+      
+      # ROS2 Configuration
       - ROS_DOMAIN_ID=0
-      - AIRSIM_HOST_IP=host.docker.internal
+      
+      # AirSim Connection
+      - AIRSIM_HOST_IP=-airsim-container
       - AIRSIM_HOST_PORT=41451
+      
+      # Multi-Node Architecture Configuration (NEW)
+      - LAUNCH_MODE=multi                 # Primary: Multi-node
+      - ENABLE_COORDINATION=true          # Coordination node authority
+      - RPC_TIMEOUT=10.0                  # RPC discovery timeout
+      - LAUNCH_RVIZ=false                 # Optional visualization
+      - DEBUG=false                       # Debug mode logging
+      - AUTO_BUILD=true                   # Automatically run build on startup
     ports:
       - "5901:5901"    # VNC port
       - "7400:7400/udp"    # ROS2 discovery
       - "7401:7401/udp"    # ROS2 multicast
     volumes:
-      # Mount the ROS2 workspace source
-      - ../../ros2:/airsim_ros2_ws/src:rw
-      # Persist build artifacts
-      - airsim_ros2_build:/airsim_ros2_ws/build
-      - airsim_ros2_install:/airsim_ros2_ws/install
-      - airsim_ros2_logs:/airsim_ros2_ws/log
+      # Mount ONLY the ROS2 source directory (uses PROJECT_ROOT from .env)
+      - ${PROJECT_ROOT}/ros2/src:/airsim_ros2_ws/src:rw
+      # Persist build artifacts for faster rebuilds
+      - ros2_multi_node_build:/airsim_ros2_ws/build
+      - ros2_multi_node_install:/airsim_ros2_ws/install
+      - ros2_multi_node_logs:/airsim_ros2_ws/log
       # VNC session persistence
-      - vnc_home:/home/airsim
+      - vnc_home:/home/Aortz
     networks:
-      - airsim-network
+      - ros2-multi-node-network
     restart: unless-stopped
     stdin_open: true
     tty: true
@@ -39,21 +51,24 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 10s
+      start_period: 15s  # Allow more time for multi-node startup
+    # Development-friendly settings
+    cap_add:
+      - SYS_PTRACE  # For debugging
 
 networks:
-  airsim-network:
+  ros2-multi-node-network:
     driver: bridge
     ipam:
       config:
-        - subnet: 172.25.0.0/16
+        - subnet: 172.26.0.0/16  # Different subnet to avoid conflicts
 
 volumes:
-  airsim_ros2_build:
+  ros2_multi_node_build:
     driver: local
-  airsim_ros2_install:
+  ros2_multi_node_install:
     driver: local
-  airsim_ros2_logs:
+  ros2_multi_node_logs:
     driver: local
   vnc_home:
     driver: local

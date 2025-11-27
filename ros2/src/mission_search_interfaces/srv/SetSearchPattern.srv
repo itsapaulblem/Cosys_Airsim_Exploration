@@ -1,0 +1,45 @@
+# Service to configure search pattern for individual vehicles
+# Called on individual vehicle nodes: /VehicleName/services/set_search_pattern
+
+# Request
+string pattern_type          # "spiral", "lawnmower", "grid", "random", "waypoint"
+float32 search_altitude      # Search altitude in meters
+float32 search_speed         # Search speed in m/s
+float32 pattern_spacing      # Distance between search lines/arms (meters)
+
+# Search area definition
+geometry_msgs/Polygon search_boundary  # Boundary polygon for search area
+
+# Pattern-specific parameters
+float32 spiral_turns         # For spiral: number of turns (0 = auto-calculate)
+float32 grid_angle          # For grid: rotation angle of grid pattern (degrees)
+geometry_msgs/Point[] custom_waypoints  # For waypoint: custom waypoint sequence
+
+# Detection parameters
+bool enable_detection       # Enable target detection during search
+string[] detection_types    # Types to detect: ["person", "vehicle", "object"]
+float32 detection_confidence_threshold  # Minimum confidence for valid detection
+
+# Advanced options
+bool optimize_path          # Optimize path for efficiency
+float32 overlap_percentage  # Overlap between search paths (0.0 to 50.0)
+bool adaptive_altitude      # Adjust altitude based on terrain
+
+---
+# Response
+bool success
+string message              # Human-readable result message
+
+# Pattern validation results
+bool pattern_valid          # Is the requested pattern valid?
+float32 estimated_coverage_area_sq_m    # Total area that will be covered
+builtin_interfaces/Duration estimated_duration  # Time to complete search
+
+# Generated pattern information
+uint32 total_waypoints      # Number of waypoints generated
+float32 total_distance_m    # Total flight distance
+float32 coverage_efficiency # Coverage per unit time (sq_m/second)
+
+# Warnings and recommendations
+string[] warnings           # Any warnings about the pattern
+string[] recommendations    # Suggested improvements
