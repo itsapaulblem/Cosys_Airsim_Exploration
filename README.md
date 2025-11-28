@@ -353,23 +353,83 @@ Behaviour:
 
 ---
 
-### **🌪️ Working Weather System**
+### 3) Working Weather System
 
-**Problem Solved**: The F10 weather menu in original Cosys-AirSim was purely visual - rain, snow, and wind effects had **zero impact** on drone flight dynamics.
+**Problem Solved**: The F10 weather menu in original Cosys-AirSim was purely visual - rain, snow, and wind effects had **no impact** on drone flight dynamics.
 
-**Weather Effects Integration**  
-**📁 Core Physics**: `AirLib/include/physics/WeatherPhysics.hpp` + `AirLib/src/physics/WeatherPhysics.cpp`  
-**📁 Unreal Bridge**: `Unreal/Plugins/AirSim/Source/WeatherPhysicsBridge.h` + `WeatherPhysicsBridge.cpp`  
-**📁 Engine Integration**: `AirLib/include/physics/FastPhysicsEngine.hpp` + `AirLib/src/physics/FastPhysicsEngine.cpp`
+**Architecture**: The implementation uses a bridge pattern to connect Unreal Engine's weather system with AirLib's physics engine:
 
-**FastPhysicsEngine Enhancements**  
-**📁 Header File**: `AirLib/include/physics/FastPhysicsEngine.hpp`  
-**📁 Implementation**: `AirLib/src/physics/FastPhysicsEngine.cpp`  
-**📁 Base Class**: `AirLib/include/physics/PhysicsEngineBase.hpp`
+```
+F10 Weather Menu (Unreal) -> WeatherPhysicsBridge -> FastPhysicsEngine -> Drone Physics
+```
+
+## Files Created/Modified
+
+### 1. Core Physics Files
+
+**WeatherPhysics.hpp**
+**📁Location**: `AirLib/include/physics/WeatherPhysics.hpp`
+- **Purpose**: Defines weather force calculations and data structures
+- **Key Components**:
+  - WeatherForces struct containing turbulence forces, wind gusts, and multipliers
+  - Static methods for calculating weather-specific effects (rain, snow, dust, fog, leaves)
+  - Physics calculations converting weather intensity to force vectors
+
+**WeatherPhysics.cpp**
+**📁Location**: `AirLib/src/physics/WeatherPhysics.cpp`
+- **Purpose**: Implements weather physics calculations
+- **Key Features**:
+  - Individual weather type calculations (rain creates downdrafts, snow creates swirls)
+  - Random turbulence generation using normal distribution
+  - Drag and air density multipliers based on weather conditions
+  - Parameter suppression to avoid compilation warnings
+
+### 2. Physics Engine Integration
+
+**PhysicsEngineBase.hpp**
+**📁Location**: `AirLib/include/physics/PhysicsEngineBase.hpp`
+- **Changes**: Added virtual weather methods to base physics engine
+- **New Methods**:
+  - `enableWeatherEffects(bool enable)`
+  - `isWeatherEffectsEnabled()`
+  - `getWeatherEffects(const PhysicsBody& body, real_T dt)`
+
+**FastPhysicsEngine.hpp**
+**📁Location**: `AirLib/include/physics/FastPhysicsEngine.hpp`
+- **Changes**: Extended to support weather effects
+- **Modifications**:
+  - Added `weather_effects_enabled_` member variable
+  - Implemented weather methods with override keyword
+  - Added static `WeatherPhysics::WeatherForces current_weather_forces_`
+  - Modified `getDragWrench()` to apply weather multipliers
+  - Updated `getNextKinematicsNoCollision()` to include weather forces
 - Weather force integration in real-time flight dynamics
 - Enhanced drag calculations with atmospheric effects
 - Ground-lock improvements for stable landing
 - Collision response optimization
+
+**FastPhysicsEngine.cpp**
+**📁Location**: `AirLib/src/physics/FastPhysicsEngine.cpp`
+- **Purpose**: Initialize static weather forces member
+- **Content**: Only contains static member initialization (duplicate method implementations removed)
+
+### 3. Unreal-AirLib Bridge
+
+**WeatherPhysicsBridge.h**
+**📁Location**: `Unreal/Plugins/AirSim/Source/Weather/WeatherPhysicsBridge.h`
+- **Purpose**: Bridge between Unreal weather system and AirLib physics
+- **Key Components**:
+  - FWeatherForces struct (Unreal-compatible version)
+  - GetWeatherForces() method to retrieve current weather parameters
+  - Integration with UWeatherLib for accessing F10 menu values
+
+**WeatherPhysicsBridge.cpp**
+**📁Location**: `Unreal/Plugins/AirSim/Source/Weather/WeatherPhysicsBridge.cpp`
+- **Purpose**: Implementation of weather bridge functionality
+- **Features**:
+  - Converts Unreal weather slider values to physics forces
+  - Calls WeatherPhysics calculations
+  - Returns forces in Unreal-compatible format
 
 **Solution Implemented**:
 ```cpp
@@ -405,12 +465,102 @@ static void getNextKinematicsNoCollision(TTimeDelta dt, PhysicsBody& body, /* ..
 }
 ```
 
+### 4. World Simulation Updates
+
+**SimModeWorldBase.h**
+- **Changes**: Added weather physics update method
+- **New Methods**: `updateWeatherPhysics()`
+
+**SimModeWorldBase.cpp**
+- **Changes**: Integrated weather physics into simulation loop
+- **Modifications**:
+  - Added `updateWeatherPhysics()` implementation
+  - Called weather update in `Tick()` method
+  - Connected weather bridge to physics engine
+
+### 5. Input Handling
+
+**SimHUD.h**
+- **Changes**: Added F10 weather menu toggle method
+- **New Methods**: `inputEventToggleWeatherMenu()`
+- **Header Order**: Fixed include order for Unreal compilation requirements
+
+**SimHUD.cpp**
+- **Changes**: Implemented F10 key binding and weather menu toggle
+- **Modifications**:
+  - Added F10 key binding in `setupInputBindings()`
+  - Implemented `inputEventToggleWeatherMenu()` calling `UWeatherLib::toggleWeatherMenu()`
+
+### 6. Build System
+
+**AirLib.vcxproj**
+- **Changes**: Added new source files to build system
+- **Added Files**:
+  - WeatherPhysics.cpp
+  - FastPhysicsEngine.cpp
+
+## Implementation Steps
+
+### Step 1: Physics Foundation
+1. Created WeatherPhysics class with force calculation methods
+2. Defined WeatherForces struct to hold all weather-related forces
+3. Implemented individual weather type calculations (rain, snow, dust, fog, leaves)
+
+### Step 2: Physics Engine Integration
+1. Extended PhysicsEngineBase with virtual weather methods
+2. Modified FastPhysicsEngine to override weather methods
+3. Updated drag calculations to apply weather multipliers
+4. Integrated weather forces into physics simulation loop
+
+### Step 3: Unreal Bridge
+1. Created WeatherPhysicsBridge to connect Unreal and AirLib
+2. Implemented conversion from Unreal weather parameters to physics forces
+3. Added bridge calls to simulation mode
+
+### Step 4: User Interface
+1. Added F10 key binding for weather menu toggle
+2. Connected existing UWeatherLib with physics system
+3. Fixed header include order for Unreal compilation
+
+### Step 5: Build Integration
+1. Added source files to Visual Studio project
+2. Fixed compilation errors (duplicate methods, unused parameters)
+3. Ensured proper static member initialization
+
+## Weather Effects
+
 **Real Weather Effects**:
 - 🌧️ **Rain**: Downward force + increased drag (drones struggle to stay airborne)
 - ❄️ **Snow**: Swirling turbulence + reduced visibility effects  
 - 💨 **Dust**: Strong chaotic turbulence + significant drag increase
 - 🌫️ **Fog**: Subtle atmospheric effects + air density changes
 - 🍂 **Falling Leaves**: Gentle environmental turbulence
+
+Each weather type produces specific physical effects:
+
+- **Rain**: Downward forces and lateral turbulence, increased drag
+- **Snow**: Swirling motion with moderate turbulence, slight drag increase
+- **Dust**: Chaotic turbulence in all directions, significant drag increase
+- **Fog**: Subtle effects with increased air density
+- **Falling Leaves**: Gentle swirling motion with upward forces
+
+## Usage
+
+1. Launch AirSim with Blocks environment
+2. Press F10 to open weather menu
+3. Adjust weather sliders (rain, snow, dust, fog, falling leaves)
+4. Observe physical effects on drone flight behavior
+5. Weather effects combine additively for realistic mixed conditions
+
+## Technical Notes
+
+- Weather forces are calculated in real-time based on slider values
+- Effects use random turbulence generation for realistic variation
+- All weather types can be active simultaneously
+- Physics integration respects existing wind and external force systems
+- Static member pattern ensures efficient force sharing between systems
+
+This implementation provides a complete weather physics system that seamlessly integrates with AirSim's existing architecture while maintaining performance and extensibility.
 
 ---
 
