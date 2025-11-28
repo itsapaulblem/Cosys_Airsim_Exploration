@@ -9,13 +9,13 @@
 1. [Internship Project Overview](#-internship-project-overview)
 2. [The Complete Project Plan](#-the-complete-project-plan)
 3. [Internship Project Achievements](#-internship-project-achievements)
-4. [Modular ROS2 Node Architecture](#-modular-ros2-node-architecture)
-5. [AI Vision Systems Implementation](#-ai-vision-systems-implementation)
+4. [Modular ROS2 Node Architecture](#1-architecture-redesign-monolithic--modular)
+5. [AI Vision Systems Implementation](#2-ai-vision-systems-implementation)
 6. [Complete File Structure Guide](#-complete-file-structure-guide)
 7. [Physics Engine Enhancements](#-physics-engine-enhancements)
 8. [Technical Implementation Deep Dive](#-technical-implementation-deep-dive)
 9. [Installation & Deployment](#️-installation--deployment)
-10. [Quick Start Guide](#quick-start-guide)
+10. [Quick Start Guide](#startup-instructions-wsl-2510--windows-10)
 11. [Architecture Overview](#architecture-overview)
 12. [ROS Topics and Services](#ros-topics-and-services)
 13. [Detailed Comparisons: Old vs New Architecture](#detailed-comparisons-old-vs-new-architecture)
@@ -25,6 +25,8 @@
 17. [Contact & Acknowledgments](#-contact--acknowledgments)
 18. [License & Citation](#-license--citation)
 19. [References](#references)
+
+---
 
 ## 🎓 Internship Project Overview
 
