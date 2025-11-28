@@ -1,8 +1,6 @@
-# Paul's 6-Months Internship Project, PaulSys: Enhancing the CoSys-AirSim Simulator with AI-Driven Autonomy & Physics-Based Effects
+# PaulSys: Enhancing the CoSys-AirSim Simulator with AI-Driven Autonomy & Physics-Based Effects
 
-![Project Status](https://img.shields.io/badge/Internship-6_Months_Complete-success) ![ROS2](https://img.shields.io/badge/ROS2-Humble-green) ![AI](https://img.shields.io/badge/AI-YOLO_Vision-orange) ![Architecture](https://img.shields.io/badge/Architecture-Modular-blue)
-
-**📊 Full Presentation Slides**: A [slide deck](https://docs.google.com/presentation/d/1QnXTPNWawfn-A6RgIhcmu6294ree_dILD_hp1z6UNZY/edit?usp=sharing) delivered to the M&S internal team, covering the system architecture, implementation and key results
+**📊 Full Presentation Slides**: A [slide deck](https://docs.google.com/presentation/d/1QnXTPNWawfn-A6RgIhcmu6294ree_dILD_hp1z6UNZY/edit?usp=sharing) presented to the M&S internal team, covering the system architecture, implementation and key results
 
 ---
 
@@ -28,8 +26,6 @@
 18. [License & Citation](#-license--citation)
 19. [References](#references)
 
----
-
 ## 🎓 Internship Project Overview
 
 This repository documents a **6-month internship project** that transformed Cosys-AirSim from a monolithic single-vehicle system into a **scalable, modular multi-vehicle simulation platform** with **YOLOv7 + DeepSORT AI vision capabilities** and **enhanced physics simulation**. 
@@ -38,9 +34,8 @@ This repository documents a **6-month internship project** that transformed Cosy
 
 Cosys-AirSim is a simulator for drones, cars and more, with extensive API support, built on [Unreal Engine](https://www.unrealengine.com/). It is open-source, cross platform, and supports hardware-in-loop with popular flight controllers such as PX4 for visually realistic simulations.
 
-This fork is based on the last public AirSim release from Microsoft's GitHub. Paulsys-Lab made extensive modifications to the CoSys-AirSim platform to support multiple projects and research goals. The [original AirSim MIT license](https://github.com/Cosys-Lab/Cosys-AirSim/blob/main/LICENSE) applies to all native AirSim source files.
+This fork is based on the last public AirSim release from Microsoft's GitHub. Paulsys made extensive modifications to the CoSys-AirSim platform to support multiple projects and research goals. The [original AirSim MIT license](https://github.com/Cosys-Lab/Cosys-AirSim/blob/main/LICENSE) applies to all native AirSim source files.
 
----
 ### **🌍 Platform Comparison: Why Cosys-AirSim over Alternatives?**
 
 **AirSim vs CoSys-AirSim:**
@@ -51,6 +46,8 @@ This fork is based on the last public AirSim release from Microsoft's GitHub. Pa
 | **Sensors Modalities**      | Standard sensors: RGB, Depth segmentation, LiDAR, IMU, GPS | Standard sensors + thermal, stereo, multi-camera and expanded LiDAR options |
 | **ROS / ROS 2 Integration** | ROS 1 officially supported                                 | Includes ROS 2 workspace support                                            |
 
+\* Non exhausive
+  
 **Unity vs Unreal Engine:**
 
 | Criteria                  | Unity Robotics Hub & ROS-TCP Connector                                  | Cosys-AirSim                                                                        |
@@ -60,13 +57,15 @@ This fork is based on the last public AirSim release from Microsoft's GitHub. Pa
 | **Maintenance & Updates** | Deprecated (last updated Feb 2022)                                      | Maintained and regularly updated                                                    |
 | **Community Support**     | Minimal support; Inactive forum                                         | Strong community and active development                                             |
 
+\* Non exhausive
+
 ### **Internship Project Transformation**
 
 The original Cosys-AirSim ROS 2 implementation was a monolithic system that:
 - ❌ **Non-scalable architecture**: Single [`airsim_ros_wrapper.cpp`](ros2/src/airsim_ros_pkgs/src/airsim_ros_wrapper.cpp) handled all vehicles in one process, violating ROS 2 best practices for distributed systems
 - ❌ **Critical single points of failure**: One vehicle crash or RPC timeout would terminate the entire fleet operation
 - ❌ **Lack of coordinated fleet management**: No centralized command structure for synchronized multi-vehicle operations 
-- ❌ **Limited vehicle type extensibility**: The monolithic design made adding new drones (/drone1, /drone2...) extremely difficult and non-scalable, often requiring changes across 2,000+ lines of code.
+- ❌ **Limited vehicle type extensibility**: The monolithic design made adding new drones (/drone1, /drone2...) extremely difficult and non-scalable, often requiring changes across 2,000+ lines of code
 - ❌ **Complete absence of AI vision capabilities**: No object detection, tracking, or autonomous behavior systems
 - ❌ **Non-functional physics effects**: F10 weather menu was purely cosmetic - rain, snow, and wind had zero impact on actual drone flight dynamics
 
@@ -87,19 +86,19 @@ A complete architectural transformation resulting in:
 
 **👁️ YOLO (You Only Look Once) v7** - Real-time object detection AI that identifies and locates multiple objects in a single image pass
 
-**🎯 DeepSORT** - Multi-object tracking system maintaining consistent object identities across video frames
+**🎯 DeepSORT (Deep Simple Online and Realtime Tracking)** - Multi-object tracking system maintaining consistent object identities across video frames
 
 **🛩️ Flight Controller Integration**
 
 **PX4 Autopilot**
-- **Flight Control Core** aka the "brain" of the drone
-- **Open source flight control software** for drones and other unmanned vehicles
-- **Integrates with MAVLink** as its communication interface and with ground control stations for mission planning
+- Flight Control Core aka the "brain" of the drone
+- Open source flight control software for drones and other unmanned vehicles
+- Integrates with MAVLink as its communication interface and with ground control stations for mission planning
 
 **Micro Air Vehicle Link Protocol (MAVLink)**
-- **Lightweight, open source communication protocol** for drones
-- **Supports both streaming data (telemetry) and direct commands** (mission updates)
-- **Mostly used between QGroundControl and PX4**
+- Lightweight, open source communication protocol for drones
+- Supports both streaming data (telemetry) and direct commands (mission updates)
+- Mostly used between QGroundControl and PX4
 
 **🌍 Cosys-AirSim Platform** - Enhanced simulation environment with Unreal Engine 5 support and expanded sensor capabilities
 
@@ -145,20 +144,18 @@ A complete architectural transformation resulting in:
    - FastPhysicsEngine.hpp integration for real-time weather force calculations
    - Dynamic weather effects: rain downward pressure, snow turbulence, dust drag increases
    
-
 ## 🏆 Internship Project Achievements
 
-### **🏗️ Architecture Redesign: Monolithic → Modular**
 
 | **Component**        | **Before (Monolithic)**         | **After (Modular)**                             | **Impact**                             |
 |----------------------|---------------------------------|-------------------------------------------------|----------------------------------------|
 | **ROS 2 Structure**  | Single `airsim_ros_wrapper.cpp` | `coordination_node.cpp` + `multirotor_node.cpp` | Scalable architecture                  |
-| **Vehicle Control**  | Shared processing               | Independent nodes per vehicle                   | Fault isolation                        |
+| **Vehicle Control**  | Shared processing               | Independent nodes per vehicle (multirotor_node) | Fault isolation                        |
 | **Fleet Management** | Individual commands             | Coordinated operations                          | Synchronized control                   |
 | **AI Capabilities**  | None                            | YOLOv7 + object tracking                        | Autonomous search and track operations |
 | **Physics Effects**  | F10 menu decorative only        | Real weather dynamics                           | Realistic simulation                   |
 
-## 🚁 Modular ROS2 Node Architecture
+## **1) Architecture Redesign: Monolithic → Modular**
 
 ### **Coordination Node**
 **📁 File Location**: `ros2/src/airsim_ros_pkgs/src/coordination_node.cpp`  
@@ -210,22 +207,22 @@ class MultirotorNode : public VehicleNodeBase {
 - 🛫 `/droneX/takeoff` - Weather-aware takeoff with safety checks
 - 🛬 `/droneX/land` - Smart landing with ground effect compensation  
 
-## 🤖 AI Vision Systems Implementation
+## 2) AI Vision Systems Implementation
 
 ### **👁️ YOLO (You Only Look Once) v7 - Object Detection AI**
 
-YOLO is a **real-time object detection neural network** that can identify and locate multiple objects in images incredibly fast.
+YOLO is a real-time object detection neural network that can identify and locate multiple objects in images fast.
 
 **What is YOLOv7?**
-- Stands for "**You Only Look Once**" - Processes the whole image in one pass to detect all objects
-- **Improvement over older models** that scan multiple times
-- **Used for Object Detection** of 80+ COCO dataset classes
+- Stands for "You Only Look Once" - Processes the whole image in one pass to detect all objects
+- Improvement over older models that scan multiple times
+- Used for Object Detection of 80+ COCO dataset classes
 
 **How YOLO Works:**
-1. **Single Pass Detection**: Unlike traditional methods that scan images multiple times, YOLO analyzes the entire image once
-2. **Grid Division**: Divides image into a grid (e.g., 13x13 cells)
-3. **Simultaneous Prediction**: Each grid cell predicts objects and their confidence scores
-4. **Bounding Box Regression**: Precisely locates objects with rectangular boxes
+1. Single Pass Detection: Unlike traditional methods that scan images multiple times, YOLO analyzes the entire image once
+2. Grid Division: Divides image into a grid (e.g., 13x13 cells)
+3. Simultaneous Prediction: Each grid cell predicts objects and their confidence scores
+4. Bounding Box Regression: Precisely locates objects with rectangular boxes
 
 **YOLOv7 Decision Making - Confidence Scoring Formula:**
 
@@ -233,7 +230,7 @@ YOLO is a **real-time object detection neural network** that can identify and lo
 
 Function: `calculate_target_confidence()`
 
-```
+```bash
 Confidence level = detection_confidence × size_factor × center_factor
                   × consistency_factor × camera_priority_factor
 ```
@@ -260,13 +257,12 @@ Confidence level = detection_confidence × size_factor × center_factor
 
 ### **🎯 DeepSORT - Multi-Object Tracking System**
 
-DeepSORT **tracks multiple objects across video frames**, maintaining consistent identities even when objects move, overlap, or temporarily disappear.
+DeepSORT tracks multiple objects across video frames, maintaining consistent identities even when objects move, overlap, or temporarily disappear.
 
-**DeepSORT Algorithm: Object Tracking with IDs**
-- "**Deep Simple Online and Realtime Tracking**"
-- Uses **object appearance (via a CNN) and motion (Kalman filter)** to track objects across frames
-- **Gives each object a unique ID** to maintain identity even during movement
-- **Keeps consistent tracking** of the detected target over time
+**DeepSORT (Deep Simple Online and Realtime Tracking Algorithm): Object Tracking with IDs**
+- Uses object appearance (via a CNN) and motion (Kalman filter) to track objects across frames
+- Gives each object a unique ID to maintain identity even during movement
+- Keeps consistent tracking of the detected target over time
 
 **How DeepSORT Works:**
 1. **Object Association**: Links detected objects across frames using appearance features
@@ -314,8 +310,8 @@ Frame 4: Person reappears → Track ID #1 reconfirmed (same person!)
 ```
 
 **YOLOv7 DeepSORT - ROS 2 Integration:**
-- Uses the refactored **MultirotorNode** from the multi-node ROS 2 architecture
-- Includes a new **MotionDetectionNode** for image-based movement analysis
+- Uses the refactored **[MultirotorNode](ros2/src/airsim_ros_pkgs/src/multirotor_node.cpp)** from the multi-node ROS 2 architecture
+- Includes a new **[MotionDetectionNode](ros2/src/airsim_ros_pkgs/scripts/motion_detection_node.py)** for image-based movement analysis
 
 **Sensor-Instruction Feedback Loop:**
 - **MultirotorNode**: Publishes 4 camera topics per drone
